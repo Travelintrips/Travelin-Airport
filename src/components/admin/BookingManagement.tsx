@@ -30,6 +30,7 @@ import {
   X,
   DollarSign,
   AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import PostRentalInspectionForm from "@/components/booking/PostRentalInspectionForm";
 import PickupCustomer from "@/components/booking/PickupCustomer";
@@ -78,6 +79,7 @@ export default function BookingManagement() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -117,17 +119,21 @@ export default function BookingManagement() {
   const fetchBookings = async () => {
     try {
       setIsLoading(true);
+      setError(null);
+
+      console.log("Fetching bookings...");
       const { data, error } = await supabase
         .from("bookings")
-        .select(
-          `
-          *,
-          user:users(full_name, email)
-        `,
-        )
+        .select("*, user:users(full_name, email)")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase error:", error);
+        setError(error.message);
+        throw error;
+      }
+
+      console.log("Bookings data received:", data);
       setBookings(data || []);
       setFilteredBookings(data || []);
 
@@ -139,12 +145,13 @@ export default function BookingManagement() {
         const normalizedStatus = statusParam.toLowerCase().replace("-", "");
         const filtered =
           data?.filter(
-            (booking) => booking.status.toLowerCase() === normalizedStatus,
+            (booking) => booking.status?.toLowerCase() === normalizedStatus,
           ) || [];
         setFilteredBookings(filtered);
       }
     } catch (error) {
       console.error("Error fetching bookings:", error);
+      setError("Failed to fetch bookings. Please try again.");
       toast({
         variant: "destructive",
         title: "Error fetching bookings",
@@ -384,7 +391,7 @@ export default function BookingManagement() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
+    switch (status?.toLowerCase()) {
       case "confirmed":
         return <Badge className="bg-green-500">Confirmed</Badge>;
       case "pending":
@@ -397,7 +404,7 @@ export default function BookingManagement() {
       case "onride":
         return <Badge className="bg-purple-500">Onride</Badge>;
       default:
-        return <Badge>{status}</Badge>;
+        return <Badge>{status || "Unknown"}</Badge>;
     }
   };
 
@@ -410,7 +417,7 @@ export default function BookingManagement() {
       case "unpaid":
         return <Badge className="bg-red-500">Unpaid</Badge>;
       default:
-        return <Badge>{status}</Badge>;
+        return <Badge>{status || "Unknown"}</Badge>;
     }
   };
 
@@ -418,7 +425,7 @@ export default function BookingManagement() {
     try {
       return format(new Date(dateString), "PPP");
     } catch (e) {
-      return dateString;
+      return dateString || "N/A";
     }
   };
 
@@ -442,8 +449,8 @@ export default function BookingManagement() {
         booking.user?.email?.toLowerCase().includes(lowercasedSearch) ||
         booking.id.toString().includes(lowercasedSearch) ||
         booking.vehicle_id.toString().includes(lowercasedSearch) ||
-        booking.status.toLowerCase().includes(lowercasedSearch) ||
-        booking.payment_status.toLowerCase().includes(lowercasedSearch),
+        booking.status?.toLowerCase().includes(lowercasedSearch) ||
+        booking.payment_status?.toLowerCase().includes(lowercasedSearch),
     );
 
     setFilteredBookings(filtered);
@@ -462,31 +469,42 @@ export default function BookingManagement() {
     <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">Booking Management</h2>
-        <div className="relative w-64">
-          <div className="relative flex items-center">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search bookings..."
-              value={searchTerm}
-              onChange={handleSearchChange}
-              className="w-full pl-10 pr-10 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            />
-            {searchTerm && (
-              <button
-                onClick={clearSearch}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchBookings}
+            className="flex items-center gap-1"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh Data
+          </Button>
+          <div className="relative w-64">
+            <div className="relative flex items-center">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search bookings..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                className="w-full pl-10 pr-10 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+              {searchTerm && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {filteredBookings.length !== bookings.length && (
+              <div className="absolute right-0 -bottom-6 text-xs text-gray-500">
+                Found {filteredBookings.length} of {bookings.length} bookings
+              </div>
             )}
           </div>
-          {filteredBookings.length !== bookings.length && (
-            <div className="absolute right-0 -bottom-6 text-xs text-gray-500">
-              Found {filteredBookings.length} of {bookings.length} bookings
-            </div>
-          )}
         </div>
       </div>
 
@@ -516,9 +534,9 @@ export default function BookingManagement() {
                 setSearchTerm(status.toLowerCase());
                 const filtered = bookings.filter((booking) =>
                   status === "Booked"
-                    ? booking.status.toLowerCase() === "pending" ||
-                      booking.status.toLowerCase() === "booked"
-                    : booking.status.toLowerCase() === status.toLowerCase(),
+                    ? booking.status?.toLowerCase() === "pending" ||
+                      booking.status?.toLowerCase() === "booked"
+                    : booking.status?.toLowerCase() === status.toLowerCase(),
                 );
                 setFilteredBookings(filtered);
               }
@@ -534,9 +552,32 @@ export default function BookingManagement() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 text-red-800 rounded-md">
+          <p className="font-medium">Error: {error}</p>
+          <p className="text-sm mt-1">
+            Please try refreshing the data or check your database connection.
+          </p>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <p>Loading bookings...</p>
+        </div>
+      ) : bookings.length === 0 ? (
+        <div className="flex flex-col justify-center items-center h-64 text-center">
+          <p className="text-gray-500 mb-4">
+            No bookings found in the database.
+          </p>
+          <Button
+            variant="outline"
+            onClick={fetchBookings}
+            className="flex items-center gap-1"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh Data
+          </Button>
         </div>
       ) : (
         <Table>
@@ -584,23 +625,6 @@ export default function BookingManagement() {
                   >
                     <Eye className="h-4 w-4" />
                   </Button>
-                  {/* <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleOpenPaymentDialog(booking)}
-                  >
-                    <CreditCard className="h-4 w-4" />
-                  </Button>*/}
-
-                  {/*  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-300 font-medium"
-                    onClick={() => navigate(`/damage-payment/${booking.id}`)}
-                  >
-                    <AlertTriangle className="h-4 w-4" />
-                    Damage Payment
-                  </Button>*/}
                   {booking.status === "pending" && (
                     <Button
                       variant="outline"
