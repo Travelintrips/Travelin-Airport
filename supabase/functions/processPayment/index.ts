@@ -12,13 +12,16 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface ProcessPaymentRequest {
+interface PaymentRequest {
   userId: string;
   bookingId: number;
   amount: number;
-  paymentMethod: string; // "Cash", "Bank Transfer", "Credit/Debit Card"
+  paymentMethod: string; // "cash", "bank", "card"
+  transactionId?: string;
   bankName?: string;
   isPartialPayment?: boolean;
+  isDamagePayment?: boolean;
+  damageIds?: number[];
 }
 
 Deno.serve(async (req) => {
@@ -40,14 +43,18 @@ Deno.serve(async (req) => {
     const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
 
     // Parse request body
+    const paymentData = await req.json();
     const {
       userId,
       bookingId,
       amount,
       paymentMethod,
       bankName,
+      transactionId,
       isPartialPayment,
-    } = await req.json();
+      isDamagePayment,
+      damageIds,
+    } = paymentData;
 
     if (!userId || !bookingId || !amount || !paymentMethod) {
       throw new Error(
@@ -55,7 +62,52 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if booking exists
+    // Handle damage payments if specified
+    if (isDamagePayment && damageIds && damageIds.length > 0) {
+      // Create a payment record first
+      const { data: paymentRecord, error: paymentError } = await supabase
+        .from("payments")
+        .insert({
+          user_id: userId,
+          booking_id: bookingId,
+          amount: amount,
+          payment_method: paymentMethod,
+          status: "completed",
+          transaction_id: transactionId || null,
+          bank_name: bankName || null,
+          is_partial_payment: isPartialPayment || false,
+          is_damage_payment: true,
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (paymentError) throw paymentError;
+
+      // Update the damage records to mark them as paid
+      const { error: damageUpdateError } = await supabase
+        .from("damages")
+        .update({
+          payment_status: "paid",
+          payment_id: paymentRecord.id,
+        })
+        .in("id", damageIds);
+
+      if (damageUpdateError) throw damageUpdateError;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { payment: paymentRecord },
+        }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        },
+      );
+    }
+
+    // Check if booking exists for regular payments
     const { data: bookingData, error: bookingError } = await supabase
       .from("bookings")
       .select("id, total_amount, payment_status")
@@ -67,7 +119,7 @@ Deno.serve(async (req) => {
     }
 
     // Create payment record
-    const { data: paymentData, error: paymentError } = await supabase
+    const { data: paymentData2, error: paymentError } = await supabase
       .from("payments")
       .insert({
         user_id: userId,
@@ -75,9 +127,10 @@ Deno.serve(async (req) => {
         amount: amount,
         payment_method: paymentMethod,
         status: "completed",
-        created_at: new Date().toISOString(),
+        transaction_id: transactionId || null,
         bank_name: bankName || null,
         is_partial_payment: isPartialPayment || false,
+        created_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -122,8 +175,6 @@ Deno.serve(async (req) => {
       .eq("id", bookingId)
       .select();
 
-    // Note: Damage status updates should now be handled separately
-
     if (updateError) {
       throw new Error(
         `Failed to update booking status: ${updateError.message}`,
@@ -135,7 +186,7 @@ Deno.serve(async (req) => {
         success: true,
         message: "Payment processed successfully",
         data: {
-          payment: paymentData,
+          payment: paymentData2,
           booking: updatedBooking,
           totalPaid: totalPaid,
         },

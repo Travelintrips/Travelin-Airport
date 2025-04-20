@@ -13,7 +13,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { userId, ktpImage, simImage, idCardImage } = await req.json();
+    const requestData = await req.json();
+    const userId = requestData.userId;
 
     if (!userId) {
       throw new Error("User ID is required");
@@ -21,114 +22,142 @@ Deno.serve(async (req) => {
 
     // Create Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseServiceKey =
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+      Deno.env.get("SUPABASE_SERVICE_KEY") ??
+      "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const uploadResults = {
-      ktpUrl: "",
-      simUrl: "",
-      idCardUrl: "",
-    };
+    const uploadResults: Record<string, string> = {};
 
-    // Upload KTP image if provided
-    if (ktpImage) {
-      try {
-        const ktpBlob = await fetch(ktpImage).then((res) => res.blob());
-        const ktpFileName = `ktp_${userId}_${new Date().getTime()}.jpg`;
+    // Process all possible image types
+    const imageTypes = [
+      { key: "selfie", bucket: "selfies", filename: "selfie" },
+      {
+        key: "ktpImage",
+        bucket: "driver_documents",
+        filename: "ktp",
+        dbField: "ktp_url",
+        table: "drivers",
+      },
+      {
+        key: "simImage",
+        bucket: "driver_documents",
+        filename: "sim",
+        dbField: "sim_url",
+        table: "drivers",
+      },
+      {
+        key: "idCardImage",
+        bucket: "staff_documents",
+        filename: "idcard",
+        dbField: "id_card_url",
+        table: "staff",
+      },
+      {
+        key: "kkImage",
+        bucket: "driver_documents",
+        filename: "kk",
+        dbField: "kk_url",
+        table: "drivers",
+      },
+      {
+        key: "stnkImage",
+        bucket: "driver_documents",
+        filename: "stnk",
+        dbField: "stnk_url",
+        table: "drivers",
+      },
+      {
+        key: "skckImage",
+        bucket: "driver_documents",
+        filename: "skck",
+        dbField: "skck_url",
+        table: "drivers",
+      },
+      {
+        key: "front",
+        bucket: "vehicles",
+        filename: "front",
+        dbField: "front_image_url",
+        table: "vehicles",
+      },
+      {
+        key: "back",
+        bucket: "vehicles",
+        filename: "back",
+        dbField: "back_image_url",
+        table: "vehicles",
+      },
+      {
+        key: "side",
+        bucket: "vehicles",
+        filename: "side",
+        dbField: "side_image_url",
+        table: "vehicles",
+      },
+      {
+        key: "interior",
+        bucket: "vehicles",
+        filename: "interior",
+        dbField: "interior_image_url",
+        table: "vehicles",
+      },
+      {
+        key: "bpkb",
+        bucket: "vehicles",
+        filename: "bpkb",
+        dbField: "bpkb_url",
+        table: "vehicles",
+      },
+    ];
 
-        const { data: ktpData, error: ktpError } = await supabase.storage
-          .from("driver_documents")
-          .upload(ktpFileName, ktpBlob);
+    for (const imageType of imageTypes) {
+      const imageData = requestData[imageType.key];
+      if (imageData && imageData.startsWith("data:")) {
+        try {
+          // Extract the base64 data
+          const base64Data = imageData.split(",")[1];
+          const blob = await fetch(imageData).then((res) => res.blob());
+          const fileName = `${imageType.filename}_${userId}_${new Date().getTime()}.jpg`;
 
-        if (ktpError) {
-          console.error("Error uploading KTP image:", ktpError);
-        } else if (ktpData) {
-          const { data: ktpUrlData } = supabase.storage
-            .from("driver_documents")
-            .getPublicUrl(ktpFileName);
+          // Upload to storage
+          const { data, error } = await supabase.storage
+            .from(imageType.bucket)
+            .upload(fileName, blob);
 
-          uploadResults.ktpUrl = ktpUrlData.publicUrl;
+          if (error) {
+            console.error(`Error uploading ${imageType.key}:`, error);
+          } else if (data) {
+            // Get public URL
+            const { data: urlData } = supabase.storage
+              .from(imageType.bucket)
+              .getPublicUrl(fileName);
 
-          // Update the drivers table with the KTP URL
-          const { error: updateError } = await supabase
-            .from("drivers")
-            .update({ ktp_url: ktpUrlData.publicUrl })
-            .eq("id", userId);
+            const publicUrl = urlData.publicUrl;
+            uploadResults[imageType.key.replace("Image", "")] = publicUrl;
 
-          if (updateError) {
-            console.error("Error updating driver KTP URL:", updateError);
+            // Update database if table and field are specified
+            if (imageType.table && imageType.dbField) {
+              const updateData: Record<string, string> = {};
+              updateData[imageType.dbField] = publicUrl;
+
+              const { error: updateError } = await supabase
+                .from(imageType.table)
+                .update(updateData)
+                .eq("id", userId);
+
+              if (updateError) {
+                console.error(
+                  `Error updating ${imageType.table} ${imageType.dbField}:`,
+                  updateError,
+                );
+              }
+            }
           }
+        } catch (error) {
+          console.error(`Error in ${imageType.key} upload process:`, error);
         }
-      } catch (error) {
-        console.error("Error in KTP upload process:", error);
-      }
-    }
-
-    // Upload SIM image if provided
-    if (simImage) {
-      try {
-        const simBlob = await fetch(simImage).then((res) => res.blob());
-        const simFileName = `sim_${userId}_${new Date().getTime()}.jpg`;
-
-        const { data: simData, error: simError } = await supabase.storage
-          .from("driver_documents")
-          .upload(simFileName, simBlob);
-
-        if (simError) {
-          console.error("Error uploading SIM image:", simError);
-        } else if (simData) {
-          const { data: simUrlData } = supabase.storage
-            .from("driver_documents")
-            .getPublicUrl(simFileName);
-
-          uploadResults.simUrl = simUrlData.publicUrl;
-
-          // Update the drivers table with the SIM URL
-          const { error: updateError } = await supabase
-            .from("drivers")
-            .update({ sim_url: simUrlData.publicUrl })
-            .eq("id", userId);
-
-          if (updateError) {
-            console.error("Error updating driver SIM URL:", updateError);
-          }
-        }
-      } catch (error) {
-        console.error("Error in SIM upload process:", error);
-      }
-    }
-
-    // Upload ID Card image if provided
-    if (idCardImage) {
-      try {
-        const idCardBlob = await fetch(idCardImage).then((res) => res.blob());
-        const idCardFileName = `idcard_${userId}_${new Date().getTime()}.jpg`;
-
-        const { data: idCardData, error: idCardError } = await supabase.storage
-          .from("staff_documents")
-          .upload(idCardFileName, idCardBlob);
-
-        if (idCardError) {
-          console.error("Error uploading ID Card image:", idCardError);
-        } else if (idCardData) {
-          const { data: idCardUrlData } = supabase.storage
-            .from("staff_documents")
-            .getPublicUrl(idCardFileName);
-
-          uploadResults.idCardUrl = idCardUrlData.publicUrl;
-
-          // Update the staff table with the ID Card URL
-          const { error: updateError } = await supabase
-            .from("staff")
-            .update({ id_card_url: idCardUrlData.publicUrl })
-            .eq("id", userId);
-
-          if (updateError) {
-            console.error("Error updating staff ID Card URL:", updateError);
-          }
-        }
-      } catch (error) {
-        console.error("Error in ID Card upload process:", error);
       }
     }
 

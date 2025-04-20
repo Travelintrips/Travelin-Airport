@@ -45,28 +45,38 @@ export async function assignUserRole(userId: string, roleId: number) {
 
 /**
  * Upload document images for a user
- * @param userId The user ID
- * @param ktpImage KTP image data URL (optional)
- * @param simImage SIM image data URL (optional)
- * @param idCardImage ID Card image data URL (optional)
- * @param kkImage KK (Family Card) image data URL (optional)
- * @param stnkImage STNK (Vehicle Registration) image data URL (optional)
+ * @param userId The user ID or document images object with userId
+ * @param documentImages Object containing document images as data URLs
  * @returns The response from the function with URLs to the uploaded images
  */
 export async function uploadDocumentImages(
-  userId: string,
+  documentImagesOrUserId: string | Record<string, string>,
   ktpImage?: string,
   simImage?: string,
   idCardImage?: string,
   kkImage?: string,
   stnkImage?: string,
+  skckImage?: string,
 ) {
-  return invokeEdgeFunction("supabase-functions-uploadDocuments", {
-    userId,
-    ktpImage,
-    simImage,
-    idCardImage,
-    kkImage,
-    stnkImage,
-  });
+  // Handle both function signatures for backward compatibility
+  if (typeof documentImagesOrUserId === "string") {
+    // Old signature with individual parameters
+    return invokeEdgeFunction("supabase-functions-uploadDocuments", {
+      userId: documentImagesOrUserId,
+      ktpImage,
+      simImage,
+      idCardImage,
+      kkImage,
+      stnkImage,
+      skckImage,
+    });
+  } else {
+    // New signature with object containing all images
+    const images = documentImagesOrUserId;
+    if (!images.userId) {
+      throw new Error("userId is required in the document images object");
+    }
+
+    return invokeEdgeFunction("supabase-functions-uploadDocuments", images);
+  }
 }

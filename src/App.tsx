@@ -108,6 +108,8 @@ function App() {
               />
 
               <Route path="/" element={<Home />} />
+              <Route index element={<Home />} />
+              <Route path="/booking" element={<BookingPage />} />
               <Route
                 path="/admin"
                 element={

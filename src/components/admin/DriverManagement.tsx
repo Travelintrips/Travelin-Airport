@@ -95,6 +95,7 @@ const DriverManagement = () => {
     kk_url: "",
     stnk_expiry: "",
     reference_phone: "",
+    password: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadLoading, setUploadLoading] = useState({
@@ -182,9 +183,43 @@ const DriverManagement = () => {
 
   const handleAddDriver = async () => {
     try {
+      // Create a copy of formData for database insertion
+      const { password, ...driverData } = formData;
+
+      // If password is provided, handle user creation in auth
+      if (password && formData.email) {
+        try {
+          // First create the auth user
+          const { data: authData, error: authError } =
+            await supabase.auth.admin.createUser({
+              email: formData.email,
+              password: password,
+              email_confirm: true,
+              user_metadata: {
+                role: "driver",
+                full_name: formData.name,
+              },
+            });
+
+          if (authError) {
+            console.error("Error creating auth user:", authError);
+            throw authError;
+          }
+
+          // If auth user created successfully, add the user ID to driver data
+          if (authData && authData.user) {
+            driverData.id = authData.user.id;
+          }
+        } catch (authError) {
+          console.error("Error creating auth user:", authError);
+          // Continue with driver creation even if auth fails
+        }
+      }
+
+      // Insert driver data into drivers table
       const { data, error } = await supabase
         .from("drivers")
-        .insert([formData])
+        .insert([driverData])
         .select();
 
       if (error) throw error;
@@ -207,9 +242,11 @@ const DriverManagement = () => {
         kk_url: "",
         stnk_expiry: "",
         reference_phone: "",
+        password: "",
       });
     } catch (error) {
       console.error("Error adding driver:", error);
+      alert("Failed to add driver: " + (error.message || "Unknown error"));
     }
   };
 
@@ -220,9 +257,29 @@ const DriverManagement = () => {
       setIsSubmitting(true);
       console.log("Updating driver with data:", formData);
 
+      // Handle password update if provided
+      if (formData.password && formData.email) {
+        try {
+          const { error: passwordError } =
+            await supabase.auth.admin.updateUserById(selectedDriver.id, {
+              password: formData.password,
+            });
+
+          if (passwordError) {
+            console.error("Error updating password:", passwordError);
+          }
+        } catch (passwordUpdateError) {
+          console.error("Failed to update password:", passwordUpdateError);
+          // Continue with other updates even if password update fails
+        }
+      }
+
+      // Remove password from data to be updated in drivers table
+      const { password, ...driverUpdateData } = formData;
+
       // Create a clean object with only the fields that have values
       const cleanedFormData = Object.fromEntries(
-        Object.entries(formData).filter(([_, value]) => value !== ""),
+        Object.entries(driverUpdateData).filter(([_, value]) => value !== ""),
       );
 
       console.log("Cleaned form data:", cleanedFormData);
@@ -305,6 +362,7 @@ const DriverManagement = () => {
         kk_url: "",
         stnk_expiry: "",
         reference_phone: "",
+        password: "",
       });
 
       // Refresh the drivers list to ensure we have the latest data
@@ -356,6 +414,7 @@ const DriverManagement = () => {
       kk_url: driver.kk_url || "",
       stnk_expiry: driver.stnk_expiry || "",
       reference_phone: driver.reference_phone || "",
+      password: "",
     });
     setIsSubmitting(false);
     setIsEditDialogOpen(true);
@@ -653,6 +712,20 @@ const DriverManagement = () => {
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="password" className="text-right">
+                Password
+              </Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                className="col-span-3"
+                placeholder="Enter password for driver"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="phone" className="text-right">
                 Phone
               </Label>
@@ -781,6 +854,20 @@ const DriverManagement = () => {
                 value={formData.email}
                 onChange={handleInputChange}
                 className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-password" className="text-right">
+                Password
+              </Label>
+              <Input
+                id="edit-password"
+                name="password"
+                type="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                className="col-span-3"
+                placeholder="Leave blank to keep current password"
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">

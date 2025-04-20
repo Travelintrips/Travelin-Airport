@@ -227,17 +227,11 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
 
     try {
       setIsLoadingDamages(true);
-      // Ensure bookingId is a valid number before querying
-      const bookingIdNum = Number(bookingId);
-      if (isNaN(bookingIdNum)) {
-        console.error("Invalid booking ID for damage details:", bookingId);
-        return;
-      }
-
+      // Handle both numeric and UUID booking IDs
       const { data, error } = await supabase
         .from("damages")
         .select("*")
-        .eq("booking_id", bookingIdNum)
+        .eq("booking_id", bookingId.toString())
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -506,36 +500,32 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                         />
                       </FormControl>
                       <FormDescription>
-                        <div>
-                          {!isDamagePaymentMode ? (
-                            <div className="space-y-1">
-                              <div>
-                                Booking amount: Rp{" "}
-                                {totalAmount.toLocaleString()}
-                              </div>
-                              {damageAmount > 0 && (
-                                <div>
-                                  Damage fees: Rp{" "}
-                                  {damageAmount.toLocaleString()}
-                                </div>
-                              )}
-                              <div className="font-semibold">
-                                Total amount: Rp{" "}
-                                {(totalAmount + damageAmount).toLocaleString()}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <div className="font-semibold">
-                                Selected damage fees: Rp{" "}
-                                {calculateSelectedDamagesTotal().toLocaleString()}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {selectedDamages.length} item(s) selected
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        {!isDamagePaymentMode ? (
+                          <span className="block space-y-1">
+                            <span className="block">
+                              Booking amount: Rp {totalAmount.toLocaleString()}
+                            </span>
+                            {damageAmount > 0 && (
+                              <span className="block">
+                                Damage fees: Rp {damageAmount.toLocaleString()}
+                              </span>
+                            )}
+                            <span className="block font-semibold">
+                              Total amount: Rp{" "}
+                              {(totalAmount + damageAmount).toLocaleString()}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="block space-y-1">
+                            <span className="block font-semibold">
+                              Selected damage fees: Rp{" "}
+                              {calculateSelectedDamagesTotal().toLocaleString()}
+                            </span>
+                            <span className="block text-sm text-muted-foreground">
+                              {selectedDamages.length} item(s) selected
+                            </span>
+                          </span>
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
