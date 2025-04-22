@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ import StaffLink from "@/components/StaffLink";
 
 const TravelPage: React.FC = () => {
   const navigate = useNavigate();
+  const { t, i18n } = useTranslation();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
@@ -277,10 +279,55 @@ const TravelPage: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-4 w-full md:w-auto">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-white hover:bg-green-800 flex items-center space-x-1"
+                >
+                  <Globe className="h-4 w-4 mr-1" />
+                  <span>
+                    {i18n.language === "id"
+                      ? "🇮🇩"
+                      : i18n.language === "zh"
+                        ? "🇨🇳"
+                        : "🇺🇸"}
+                  </span>
+                  <span>{i18n.language.toUpperCase()}</span>
+                  <ChevronDown className="h-4 w-4 ml-1" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48">
+                <div className="grid gap-2">
+                  <Button
+                    variant={i18n.language === "en" ? "default" : "ghost"}
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => i18n.changeLanguage("en")}
+                  >
+                    🇺🇸 English
+                  </Button>
+                  <Button
+                    variant={i18n.language === "id" ? "default" : "ghost"}
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => i18n.changeLanguage("id")}
+                  >
+                    🇮🇩 Indonesia
+                  </Button>
+                  <Button
+                    variant={i18n.language === "zh" ? "default" : "ghost"}
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => i18n.changeLanguage("zh")}
+                  >
+                    🇨🇳 Chinese
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <div className="flex items-center space-x-1">
-              <span>🇮🇩</span>
-              <span>EN</span>
-              <span>|</span>
               <span>IDR</span>
               <ChevronDown className="h-4 w-4" />
             </div>
@@ -951,7 +998,7 @@ const TravelPage: React.FC = () => {
           <Card className="w-full max-w-md">
             <div className="flex justify-between items-center p-4 border-b">
               <h2 className="text-xl font-bold">
-                {authFormType === "login" ? "Log In" : "Register"}
+                {authFormType === "login" ? t("Log In") : t("Register")}
               </h2>
               <Button
                 variant="ghost"
