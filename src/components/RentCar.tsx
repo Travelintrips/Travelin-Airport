@@ -323,30 +323,6 @@ const RentCar = () => {
                     {t("language.id")}
                   </Button>
                   <Button
-                    variant={i18n.language === "fr" ? "default" : "ghost"}
-                    size="sm"
-                    className="justify-start"
-                    onClick={() => i18n.changeLanguage("fr")}
-                  >
-                    {t("language.fr")}
-                  </Button>
-                  <Button
-                    variant={i18n.language === "nl" ? "default" : "ghost"}
-                    size="sm"
-                    className="justify-start"
-                    onClick={() => i18n.changeLanguage("nl")}
-                  >
-                    {t("language.nl")}
-                  </Button>
-                  <Button
-                    variant={i18n.language === "ru" ? "default" : "ghost"}
-                    size="sm"
-                    className="justify-start"
-                    onClick={() => i18n.changeLanguage("ru")}
-                  >
-                    {t("language.ru")}
-                  </Button>
-                  <Button
                     variant={i18n.language === "zh" ? "default" : "ghost"}
                     size="sm"
                     className="justify-start"
