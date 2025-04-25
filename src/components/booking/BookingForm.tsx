@@ -230,6 +230,23 @@ const BookingForm: React.FC<BookingFormProps> = ({
         throw new Error("Invalid user ID format");
       }
 
+      // Check if user already has an active booking
+      const { data: existingBookings, error: existingBookingsError } =
+        await supabase
+          .from("bookings")
+          .select("*")
+          .eq("user_id", userId)
+          .in("status", ["pending", "confirmed", "active"])
+          .limit(1);
+
+      if (existingBookingsError) throw existingBookingsError;
+
+      if (existingBookings && existingBookings.length > 0) {
+        throw new Error(
+          "Pemesanan hanya dapat dilakukan 1 kali dalam satu akun. Anda sudah memiliki pemesanan aktif.",
+        );
+      }
+
       // Create booking in Supabase
       const bookingData = {
         user_id: userId,
