@@ -1,11 +1,3 @@
-<<<<<<< HEAD
-=======
-import StaffForm from "../components/auth/forms/StaffForm";
-import { RegisterFormValues } from "../components/auth/forms/RegistrationForm";
-import { useForm, FormProvider } from "react-hook-form";
-
-import { useLocation } from "react-router-dom"; // pastikan import ini ada
->>>>>>> f1e6284 (TravelPage.ts)
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -900,86 +892,44 @@ const TravelPage = () => {
 
       {/* Auth Form */}
       {showAuthForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full relative">
-            <Button
-              className="absolute top-2 right-2 z-50"
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                console.log("❌ Close clicked");
-                setShowAuthForm(false);
-              }}
-            >
-              <span className="text-xl">✕</span>
-            </Button>
-
-            <h2 className="text-xl font-bold mb-4">
-              {authFormType === "login" ? "Login" : "Register"}
-            </h2>
-            <AuthForm
-              type={authFormType}
-              initialTab={authFormType}
-              onSuccess={handleAuthStateChange}
-              onClose={() => setShowAuthForm(false)}
-              onCancel={() => {
-                console.log("✅ Auth form canceled");
-                setShowAuthForm(false);
-              }}
-            />
-          </div>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">
+                {authFormType === "login" ? "Log In" : "Register"}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowAuthForm(false)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </Button>
+            </div>
+            <div className="p-4">
+              <AuthForm
+                initialTab={authFormType}
+                onAuthStateChange={handleAuthStateChange}
+                onClose={() => setShowAuthForm(false)}
+              />
+            </div>
+          </Card>
         </div>
       )}
-      {showStaffRegister && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded shadow-md w-full max-w-4xl relative">
-            <Button
-              className="absolute top-2 right-2"
-              size="icon"
-              variant="ghost"
-              onClick={() => setShowStaffRegister(false)}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-            <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
-<<<<<<< HEAD
-            {/* 
-        Disini StaffForm 
-        Pastikan kamu juga import StaffForm 
-      */}
-            <StaffForm
-              control={staffForm.control}
-              watch={staffForm.watch}
-              setValue={staffForm.setValue}
-              existingImages={{
-                idCard: "",
-                ktp: "",
-                sim: "",
-                kk: "",
-                skck: "",
-              }}
-            />
-=======
-
-            {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
-         {/*   <FormProvider {...staffForm}>
-              <StaffForm
-                control={staffForm.control}
-                watch={staffForm.watch}
-                setValue={staffForm.setValue}
-                existingImages={{
-                  idCard: "",
-                  ktp: "",
-                  sim: "",
-                  kk: "",
-                  skck: "",
-                }}
-              />
-            </FormProvider>
->>>>>>> f1e6284 (TravelPage.ts)
-          </div>
-        </div>
-      )}*/}
     </div>
   );
 };
