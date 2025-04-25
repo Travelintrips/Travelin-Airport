@@ -55,25 +55,42 @@ const AuthModal: React.FC<ModalProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (
         modalRef.current &&
-        !modalRef.current.contains(event.target as Node)
+        !modalRef.current.contains(event.target as Node) &&
+        typeof onClose === "function"
       ) {
         onClose();
       }
     };
+
+    // Add event listener for outside clicks
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+
+    // Add event listener for escape key
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && typeof onClose === "function") {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleEscKey);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscKey);
+    };
   }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div ref={modalRef} className="relative w-full max-w-6xl">
         {/* Tombol close pojok kanan atas */}
-        <button
+        <Button
           className="absolute top-4 right-4 z-50 text-gray-500 hover:text-black"
-          onClick={onClose}
+          variant="ghost"
+          size="icon"
+          onClick={() => typeof onClose === "function" && onClose()}
         >
           <X className="w-6 h-6" />
-        </button>
+        </Button>
         <Card className="w-full bg-card shadow-lg flex flex-col md:flex-row overflow-hidden rounded-xl">
           {/* Left side - Header and description */}
           <div className="md:w-1/3 bg-primary/10 flex flex-col justify-center p-6">
@@ -225,6 +242,13 @@ const AuthModal: React.FC<ModalProps> = ({
                       type="submit"
                       className="w-full"
                       disabled={isLoading || isSubmitting}
+                      onClick={() => {
+                        if (loginError) {
+                          // Clear error state when trying again
+                          loginForm.clearErrors();
+                        }
+                        console.log("Login button clicked");
+                      }}
                     >
                       {isLoading || isSubmitting ? "Signing in..." : "Sign In"}
                     </Button>

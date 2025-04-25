@@ -168,7 +168,7 @@ const ModelDetailPage = () => {
             available
           </p>
         </div>
-        <Button variant="outline" onClick={() => navigate("/")}>
+        <Button variant="outline" onClick={() => navigate("/rentcar")}>
           Back to Models
         </Button>
       </div>

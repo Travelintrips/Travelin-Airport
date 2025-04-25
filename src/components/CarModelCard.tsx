@@ -65,7 +65,14 @@ const CarModelCard: React.FC<CarModelCardProps> = ({
         returnPath,
         returnState,
       );
-      navigate("/", { state: { requireAuth: true, returnPath, returnState } });
+      navigate("/", {
+        state: {
+          requireAuth: true,
+          formType: "login",
+          returnPath,
+          returnState,
+        },
+      });
       return;
     }
 

@@ -337,6 +337,7 @@ export default function DamageManagement() {
   };
 
   const getSeverityBadge = (severity: string) => {
+    if (!severity) return <Badge variant="outline">Unknown</Badge>;
     switch (severity.toLowerCase()) {
       case "minor":
         return <Badge className="bg-yellow-500">Minor</Badge>;
@@ -350,6 +351,7 @@ export default function DamageManagement() {
   };
 
   const getStatusBadge = (status: string) => {
+    if (!status) return <Badge variant="outline">Unknown</Badge>;
     switch (status.toLowerCase()) {
       case "reported":
         return <Badge className="bg-blue-500">Reported</Badge>;

@@ -131,8 +131,6 @@ export default function BookingManagement() {
           `
           *,
           user:users(full_name, email),
-          vehicle:vehicles(make, model, license_plate)
-
           driver:drivers(id, full_name)
         `,
         )
@@ -667,7 +665,8 @@ export default function BookingManagement() {
                   {booking.user?.full_name || "Unknown"}
                 </TableCell>
                 <TableCell>
-                  {booking.vehicle?.make || ""} {booking.vehicle?.model || ""}
+                  {/* Vehicle information is not available in the current schema */}
+                  Vehicle ID: {booking.vehicle_id || "N/A"}
                 </TableCell>
                 <TableCell>
                   {booking.driver_option === "With driver" ? (
@@ -797,7 +796,7 @@ export default function BookingManagement() {
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Booking Details1</DialogTitle>
+            <DialogTitle>Booking Details</DialogTitle>
             <DialogDescription>
               Detailed information about the booking
             </DialogDescription>
@@ -821,13 +820,8 @@ export default function BookingManagement() {
                 <div>
                   <h3 className="text-lg font-semibold">Vehicle Information</h3>
                   <p>
-                    <span className="font-medium">Vehicle:</span>{" "}
-                    {currentBooking.vehicle?.make || ""}{" "}
-                    {currentBooking.vehicle?.model || ""}
-                  </p>
-                  <p>
-                    <span className="font-medium">License Plate:</span>{" "}
-                    {currentBooking.vehicle?.license_plate || "N/A"}
+                    <span className="font-medium">Vehicle ID:</span>{" "}
+                    {currentBooking.vehicle_id || "N/A"}
                   </p>
                 </div>
                 <div>

@@ -298,20 +298,40 @@ const BookingForm: React.FC<BookingFormProps> = ({
         }
       }
 
-      // Create booking in Supabase
+      // Check if user is a driver
+      const { data: driverData, error: driverError } = await supabase
+        .from("drivers")
+        .select("id")
+        .eq("id", userId)
+        .single();
+
+      // Create booking object
       const bookingData = {
         user_id: userId,
         vehicle_id: vehicleToUse.id,
-        start_date: toISOString(data.startDate),
-        end_date: toISOString(data.endDate),
         start_date: format(data.startDate, "yyyy-MM-dd"),
         end_date: format(data.endDate, "yyyy-MM-dd"),
         total_amount: calculateTotal(),
         payment_status: data.paymentType === "partial" ? "partial" : "unpaid",
         status: "pending",
         created_at: toISOString(new Date()),
+        pickup_time: data.pickupTime,
+        driver_option: data.driverOption,
       };
 
+      // Only set driver_id if the user is actually a driver and driver option is 'self'
+      if (data.driverOption === "self") {
+        if (!driverData) {
+          throw new Error(
+            "You selected 'Self-drive' but this account is not registered as a driver.",
+          );
+          console.log("Booking data to insert:", bookingData);
+        }
+
+        bookingData.driver_id = userId;
+      }
+
+      // Create booking in Supabase
       const { data: insertedBooking, error: bookingError } = await supabase
         .from("bookings")
         .insert(bookingData)

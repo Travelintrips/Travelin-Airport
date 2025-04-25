@@ -8,6 +8,7 @@ import RegistrationForm, { RegisterFormValues } from "./RegistrationForm";
 import { uploadDocumentImages } from "@/lib/edgeFunctions";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthModal from "./AuthModal";
+import useAuth from "@/hooks/useAuth";
 
 import {
   Card,
@@ -64,35 +65,23 @@ const AuthForm: React.FC<AuthFormProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check if user is already authenticated when component mounts
   useEffect(() => {
-    // Check if user is already authenticated from localStorage
     const authUserStr = localStorage.getItem("auth_user");
     if (authUserStr) {
       try {
         const authUser = JSON.parse(authUserStr);
         console.log("Found auth user in localStorage:", authUser);
         if (authUser && authUser.id) {
-          // User is already authenticated, no need to show auth form
-          console.log("User already authenticated, hiding auth form");
-          // Force close any open auth forms
-          if (onClose) {
-            console.log(
-              "Forcing close of auth form for already authenticated user",
-            );
-            onClose();
-          }
-          // Update auth state
+          console.log("User found in localStorage");
           if (onAuthStateChange) {
             onAuthStateChange(true);
           }
-          return; // Exit early if user is authenticated
         }
       } catch (e) {
         console.error("Error parsing auth_user from localStorage:", e);
       }
     }
-  }, [onClose, onAuthStateChange]);
+  }, [onAuthStateChange]);
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -112,6 +101,13 @@ const AuthForm: React.FC<AuthFormProps> = ({
     try {
       console.log("Login submission started with email:", data.email);
 
+      // Force sign out first to clear any existing session
+      await supabase.auth.signOut();
+      console.log("✅ Forced signOut before login attempt");
+
+      // Small delay to ensure signOut completes
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
@@ -120,14 +116,11 @@ const AuthForm: React.FC<AuthFormProps> = ({
       if (error) {
         console.error("Login error:", error);
         setLoginError(error.message);
-        // Reopen the form if there's an error
         return;
       }
 
-      // Get role from user metadata instead of querying the database
       const userRole = authData.user?.user_metadata?.role || "User";
 
-      // Check if the user is a driver and if they are suspended
       if (userRole === "Driver") {
         const { data: driverData, error: driverError } = await supabase
           .from("drivers")
@@ -138,24 +131,20 @@ const AuthForm: React.FC<AuthFormProps> = ({
         if (driverError) {
           console.error("Error fetching driver status:", driverError);
         } else if (driverData && driverData.status === "suspended") {
-          // If the driver is suspended, prevent login
           setLoginError(
             "Your account has been suspended. Please contact an administrator.",
           );
-          // Sign out the user since they were automatically signed in
           await supabase.auth.signOut();
           return;
         }
       }
 
-      // Store user role in local storage
       localStorage.setItem("userRole", userRole);
       localStorage.setItem("userId", authData.user.id);
       if (authData.user.email) {
         localStorage.setItem("userEmail", authData.user.email);
       }
 
-      // Store auth data in localStorage for shared authentication
       const userData = {
         id: authData.user.id,
         role: userRole,
@@ -168,7 +157,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
       onLogin(data);
 
-      // Update authentication state after successful login
       if (onAuthStateChange) {
         console.log("Updating auth state to true");
         onAuthStateChange(true);
@@ -176,13 +164,11 @@ const AuthForm: React.FC<AuthFormProps> = ({
         console.log("No onAuthStateChange handler provided");
       }
 
-      // Redirect admin and staff users to admin panel
       if (userRole === "Admin" || userRole === "Staff") {
         console.log(`Redirecting ${userRole} user to admin panel`);
         navigate("/admin");
       }
 
-      // Always close the form after successful login
       if (onClose) {
         console.log("Closing auth form after successful login");
         onClose();
@@ -198,50 +184,45 @@ const AuthForm: React.FC<AuthFormProps> = ({
   const handleRegisterSubmit = async (data: RegisterFormValues) => {
     setIsSubmitting(true);
     try {
-      // Register with Supabase using NO metadata to prevent database errors
-      console.log("Registering with email and password only");
+      console.log("✅ Registering with email and password...");
+
       const { data: authData, error: signUpError } = await supabase.auth.signUp(
         {
           email: data.email,
           password: data.password,
           options: {
             emailRedirectTo: `${window.location.origin}`,
+            data: {
+              full_name: data.name || "",
+              phone_number: data.phone || "",
+              role: "Customer",
+            },
           },
         },
       );
 
       if (signUpError) {
-        console.error("Registration error:", signUpError);
+        console.error("❌ Registration error:", signUpError);
         throw signUpError;
       }
 
-      if (onClose) {
-        console.log("Closing auth form after register");
-        onClose();
-      }
-
-      // Add a small delay to allow the database trigger to complete
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // Check if user was created successfully
       if (!authData.user) {
         console.error("User creation failed but no error was returned");
         throw new Error("Failed to create user account");
       }
 
       if (authData.user) {
-        // Upload selfie image
         let selfieUrl = "";
         if (data.selfieImage) {
           try {
-            // Use a unique filename with timestamp to avoid conflicts
             const timestamp = new Date().getTime();
             const selfieFileName = `selfie_${authData.user.id}_${timestamp}.jpg`;
             const selfieFile = await fetch(data.selfieImage).then((res) =>
               res.blob(),
             );
 
-            // Try uploading with minimal options
             const { data: uploadData, error: uploadError } =
               await supabase.storage
                 .from("selfies")
@@ -263,14 +244,12 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
         console.log("Using selfie URL:", selfieUrl);
 
-        // Upload document images
         let documentUrls = {
           ktpUrl: "",
           licenseUrl: "",
           idCardUrl: "",
         };
 
-        // Check if any document images need to be uploaded
         const needsUpload =
           data.ktpImage ||
           data.simImage ||
@@ -282,7 +261,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           try {
             console.log("Uploading documents for user:", authData.user.id);
 
-            // Upload all documents in a single request
             const { data: uploadResult, error: uploadError } =
               await uploadDocumentImages(
                 authData.user.id,
@@ -297,7 +275,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
               console.error("Error uploading documents:", uploadError);
             } else if (uploadResult) {
               console.log("Documents uploaded successfully:", uploadResult);
-              // Merge existing URLs with newly uploaded ones
               documentUrls = {
                 ktpUrl: uploadResult.ktpUrl || documentUrls.ktpUrl,
                 licenseUrl: uploadResult.licenseUrl || documentUrls.licenseUrl,
@@ -314,14 +291,9 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 stnkUrl: documentUrls.stnkUrl,
               });
 
-              // If this is a Driver Mitra, include KK and STNK in the same upload request
-              // This simplifies the process by using a single upload request for all documents
               if (data.role === "Driver Mitra") {
-                // The documents are already included in the main upload request
-                // No need for a separate request for KK and STNK
                 console.log("Driver Mitra documents included in main upload");
 
-                // Ensure the documentUrls object has the correct structure
                 if (documentUrls) {
                   console.log("Document URLs after upload:", {
                     ktpUrl: documentUrls.ktpUrl,
@@ -339,7 +311,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
         console.log("Using document URLs:", documentUrls);
 
-        // Get role ID from the role name (case insensitive match)
         const { data: roleData, error: roleError } = await supabase
           .from("roles")
           .select("id")
@@ -352,7 +323,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
         const roleId = roleData?.id || null;
 
-        // Use the edge function to assign the role
         if (roleId && authData.user) {
           try {
             const { error: assignRoleError } = await supabase.functions.invoke(
@@ -370,9 +340,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
           }
         }
 
-        // Use upsert to handle both insert and update cases
         try {
-          // Only update essential fields to avoid type errors
           const { error: updateError } = await supabase.from("users").upsert(
             {
               id: authData.user.id,
@@ -391,12 +359,9 @@ const AuthForm: React.FC<AuthFormProps> = ({
         } catch (upsertError) {
           console.error("Exception during user upsert:", upsertError);
           // Continue with the registration process even if this fails
-          // The trigger should have created the basic user record
         }
 
-        // Create or update role-specific records
         if (data.role === "Customer") {
-          // Check if customer record already exists
           const { data: existingCustomer, error: checkCustomerError } =
             await supabase
               .from("customers")
@@ -415,7 +380,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           }
 
           if (existingCustomer) {
-            // Customer exists, update the record
             const { error: updateCustomerError } = await supabase
               .from("customers")
               .update({
@@ -433,7 +397,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
               );
             }
           } else {
-            // Customer doesn't exist, insert new record
             const { error: customerError } = await supabase
               .from("customers")
               .insert({
@@ -452,7 +415,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           data.role === "Driver Mitra" ||
           data.role === "Driver Perusahaan"
         ) {
-          // Check if driver record already exists
           const { data: existingDriver, error: checkDriverError } =
             await supabase
               .from("drivers")
@@ -467,7 +429,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
             console.error("Error checking existing driver:", checkDriverError);
           }
 
-          // Prepare driver data with all fields from the form
           const driverData = {
             id: authData.user.id,
             name: data.name,
@@ -478,12 +439,11 @@ const AuthForm: React.FC<AuthFormProps> = ({
             license_expiry: data.licenseExpiry,
             reference_phone: data.referencePhone,
             driver_type: data.role === "Driver Mitra" ? "mitra" : "perusahaan",
-            status: "active", // Default status for new drivers
+            status: "active",
             ktp_url: documentUrls.ktpUrl,
             sim_url: documentUrls.licenseUrl,
             kk_url: documentUrls.kkUrl,
             stnk_url: documentUrls.stnkUrl,
-            // Add new fields
             first_name: data.firstName,
             last_name: data.lastName,
             address: data.address,
@@ -492,7 +452,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
             religion: data.religion,
           };
 
-          // Add vehicle information for Driver Mitra
           if (data.role === "Driver Mitra") {
             Object.assign(driverData, {
               color: data.color,
@@ -520,7 +479,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           });
 
           if (existingDriver) {
-            // Driver exists, update the record
             const { error: updateDriverError } = await supabase
               .from("drivers")
               .update(driverData)
@@ -530,7 +488,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
               console.error("Error updating driver record:", updateDriverError);
             }
           } else {
-            // Driver doesn't exist, insert new record
             const { error: driverError } = await supabase
               .from("drivers")
               .insert(driverData);
@@ -540,7 +497,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
             }
           }
         } else if (data.role === "Staff") {
-          // Check if staff record already exists
           const { data: existingStaff, error: checkStaffError } = await supabase
             .from("staff")
             .select("id")
@@ -554,7 +510,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
             console.error("Error checking existing staff:", checkStaffError);
           }
 
-          // Prepare staff data with all fields from the form
           const staffData = {
             id: authData.user.id,
             name: data.name,
@@ -576,7 +531,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           });
 
           if (existingStaff) {
-            // Staff exists, update the record
             const { error: updateStaffError } = await supabase
               .from("staff")
               .update(staffData)
@@ -586,7 +540,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
               console.error("Error updating staff record:", updateStaffError);
             }
           } else {
-            // Staff doesn't exist, insert new record
             const { error: staffError } = await supabase
               .from("staff")
               .insert(staffData);
@@ -597,14 +550,12 @@ const AuthForm: React.FC<AuthFormProps> = ({
           }
         }
 
-        // Store user role in local storage regardless of insert/update result
         localStorage.setItem("userRole", data.role);
         localStorage.setItem("userId", authData.user.id);
         if (authData.user.email) {
           localStorage.setItem("userEmail", authData.user.email);
         }
 
-        // Store auth data in localStorage for shared authentication
         const userData = {
           id: authData.user.id,
           role: data.role,
@@ -612,14 +563,13 @@ const AuthForm: React.FC<AuthFormProps> = ({
         };
         localStorage.setItem("auth_user", JSON.stringify(userData));
 
-        // Log success message
         console.log(
           `User registered successfully with role: ${data.role} (ID: ${roleId})`,
         );
       }
 
       await onRegister(data);
-      // Update authentication state after successful registration
+
       if (onAuthStateChange) {
         console.log("Updating auth state to true after registration");
         onAuthStateChange(true);
@@ -627,7 +577,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
         console.log("No onAuthStateChange handler provided for registration");
       }
 
-      // Check if the user is a driver and redirect to driver profile
       if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
         console.log(
           "Driver registered successfully, redirecting to driver profile",
@@ -637,19 +586,17 @@ const AuthForm: React.FC<AuthFormProps> = ({
         console.log("User registered successfully");
       }
 
-      // Always close the form after successful registration
       if (onClose) {
         console.log("Closing auth form after successful registration");
         onClose();
       }
     } catch (error) {
       console.error("Registration error:", error);
-      // Show error to user
       setIsSubmitting(false);
       alert(
         `Registration failed: ${error.message || "Unknown error occurred"}`,
       );
-      return; // Exit early to prevent further processing
+      return;
     } finally {
       setIsSubmitting(false);
     }

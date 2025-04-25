@@ -27,7 +27,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { Badge } from "./ui/badge";
-import { useAuth } from "@/hooks/useAuth";
+import useAuth from "../hooks/useAuth";
 import { useVehicleData } from "@/hooks/useVehicleData";
 
 interface Vehicle {

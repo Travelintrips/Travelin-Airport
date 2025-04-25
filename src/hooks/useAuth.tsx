@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
 // Define the hook as a function declaration for Fast Refresh compatibility
-export function useAuth() {
+function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -10,7 +10,7 @@ export function useAuth() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Function to fetch user role from database
-  const fetchUserRole = async (userId: string) => {
+  const fetchUserRole = async (userId: string): Promise<string | null> => {
     try {
       // First check users table for admin, staff, customer roles
       const { data: userData, error: userError } = await supabase
@@ -128,163 +128,145 @@ export function useAuth() {
   // Function to sign out the user
   const signOut = async (redirectToHome = false) => {
     try {
-      await supabase.auth.signOut();
-      // Clear localStorage data
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("driverData");
+      console.log("🔄 Starting signOut process...");
 
-      // Update state
+      // Update state first
+      console.log("🔄 Updating authentication state...");
       setIsAuthenticated(false);
       setUserRole(null);
       setUserId(null);
       setUserEmail(null);
 
-      // If this is called from the vehicle-groups page, redirect to home
-      if (
-        redirectToHome ||
-        window.location.href.includes(
-          "recursing-shannon1-afnjp.view-3.tempo-dev.app/vehicle-groups",
-        )
-      ) {
-        window.location.href =
-          "https://distracted-archimedes8-kleh7.view-3.tempo-dev.app/";
+      // Clear localStorage data
+      console.log("🗑️ Clearing localStorage data...");
+      localStorage.clear(); // Use clear() to remove ALL items
+
+      // Call Supabase signOut last
+      console.log("🔄 Calling supabase.auth.signOut()...");
+      const { error } = await supabase.auth.signOut();
+
+      if (error) {
+        console.error("❌ Supabase signOut error:", error);
+        // Continue even if there's an error with Supabase signOut
+      } else {
+        console.log("✅ Supabase signOut successful");
+      }
+
+      // If redirectToHome is true, redirect to home
+      if (redirectToHome) {
+        console.log("🔄 Redirecting to home page...");
+        // Use a longer timeout to ensure state updates have time to process
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 800);
+      } else {
+        // Force page reload to update UI even if not redirecting
+        console.log("🔄 Reloading page to update UI...");
+        // Use a longer timeout to ensure state updates have time to process
+        setTimeout(() => {
+          window.location.reload();
+        }, 800);
       }
 
       return true;
     } catch (error) {
-      console.error("Error signing out:", error);
+      console.error("❌ Error in signOut function:", error);
+      // Force reload even on error as a fallback
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 100);
       return false;
     }
   };
 
-  useEffect(() => {
-    // Check if user is already authenticated
-    const checkAuth = async () => {
-      try {
-        // First check localStorage for shared authentication
-        const authUserStr = localStorage.getItem("auth_user");
-        if (authUserStr) {
-          try {
-            const authUser = JSON.parse(authUserStr);
-            if (authUser && authUser.id) {
-              setIsAuthenticated(true);
-              setUserId(authUser.id);
-              setUserRole(authUser.role || "Customer");
-              setUserEmail(authUser.email || null);
-              setIsLoading(false);
-              return; // Exit early if we found auth data in localStorage
-            }
-          } catch (e) {
-            console.error("Error parsing auth_user from localStorage:", e);
-            // Continue with Supabase auth check
+  const checkAuth = async () => {
+    try {
+      const authUserStr = localStorage.getItem("auth_user");
+
+      if (authUserStr) {
+        try {
+          const authUser = JSON.parse(authUserStr);
+          if (authUser && authUser.id) {
+            setIsAuthenticated(true);
+            setUserId(authUser.id);
+            setUserRole(authUser.role || "Customer");
+            setUserEmail(authUser.email || null);
+            setIsLoading(false);
+            return;
           }
+        } catch (e) {
+          console.error("Error parsing auth_user from localStorage:", e);
         }
-
-        // If not in localStorage, check Supabase session
-        const { data } = await supabase.auth.getSession();
-        if (data?.session) {
-          setIsAuthenticated(true);
-          setUserId(data.session.user.id);
-          setUserEmail(data.session.user.email || null);
-
-          // Try to get role from localStorage first (for faster UI rendering)
-          const storedRole = localStorage.getItem("userRole");
-          if (storedRole) {
-            setUserRole(storedRole);
-          } else {
-            // If not in localStorage, fetch from database
-            const role = await fetchUserRole(data.session.user.id);
-            if (role) {
-              localStorage.setItem("userRole", role);
-              setUserRole(role);
-            }
-          }
-
-          // Store in auth_user for shared authentication
-          const userData = {
-            id: data.session.user.id,
-            role: storedRole || role || "Customer",
-            email: data.session.user.email || "",
-          };
-          localStorage.setItem("auth_user", JSON.stringify(userData));
-          localStorage.setItem("userId", data.session.user.id);
-          if (data.session.user.email) {
-            localStorage.setItem("userEmail", data.session.user.email);
-          }
-        }
-      } catch (error) {
-        console.error("Error checking auth:", error);
-      } finally {
-        setIsLoading(false);
       }
-    };
 
+      // Jika tidak ada di localStorage, cek session Supabase
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        const session = data.session;
+        setIsAuthenticated(true);
+        setUserId(session.user.id);
+        setUserEmail(session.user.email || null);
+
+        const storedRole = localStorage.getItem("userRole");
+        if (storedRole) {
+          setUserRole(storedRole);
+        } else {
+          const role = await fetchUserRole(session.user.id);
+          if (role) {
+            localStorage.setItem("userRole", role);
+            setUserRole(role);
+          }
+        }
+
+        const userName =
+          session.user.user_metadata?.full_name ||
+          session.user.email?.split("@")[0] ||
+          "User";
+
+        const userData = {
+          id: session.user.id,
+          role: storedRole || userRole || "Customer",
+          email: session.user.email || "",
+          name: userName,
+        };
+        localStorage.setItem("userName", userName);
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+        localStorage.setItem("userId", session.user.id);
+        if (session.user.email) {
+          localStorage.setItem("userEmail", session.user.email);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking auth:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Jalankan sekali saat mount
+  useEffect(() => {
     checkAuth();
 
-    // Listen for auth changes
-    let authListener: { subscription: { unsubscribe: () => void } | null } = {
-      subscription: null,
-    };
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log("Auth state changed:", event);
 
-    try {
-      const { data } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log("Auth state changed:", event);
+        if (event === "SIGNED_IN" && session) {
+          await checkAuth(); // 🔁 sinkronisasi ulang setelah login
+        }
 
-          if (event === "SIGNED_IN" && session) {
-            setIsAuthenticated(true);
-            setUserId(session.user.id);
-            setUserEmail(session.user.email || null);
-
-            // Try to get role from localStorage first
-            const storedRole = localStorage.getItem("userRole");
-            if (storedRole) {
-              setUserRole(storedRole);
-            } else {
-              // If not in localStorage, fetch from database
-              const role = await fetchUserRole(session.user.id);
-              if (role) {
-                localStorage.setItem("userRole", role);
-                setUserRole(role);
-              }
-            }
-
-            // Store in auth_user for shared authentication
-            const userData = {
-              id: session.user.id,
-              role: storedRole || userRole || "Customer",
-              email: session.user.email || "",
-            };
-            localStorage.setItem("auth_user", JSON.stringify(userData));
-            localStorage.setItem("userId", session.user.id);
-            if (session.user.email) {
-              localStorage.setItem("userEmail", session.user.email);
-            }
-          } else if (event === "SIGNED_OUT") {
-            setIsAuthenticated(false);
-            setUserRole(null);
-            setUserId(null);
-            setUserEmail(null);
-            localStorage.removeItem("auth_user");
-            localStorage.removeItem("userId");
-            localStorage.removeItem("userRole");
-            localStorage.removeItem("userEmail");
-          }
-        },
-      );
-
-      authListener = data || { subscription: null };
-    } catch (error) {
-      console.error("Error setting up auth listener:", error);
-    }
+        if (event === "SIGNED_OUT") {
+          localStorage.clear();
+          setIsAuthenticated(false);
+          setUserRole(null);
+          setUserId(null);
+          setUserEmail(null);
+        }
+      },
+    );
 
     return () => {
-      if (authListener?.subscription) {
-        authListener.subscription.unsubscribe();
-      }
+      listener?.subscription?.unsubscribe?.();
     };
   }, []);
 
@@ -301,8 +283,9 @@ export function useAuth() {
     isLoading,
     signOut,
     isAdmin,
+    checkAuth,
   };
 }
 
-// Also export as default for backward compatibility
+// Export the hook as the default export only
 export default useAuth;

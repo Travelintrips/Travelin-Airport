@@ -33,7 +33,7 @@ import AirportTransferPage from "./pages/AirportTransferPage";
 import DriverMitraPage from "./pages/DriverMitraPage";
 import DriverPerusahaanPage from "./pages/DriverPerusahaanPage";
 import DriverProfile from "./components/DriverProfile";
-import { useAuth } from "./hooks/useAuth";
+import useAuth from "./hooks/useAuth";
 
 declare global {
   interface Window {
@@ -64,8 +64,7 @@ function App() {
         window.location.href =
           "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
-        window.location.href =
-          "https://recursing-shannon1-afnjp.view-3.tempo-dev.app";
+        navigate("/driver-profile"); // ✅ gunakan SPA navigation
       }
     }
   }, [isAuthenticated, isLoading, userRole]);
@@ -235,6 +234,7 @@ function App() {
               element={<DamagePaymentForm />}
             />
 
+            <Route index element={<TravelPage />} />
             <Route path="/" element={<TravelPage />} />
             <Route path="/home" element={<RentCar />} />
             <Route path="/sub-account" element={<TravelPage />} />

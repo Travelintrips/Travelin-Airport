@@ -31,6 +31,7 @@ const RoleAssignment: React.FC<RoleAssignmentProps> = ({
   };
 
   const handleAssignRole = async () => {
+    console.log("Assigning role to user:", userId, "Role ID:", selectedRoleId);
     if (!selectedRoleId) {
       toast({
         title: "Error",
