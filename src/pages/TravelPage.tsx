@@ -772,10 +772,6 @@ const TravelPage: React.FC = () => {
               <X className="w-4 h-4" />
             </Button>
             <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
-            {/* 
-        Disini StaffForm 
-        Pastikan kamu juga import StaffForm 
-      */}
             <StaffForm
               control={staffForm.control}
               watch={staffForm.watch}
