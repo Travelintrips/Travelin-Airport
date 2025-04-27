@@ -278,6 +278,7 @@ function useAuth() {
   return {
     isAuthenticated,
     userRole,
+    setUserRole,
     userId,
     userEmail,
     isLoading,

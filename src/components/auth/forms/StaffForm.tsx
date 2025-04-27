@@ -43,6 +43,46 @@ const StaffForm: React.FC<StaffFormProps> = ({
     <div className="space-y-4 border p-4 rounded-md bg-muted/30">
       <h3 className="font-medium">Staff Information</h3>
 
+      <FormField
+        control={control}
+        name="roleId"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Pilih Role</FormLabel>
+            <Select
+              onValueChange={(val) => {
+                field.onChange(parseInt(val));
+                const roleName = {
+                  4: "Staff",
+                  5: "Staff Traffic",
+                  6: "Staff Admin",
+                  7: "Staff Trips",
+                  8: "Dispatcher",
+                  9: "Pengawas",
+                }[parseInt(val)];
+                setValue("role", roleName || "Staff"); // ✅ Set sekaligus role name
+              }}
+              value={String(field.value || "")}
+            >
+              <FormControl>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih role staff" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                <SelectItem value="4">Staff</SelectItem>
+                <SelectItem value="5">Staff Traffic</SelectItem>
+                <SelectItem value="6">Staff Admin</SelectItem>
+                <SelectItem value="7">Staff Trips</SelectItem>
+                <SelectItem value="8">Dispatcher</SelectItem>
+                <SelectItem value="9">Pengawas</SelectItem>
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <FormField
           control={control}

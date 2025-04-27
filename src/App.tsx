@@ -60,11 +60,14 @@ function App() {
 
   React.useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      if (userRole === ROLES.STAFF_TRIPS || userRole === ROLES.STAFF) {
+      if (userRole === ROLES.STAFF_TRIPS) {
+        window.location.href =
+          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
+      } else if (userRole === ROLES.STAFF) {
         window.location.href =
           "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
-        navigate("/driver-profile"); // ✅ gunakan SPA navigation
+        navigate("/driver-profile"); // ✅ SPA navigation
       }
     }
   }, [isAuthenticated, isLoading, userRole]);
@@ -292,7 +295,7 @@ function App() {
               <Route path="drivers" element={<DriverManagement />} />
               <Route path="cars" element={<CarsManagement />} />
               <Route path="payments" element={<Payments />} />
-              <Route path="bookings" element={<BookingManagement />} />
+              <Route path="bookings" element={<BookingManagementConnected />} />
               <Route path="staff" element={<StaffPage />} />
               <Route path="inspections" element={<InspectionManagement />} />
               <Route path="checklist" element={<ChecklistManagement />} />

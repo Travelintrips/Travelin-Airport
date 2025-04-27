@@ -66,44 +66,25 @@ export default function StaffManagement() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      // First get the role_id for 'Staff' role
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("role_id")
-        .eq("role_name", "Staff")
-        .single();
 
-      if (roleError) {
-        console.error("Error fetching Staff role:", roleError);
-        // Fallback: fetch all users if we can't get the Staff role
-        const { data, error } = await supabase.from("users").select(
-          `
-            id,
-            email,
-            full_name,
-            role_id
-          `,
-        );
-
-        if (error) throw error;
-        setUsers(data || []);
-        return;
-      }
-
-      // Then fetch users with that role_id
       const { data, error } = await supabase
         .from("users")
         .select(
           `
-          id,
-          email,
-          full_name,
-          role_id
-        `,
+        id,
+        email,
+        full_name,
+        role_id,
+        role:roles(role_name)
+      `,
         )
-        .eq("role_id", roleData.role_id);
+        .ilike("role.role_name", "Staff%"); // ✅ tampilkan semua role yang mengandung "Staff"
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching users:", error.message);
+        throw new Error("Failed to fetch staff users");
+      }
+
       setUsers(data || []);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -161,8 +142,8 @@ export default function StaffManagement() {
       const { data: roleData, error: roleError } = await supabase
         .from("roles")
         .select("role_id")
-        .eq("role_name", "Staff")
-        .single();
+        .in("role_name", ["Staff", "Staff Traffic", "Staff Trips"]);
+      // .single();
 
       if (roleError) {
         console.error("Error fetching Staff role:", roleError);
@@ -181,23 +162,34 @@ export default function StaffManagement() {
       }
 
       if (isEditMode) {
-        // Update existing user
-        const { error: updateError } = await supabase
+        // ✅ 1. Update full_name via Supabase client
+        const { error: updateNameError } = await supabase
           .from("users")
-          .update({
-            full_name: fullName,
-            role_id: roleId || roleData.role_id,
-          })
+          .update({ full_name: fullName })
           .eq("id", currentUser.id);
 
-        if (updateError) throw updateError;
+        if (updateNameError) throw updateNameError;
+
+        // ✅ 2. Update role_id via Edge Function
+        const { data: edgeData, error: edgeError } =
+          await supabase.functions.invoke(
+            "assign-role", // 🔥 Nama Edge Function kamu
+            {
+              body: {
+                user_id: currentUser.id,
+                role_id: roleId || roleData.role_id,
+              },
+            },
+          );
+
+        if (edgeError) throw edgeError;
 
         toast({
           title: "Staff updated",
           description: "Staff member has been updated successfully",
         });
       } else {
-        // Create new user
+        // ✅ Membuat user baru
         const { data: authData, error: authError } = await supabase.auth.signUp(
           {
             email,
@@ -213,7 +205,7 @@ export default function StaffManagement() {
         if (authError) throw authError;
 
         if (authData.user) {
-          // Create user record in public.users table
+          // ✅ Insert user baru ke tabel users
           const { error: userError } = await supabase.from("users").insert({
             id: authData.user.id,
             email,
@@ -310,7 +302,7 @@ export default function StaffManagement() {
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-right">Actions2</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -318,10 +310,7 @@ export default function StaffManagement() {
               <TableRow key={user.id}>
                 <TableCell className="font-medium">{user.full_name}</TableCell>
                 <TableCell>{user.email}</TableCell>
-                <TableCell>
-                  {roles.find((role) => role.role_id === user.role_id)
-                    ?.role_name || "No Role"}
-                </TableCell>
+                <TableCell>{user.role?.role_name || "No Role"}</TableCell>
                 <TableCell className="text-right">
                   <Button
                     variant="ghost"

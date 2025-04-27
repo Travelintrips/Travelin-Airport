@@ -96,13 +96,13 @@ const AdminLogin = () => {
       localStorage.setItem("userId", authData.user.id);
 
       // Update auth_user in localStorage for shared authentication
-      const userData = {
+      const userDataForStorage = {
         id: authData.user.id,
         role: userRole,
         email: authData.user.email || "",
         name: authData.user.email?.split("@")[0] || "User",
       };
-      localStorage.setItem("auth_user", JSON.stringify(userData));
+      localStorage.setItem("auth_user", JSON.stringify(userDataForStorage));
 
       // Set session data to ensure role persists
       await supabase.auth.updateUser({

@@ -31,7 +31,6 @@ import {
   ChevronDown,
   User,
   X,
-  Calendar as CalendarIcon,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
 import StaffLink from "@/components/StaffLink";
@@ -39,7 +38,8 @@ import useAuth from "@/hooks/useAuth";
 
 const TravelPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, userRole, signOut } = useAuth();
+  const { isAuthenticated, userRole, signOut, setUserRole } = useAuth();
+
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -77,30 +77,74 @@ const TravelPage: React.FC = () => {
     }
   }, [isAuthenticated, userRole]); // Added userRole to dependencies
 
-  const handleAuthStateChange = (state: boolean) => {
-    if (state) {
-      // Refresh user data from localStorage after login
-      const authUserStr = localStorage.getItem("auth_user");
-      try {
-        const authUser = authUserStr ? JSON.parse(authUserStr) : null;
-        const name =
-          (authUser?.name && authUser.name.trim()) ||
-          localStorage.getItem("userName") ||
-          authUser?.email?.split("@")[0] ||
-          "User";
-        setUserName(name);
-        // No need to set userRole here as it comes from useAuth hook
-      } catch (e) {
-        console.warn("⚠️ Error parsing auth_user after login:", e);
-      }
-      // Always close the auth form when authentication state changes to true
-      setShowAuthForm(false);
-      console.log("✅ Auth form closed after successful login");
-    } else {
-      // Reset state
-      setUserName("");
-    }
-  };
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" && session) {
+          const userId = session.user.id;
+          const userEmail = session.user.email;
+
+          // 🔥 Fetch ke staff
+          const { data: staffData, error } = await supabase
+            .from("staff")
+            .select("role, position")
+            .eq("user_id", userId)
+            .single();
+
+          let roleFromDB = "Customer"; // Default role
+
+          if (staffData) {
+            roleFromDB = staffData.role || staffData.position || "Customer";
+          }
+
+          // Simpan ke localStorage
+          localStorage.setItem("userRole", roleFromDB);
+
+          // Set ke state supaya real-time tampil
+          setUserRole(roleFromDB);
+
+          // 🔥 Update userName
+          const userNameFromAuth =
+            (session.user.user_metadata?.full_name &&
+              session.user.user_metadata.full_name.trim()) ||
+            session.user.user_metadata?.name ||
+            userEmail?.split("@")[0] ||
+            "User";
+
+          setUserName(userNameFromAuth);
+
+          // Debug
+          console.log("🟢 SIGNED_IN triggered");
+          console.log("✅ userName:", userNameFromAuth);
+          console.log("✅ userRole:", roleFromDB);
+
+          const token = session.access_token;
+          const refresh = session.refresh_token;
+
+          // ✅ Redirect kalau perlu
+          if (roleFromDB === "Staff" || roleFromDB === "Staff Trips") {
+            console.log("⏳ Redirecting after 300ms...");
+            setTimeout(() => {
+              window.location.href = `https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh}`;
+            }, 300);
+          }
+        }
+
+        if (event === "SIGNED_OUT") {
+          console.log("🔴 SIGNED_OUT detected");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("auth_user");
+          localStorage.removeItem("userName");
+          setUserName("");
+          setUserRole(""); // clear role
+        }
+      },
+    );
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
 
   const handleSearch = () => {
     if (!isAuthenticated) {
@@ -310,8 +354,24 @@ const TravelPage: React.FC = () => {
                         className="justify-start"
                         onClick={() => navigate("/bookings")}
                       >
-                        My Bookings
+                        My Bookings1
                       </Button>
+
+                      {/* ✅ Tambah ini */}
+                      {userRole === "Staff Trips" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="justify-start"
+                          onClick={() =>
+                            (window.location.href =
+                              "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account")
+                          }
+                        >
+                          Airport Service
+                        </Button>
+                      )}
+
                       {isAdmin && (
                         <Button
                           variant="ghost"
@@ -326,7 +386,7 @@ const TravelPage: React.FC = () => {
                         variant="ghost"
                         size="sm"
                         className="justify-start text-red-500"
-                        onClick={signOut}
+                        onClick={() => signOut()}
                       >
                         Sign Out
                       </Button>
@@ -747,9 +807,8 @@ const TravelPage: React.FC = () => {
               {authFormType === "login" ? "Login" : "Register"}
             </h2>
             <AuthForm
-              type={authFormType}
               initialTab={authFormType}
-              onSuccess={handleAuthStateChange}
+              onSuccess={() => setShowAuthForm(false)}
               onClose={() => setShowAuthForm(false)}
               onCancel={() => {
                 console.log("✅ Auth form canceled");
@@ -773,7 +832,7 @@ const TravelPage: React.FC = () => {
             <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
 
             {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
-         {/*   <FormProvider {...staffForm}>
+            {/*   <FormProvider {...staffForm}>
               <StaffForm
                 control={staffForm.control}
                 watch={staffForm.watch}
@@ -786,10 +845,10 @@ const TravelPage: React.FC = () => {
                   skck: "",
                 }}
               />
-            </FormProvider>
+            </FormProvider>*/}
           </div>
         </div>
-      )}*/}
+      )}
     </div>
   );
 };

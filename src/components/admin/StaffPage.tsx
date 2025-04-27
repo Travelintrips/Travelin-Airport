@@ -85,6 +85,44 @@ const StaffPage = () => {
 
       console.log(`Auth user created with ID: ${authData.user.id}`);
 
+      if (authData.user) {
+        // Cek apakah user sudah ada di tabel users
+        const { data: existingUser, error: checkError } = await supabase
+          .from("users")
+          .select("id")
+          .eq("id", authData.user.id)
+          .maybeSingle(); // pakai maybeSingle supaya tidak error kalau tidak ketemu
+
+        if (checkError) {
+          console.error("Error checking existing user:", checkError);
+          throw new Error("Gagal mengecek data user di tabel users");
+        }
+
+        const { error: staffInsertError } = await supabase
+          .from("staff")
+          .insert({
+            id: authData.user.id,
+            email: data.email,
+            name: data.name,
+            full_name: data.name,
+            phone: data.phone,
+            role_id: roleData.role_id,
+            department: data.department || "",
+            position: data.position || "",
+            employee_id: data.employeeId || "",
+            selfie_url: data.selfieImage || null,
+            ktp_url: data.ktpImage || null,
+            kk_url: data.kkImage || null,
+            skck_url: data.skckImage || null,
+            relative_phone: data.referencePhone || "",
+          });
+
+        if (staffInsertError) {
+          console.error("Error inserting staff record:", staffInsertError);
+          throw new Error("Gagal menyimpan data staff");
+        }
+      }
+
       // Check if user already exists in users table
       console.log("Checking if user exists in users table");
       const { data: existingUserRecord, error: existingUserRecordError } =
@@ -138,14 +176,21 @@ const StaffPage = () => {
         id_card_url: data.idCardImage || null,
         first_name: data.firstName || "",
         last_name: data.lastName || "",
+        full_name: `${data.firstName || ""} ${data.lastName || ""}`,
         address: data.address || "",
         ktp_number: data.ktpNumber || "",
         religion: data.religion || "",
         ethnicity: data.ethnicity || "",
         role: data.role || "",
+        role_id: roleData.role_id, // ✅ Tambahkan ini
         name: data.name || "",
         email: data.email || "",
         phone: data.phone || "",
+        selfie_url: data.selfieImage || null,
+        kk_url: data.kkImage || null,
+        ktp_url: data.ktpImage || null,
+        skck_url: data.skckImage || null,
+        relative_phone: data.referencePhone || "",
       };
 
       console.log("Creating staff record with data:", staffData);

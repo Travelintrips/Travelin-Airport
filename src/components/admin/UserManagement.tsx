@@ -74,44 +74,25 @@ export default function UserManagement(props: UserManagementProps = {}) {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      // First get the role_id for 'Staff' role
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("role_id")
-        .eq("role_name", "Staff")
-        .single();
 
-      if (roleError) {
-        console.error("Error fetching Staff role:", roleError);
-        // Fallback: fetch all users if we can't get the Staff role
-        const { data, error } = await supabase.from("users").select(
-          `
-            id,
-            email,
-            full_name,
-            role_id
-          `,
-        );
-
-        if (error) throw error;
-        setUsers(data || []);
-        return;
-      }
-
-      // Then fetch users with that role_id
       const { data, error } = await supabase
         .from("users")
         .select(
           `
-          id,
-          email,
-          full_name,
-          role_id
-        `,
+        id,
+        email,
+        full_name,
+        role_id,
+        role:roles(role_name)
+      `,
         )
-        .eq("role_id", roleData.role_id);
+        .in("role_id", [4, 5, 6, 7]); // ✅ BUKAN role.role_name lagi, tapi role_id langsung
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching users:", error.message);
+        throw new Error("Failed to fetch staff users");
+      }
+
       setUsers(data || []);
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -204,27 +185,43 @@ export default function UserManagement(props: UserManagementProps = {}) {
           })
           .eq("id", currentUser.id);
 
-        if (updateError) throw updateError;
-
-        // Update role using edge function
-        if (roleId !== currentUser.role_id) {
-          const { error: roleError } = await supabase.functions.invoke(
-            "assignRole",
-            {
-              body: {
-                userId: currentUser.id,
-                roleId: roleId || roleData.role_id,
-              },
-            },
-          );
-
-          if (roleError) throw roleError;
+        if (updateError) {
+          toast({
+            variant: "destructive",
+            title: "Update failed",
+            description: updateError.message,
+          });
+          return;
         }
 
+        // Update role using Edge Function
+        let roleError = null;
+        if (roleId !== currentUser.role_id) {
+          const { error } = await supabase.functions.invoke("assign-role", {
+            body: {
+              user_id: currentUser.id,
+              role_id: roleId || roleData.role_id,
+            },
+          });
+          roleError = error;
+        }
+
+        if (roleError) {
+          toast({
+            variant: "destructive",
+            title: "Role update failed",
+            description: roleError.message,
+          });
+          return;
+        }
+
+        // ✅ Show success & close modal
         toast({
           title: "Staff updated",
           description: "Staff member has been updated successfully",
         });
+
+        setIsOpen(false);
       } else {
         // Create new user
         const { data: authData, error: authError } = await supabase.auth.signUp(
