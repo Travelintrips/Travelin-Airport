@@ -1,5 +1,5 @@
 import StaffForm from "../components/auth/forms/StaffForm";
-import { RegisterFormValues } from "../components/auth/forms/RegistrationForm";
+import { RegisterFormValues } from "../components/auth/RegistrationForm";
 import { useForm, FormProvider } from "react-hook-form";
 
 import { useLocation } from "react-router-dom"; // pastikan import ini ada
@@ -808,10 +808,8 @@ const TravelPage: React.FC = () => {
             </h2>
             <AuthForm
               initialTab={authFormType}
-              onSuccess={() => setShowAuthForm(false)}
-              onClose={() => setShowAuthForm(false)}
-              onCancel={() => {
-                console.log("✅ Auth form canceled");
+              onClose={() => {
+                console.log("✅ Auth form closed");
                 setShowAuthForm(false);
               }}
             />

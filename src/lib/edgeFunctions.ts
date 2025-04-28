@@ -14,7 +14,7 @@ export async function invokeEdgeFunction<T = any, P = any>(
   error: Error | null;
 }> {
   try {
-    const { data, error } = await supabase.functions.invoke<T>(functionName, {
+    const { data, error } = await supabase.functions.invoke(functionName, {
       body: payload,
     });
 

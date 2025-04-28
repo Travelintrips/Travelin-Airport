@@ -242,7 +242,8 @@ const DamagePaymentForm = () => {
           return;
         }
 
-        setDamageItems(normalizedInspectionData);
+        // If we reach here, we couldn't find any damage data
+        setDamageItems([]);
       } catch (err) {
         console.error("Error fetching damage items:", err);
         toast({
