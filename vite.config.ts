@@ -2,8 +2,8 @@ import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { tempo } from "tempo-devtools/dist/vite";
-import history from "connect-history-api-fallback"; // ➕ untuk SPA routing fallback
 
+// https://vitejs.dev/config/
 export default defineConfig({
   base: "/",
   optimizeDeps: {
@@ -33,14 +33,18 @@ export default defineConfig({
     fs: {
       strict: false,
     },
-    // ⬇ Tambahkan fallback untuk React Router di Vite dev server
     middlewareMode: false,
-    setupMiddlewares: (middlewares) => {
-      middlewares.use(
-        history({
-          rewrites: [{ from: /^\/.*$/, to: "/index.html" }],
-        })
-      );
+    setupMiddlewares: async (middlewares) => {
+      try {
+        const history = await import("connect-history-api-fallback");
+        middlewares.use(
+          history.default({
+            rewrites: [{ from: /^\/.*$/, to: "/index.html" }],
+          })
+        );
+      } catch (err) {
+        console.warn("⚠️ 'connect-history-api-fallback' not found, skipping fallback middleware.");
+      }
       return middlewares;
     },
   },
