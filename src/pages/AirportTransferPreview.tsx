@@ -25,7 +25,6 @@ export default function AirportTransferPreview() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState(null);
 
   useEffect(() => {
     const fetchPreview = async () => {
