@@ -214,7 +214,7 @@ export default function AirportTransferPage() {
       customer_id: null,
     };
 
-    const previewCode = `PREVIEW-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const previewCode = `preview-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
 
     await supabase
       .from("airport_transfer_preview")

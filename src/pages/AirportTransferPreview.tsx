@@ -36,6 +36,9 @@ export default function AirportTransferPreview() {
 
       if (!record || error) {
         console.error("Preview not found", error);
+        console.log("Fetching preview with code:", previewCode);
+        console.log("Supabase result:", record, error);
+
         navigate("/airport-transfer");
         return;
       }
