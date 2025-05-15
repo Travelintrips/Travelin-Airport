@@ -69,6 +69,7 @@ function App() {
 
   React.useEffect(() => {
     if (isAuthenticated && !isLoading) {
+<<<<<<< HEAD
       const currentPath = window.location.pathname;
 
       // Debug output to help diagnose issues
@@ -99,6 +100,16 @@ function App() {
         }
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
         navigate("/driver-profile");
+=======
+      if (userRole === ROLES.STAFF_TRIPS) {
+        window.location.href =
+          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
+      } else if (userRole === ROLES.STAFF) {
+        window.location.href =
+          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
+      } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
+        navigate("/driver-profile"); // ✅ SPA navigation
+>>>>>>> 369d854 (roby2)
       }
     }
   }, [isAuthenticated, isLoading, userRole, isAdmin, userEmail, navigate]);

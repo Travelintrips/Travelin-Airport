@@ -26,13 +26,17 @@ import {
   Globe,
   ChevronDown,
   User,
+  X,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
 import UserDropdown from "@/components/UserDropdown";
+import { useAuth } from "@/hooks/useAuth";
 
 const TravelPage = () => {
   const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const { isAuthenticated, setIsAuthenticated, userRole, signOut, isAdmin } =
+    useAuth();
+
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -47,6 +51,7 @@ const TravelPage = () => {
   const [childCount, setChildCount] = useState(0);
   const [infantCount, setInfantCount] = useState(0);
   const [travelClass, setTravelClass] = useState("Economy");
+  const [showStaffRegister, setShowStaffRegister] = useState(false);
 
   // Check authentication status
   useEffect(() => {
@@ -90,11 +95,11 @@ const TravelPage = () => {
           .eq("user_id", userId)
           .single();
 
+        const authUserObj = authUser ? JSON.parse(authUser) : {};
         const userName =
-          authUser?.name ||
+          authUserObj?.name ||
           localStorage.getItem("userName") ||
-          authUser?.email?.split("@")[0] ||
-          "User";
+          (authUserObj?.email ? authUserObj.email.split("@")[0] : "User");
 
         localStorage.setItem("userName", userName);
 
@@ -124,7 +129,7 @@ const TravelPage = () => {
     );
 
     return () => {
-      authListener.subscription.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
   }, []);
 
@@ -928,6 +933,21 @@ const TravelPage = () => {
               />
             </div>
           </Card>
+        </div>
+      )}
+      {showStaffRegister && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
+          <div className="bg-white p-6 rounded shadow-md w-full max-w-4xl relative">
+            <Button
+              className="absolute top-2 right-2"
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowStaffRegister(false)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+            <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
+          </div>
         </div>
       )}
     </div>
