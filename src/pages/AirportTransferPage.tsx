@@ -214,11 +214,26 @@ export default function AirportTransferPage() {
       customer_id: null,
     };
 
-    const previewCode = `preview-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const previewCode = `preview-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 6)}`;
 
-    await supabase
+    const { error, data } = await supabase
       .from("airport_transfer_preview")
       .insert([{ preview_code: previewCode, data: previewData }]);
+
+    console.log("Insert result:", { data, error, previewCode });
+
+    if (error) {
+      alert("Gagal membuat preview: " + error.message);
+      return;
+    }
+
+    // ✅ Cek apakah previewCode valid
+    if (!previewCode) {
+      alert("Kode preview tidak valid.");
+      return;
+    }
 
     navigate(`/airport-preview/${previewCode}`);
   }
