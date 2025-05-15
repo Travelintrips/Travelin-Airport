@@ -64,6 +64,8 @@
     "react-resizable-panels": "^2.0.19",
     "react-router": "^6.23.1",
     "react-router-dom": "^6.23.1",
+    "react-select": "^5.10.1",
+    "react-time-picker": "^7.0.0",
     "recharts": "^2.15.2",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",

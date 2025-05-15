@@ -26,7 +26,7 @@ interface Inspection {
   booking_id: number | null;
   user_id: string | null;
   inspection_type: string | null;
-  condition_notes: string | null;
+  condition_notes: string | object | null;
   photo_urls: string[] | null;
   created_at: string | null;
 }
@@ -81,6 +81,36 @@ const InspectionManagement = () => {
         return type;
     }
   };
+
+  function parseNotes(rawNotes: string | object | null): string {
+    if (!rawNotes) return "No notes";
+
+    try {
+      let notes: any;
+
+      if (typeof rawNotes === "string") {
+        notes = JSON.parse(rawNotes);
+      } else {
+        notes = rawNotes; // langsung pakai kalau sudah object
+      }
+
+      if (typeof notes.description === "string") {
+        return notes.description;
+      }
+
+      if (typeof notes.checklist === "object") {
+        return JSON.stringify(notes.checklist);
+      }
+
+      if (typeof notes.checklist === "string") {
+        return notes.checklist;
+      }
+
+      return "No notes";
+    } catch (error) {
+      return "Invalid notes";
+    }
+  }
 
   return (
     <div className="p-8">
@@ -162,8 +192,9 @@ const InspectionManagement = () => {
                         </span>
                       </TableCell>
                       <TableCell className="max-w-xs truncate">
-                        {inspection.condition_notes || "No notes"}
+                        {parseNotes(inspection.condition_notes)}
                       </TableCell>
+
                       <TableCell>
                         {inspection.photo_urls &&
                         inspection.photo_urls.length > 0

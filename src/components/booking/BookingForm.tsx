@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PickupCustomer from "./PickupCustomer";
+import BookingSummary from "./BookingSummary";
 import { supabase } from "@/lib/supabase";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -66,13 +67,7 @@ const formSchema = z.object({
   driverOption: z.enum(["self", "provided"], {
     required_error: "Please select a driver option",
   }),
-  paymentMethod: z.enum(["cash", "bank", "card"], {
-    required_error: "Please select a payment method",
-  }),
-  paymentType: z.enum(["full", "partial"], {
-    required_error: "Please select a payment type",
-  }),
-  additionalNotes: z.string().optional(),
+  driverId: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -92,6 +87,11 @@ interface Vehicle {
   fuel_type?: "petrol" | "diesel" | "electric" | "hybrid";
   available?: boolean;
   features?: string[];
+  isWithDriver?: boolean;
+  assignedDriver?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface BookingFormProps {
@@ -110,6 +110,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
   const [showInspection, setShowInspection] = useState(false);
   const [showPickupCustomer, setShowPickupCustomer] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [availableDrivers, setAvailableDrivers] = useState([]);
+  const [isLoadingDrivers, setIsLoadingDrivers] = useState(false);
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
@@ -127,7 +129,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
   };
 
   // Use selected vehicle or default
-  const vehicleToUse = selectedVehicle || defaultVehicle;
+  const vehicleToUse =
+    vehicles.find((v) => v.id === selectedVehicle?.id) ||
+    selectedVehicle ||
+    defaultVehicle;
 
   // Format currency to IDR
   const formatCurrency = (amount: number) => {
@@ -137,6 +142,17 @@ const BookingForm: React.FC<BookingFormProps> = ({
       minimumFractionDigits: 0,
     }).format(amount);
   };
+
+  useEffect(() => {
+    if (vehicleToUse?.isWithDriver) {
+      form.setValue("driverOption", "provided");
+      if (vehicleToUse.assignedDriver?.id) {
+        form.setValue("driverId", vehicleToUse.assignedDriver.id);
+        form.trigger("driverId"); // ✅ Pastikan form aware terhadap value ini
+      }
+      console.log("🚗 Selected Vehicle Details:", vehicleToUse);
+    }
+  }, [vehicleToUse]);
 
   useEffect(() => {
     // Fetch vehicles from Supabase
@@ -184,7 +200,86 @@ const BookingForm: React.FC<BookingFormProps> = ({
       }
     };
 
+    // Fetch available drivers
+    const fetchDrivers = async () => {
+      setIsLoadingDrivers(true);
+      try {
+        const { data, error } = await supabase
+          .from("drivers")
+          .select("id, name, status")
+          .eq("status", "active");
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          setAvailableDrivers(data);
+        } else {
+          // Sample drivers if no data from Supabase
+          setAvailableDrivers([
+            { id: "d1", name: "John Driver", status: "active" },
+            { id: "d2", name: "Maria Driver", status: "active" },
+            { id: "d3", name: "Alex Driver", status: "active" },
+          ]);
+        }
+      } catch (error) {
+        console.error("Error fetching drivers:", error);
+        // Use sample drivers on error
+        setAvailableDrivers([
+          { id: "d1", name: "John Driver", status: "active" },
+          { id: "d2", name: "Maria Driver", status: "active" },
+          { id: "d3", name: "Alex Driver", status: "active" },
+        ]);
+      } finally {
+        setIsLoadingDrivers(false);
+      }
+    };
+
+    // Fetch full details if selectedVehicle is missing fields
+    const fetchSelectedVehicleDetails = async () => {
+      if (
+        selectedVehicle?.id &&
+        (!selectedVehicle.make ||
+          !selectedVehicle.model ||
+          !selectedVehicle.category)
+      ) {
+        const { data, error } = await supabase
+          .from("vehicles")
+          .select(
+            `
+    make,
+    model,
+    category,
+    price,
+    year,
+    image,
+    license_plate,
+    is_with_driver,
+    driver_id,
+    assignedDriver:driver_id (
+      id,
+      name
+    )
+  `,
+          )
+          .eq("id", selectedVehicle.id)
+          .single();
+
+        if (error) {
+          console.error("Failed to fetch full vehicle data:", error);
+          return;
+        }
+
+        // Merge detail data ke selectedVehicle
+        setVehicles((prev) => [
+          ...prev.filter((v) => v.id !== selectedVehicle.id),
+          { ...selectedVehicle, ...data },
+        ]);
+      }
+    };
+
     fetchVehicles();
+    fetchDrivers();
+    fetchSelectedVehicleDetails();
 
     // Check authentication status
     const checkAuth = async () => {
@@ -214,9 +309,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
       pickupTime: "10:00",
       returnTime: "10:00",
       driverOption: "self",
-      paymentMethod: "cash",
-      paymentType: "full",
-      additionalNotes: "",
+      driverId: null,
     },
   });
 
@@ -303,44 +396,79 @@ const BookingForm: React.FC<BookingFormProps> = ({
         .from("drivers")
         .select("id")
         .eq("id", userId)
-        .single();
+        .maybeSingle();
 
-      // Create booking object
-      const bookingData = {
+      if (driverError) {
+        console.error("Error fetching driver data:", driverError.message);
+      }
+
+      // Cek role user
+      const userRole =
+        sessionData.session.user.user_metadata?.role || "customer";
+
+      // Cek apakah user terdaftar di tabel driver
+      const isDriverRegistered =
+        driverData && typeof driverData.id !== "undefined";
+
+      // Validasi tambahan
+      if (userRole === "driver" && !isDriverRegistered) {
+        throw new Error(
+          "Your account is not registered as a driver. Please contact admin.",
+        );
+      }
+
+      // Build base booking data
+      // Build bookingData
+      let bookingData: any = {
         user_id: userId,
         vehicle_id: vehicleToUse.id,
         start_date: format(data.startDate, "yyyy-MM-dd"),
         end_date: format(data.endDate, "yyyy-MM-dd"),
         total_amount: calculateTotal(),
-        payment_status: data.paymentType === "partial" ? "partial" : "unpaid",
+        payment_status: "unpaid",
         status: "pending",
         created_at: toISOString(new Date()),
         pickup_time: data.pickupTime,
         driver_option: data.driverOption,
       };
 
-      // Only set driver_id if the user is actually a driver and driver option is 'self'
-      if (data.driverOption === "self") {
-        if (!driverData) {
-          throw new Error(
-            "You selected 'Self-drive' but this account is not registered as a driver.",
-          );
-          console.log("Booking data to insert:", bookingData);
-        }
-
+      // ✅ Kalau driver self-drive dan role = driver, baru isi driver_id
+      if (
+        userRole === "driver" &&
+        isDriverRegistered &&
+        data.driverOption === "self"
+      ) {
         bookingData.driver_id = userId;
       }
 
-      // Create booking in Supabase
+      // ✅ Kalau with-driver dan memilih driver tertentu (nanti harus isi driver_id manual)
+      if (data.driverOption === "provided" && data.driverId) {
+        bookingData.driver_id = data.driverId;
+
+        // Cari nama driver dari daftar availableDrivers
+        const selectedDriver = availableDrivers.find(
+          (d: any) => d.id === data.driverId,
+        );
+        bookingData.driver_name = selectedDriver?.name || null;
+      }
+
+      // ✅ Bersihkan undefined
+      const cleanedBookingData = Object.fromEntries(
+        Object.entries(bookingData).filter(([_, v]) => v !== undefined),
+      );
+
+      // Insert
       const { data: insertedBooking, error: bookingError } = await supabase
         .from("bookings")
-        .insert(bookingData)
+        .insert(cleanedBookingData)
         .select()
         .single();
 
-      if (bookingError) throw bookingError;
+      if (bookingError) {
+        throw new Error("Error submitting booking: " + bookingError.message);
+      }
 
-      // Update vehicle status to 'booked'
+      // ✅ Update vehicle status
       const { error: vehicleUpdateError } = await supabase
         .from("vehicles")
         .update({ status: "booked" })
@@ -348,24 +476,22 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
       if (vehicleUpdateError) {
         console.error("Error updating vehicle status:", vehicleUpdateError);
-        // Continue with booking process even if vehicle status update fails
       }
 
-      // Validate booking ID before setting it
-      if (!insertedBooking.id) {
+      // ✅ Validate booking ID
+      if (!insertedBooking?.id) {
         throw new Error("No booking ID returned from server");
       }
 
-      // Set the booking ID from the inserted record
+      // ✅ Set the booking ID
       setBookingId(insertedBooking.id.toString());
 
-      // Call the onBookingComplete callback with the booking data
+      // ✅ Call onBookingComplete
       onBookingComplete({
-        ...data,
         bookingId: insertedBooking.id,
         vehicleId: vehicleToUse.id,
         totalAmount: calculateTotal(),
-        depositAmount: data.paymentType === "partial" ? calculateDeposit() : 0,
+        depositAmount: 0,
       });
 
       // Redirect ke halaman pembayaran
@@ -378,30 +504,36 @@ const BookingForm: React.FC<BookingFormProps> = ({
     }
   };
 
-  const nextStep = () => {
+  const nextStep = async () => {
     if (step === 1) {
-      // Validate first step fields
-      const startDateValid = form.trigger("startDate");
-      const endDateValid = form.trigger("endDate");
-      const pickupTimeValid = form.trigger("pickupTime");
-      const returnTimeValid = form.trigger("returnTime");
-      const driverOptionValid = form.trigger("driverOption");
+      const isValid = await form.trigger([
+        "startDate",
+        "endDate",
+        "pickupTime",
+        "returnTime",
+        "driverOption",
+      ]);
 
-      if (
-        startDateValid &&
-        endDateValid &&
-        pickupTimeValid &&
-        returnTimeValid &&
-        driverOptionValid
-      ) {
-        setStep(2);
+      // Additional validation for driver selection when "provided" option is selected
+      if (isValid) {
+        if (
+          form.watch("driverOption") === "provided" &&
+          !form.watch("driverId")
+        ) {
+          form.setError("driverId", {
+            type: "manual",
+            message: "Please select a driver",
+          });
+          return;
+        }
+        setStep(2); // Maju ke Step 2 (Confirm Page)
       }
     }
   };
 
   const prevStep = () => {
-    if (step === 2) {
-      setStep(1);
+    if (step > 1) {
+      setStep(step - 1);
     }
   };
 
@@ -520,13 +652,24 @@ const BookingForm: React.FC<BookingFormProps> = ({
               />
             </div>
             <div className="text-center sm:text-left">
-              <h3 className="font-bold text-lg">
-                {vehicleToUse.make} {vehicleToUse.model}{" "}
-                {vehicleToUse.year && `(${vehicleToUse.year})`}
-              </h3>
-              <p className="text-muted-foreground">
-                {vehicleToUse.type || vehicleToUse.category} •{" "}
-                {formatCurrency(vehicleToUse.price)}/day
+              <p className="text-sm text-gray-700">
+                <strong>Make:</strong> {vehicleToUse.make || "Unknown"}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Model:</strong> {vehicleToUse.model || "Unknown"}
+              </p>
+              {vehicleToUse.license_plate && (
+                <p className="text-sm text-gray-700">
+                  <strong>Plate:</strong> {vehicleToUse.license_plate}
+                </p>
+              )}
+              {vehicleToUse.category && (
+                <p className="text-sm text-gray-700">
+                  <strong>Category:</strong> {vehicleToUse.category}
+                </p>
+              )}
+              <p className="text-sm text-gray-800 font-semibold">
+                {formatCurrency(vehicleToUse.price || 0)}/day
               </p>
             </div>
           </div>
@@ -652,190 +795,176 @@ const BookingForm: React.FC<BookingFormProps> = ({
                   />
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="driverOption"
-                  render={({ field }) => (
-                    <FormItem className="space-y-3">
+                {vehicleToUse?.isWithDriver ? (
+                  <>
+                    <FormItem>
                       <FormLabel>Driver Option</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                        >
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="self" />
-                            </FormControl>
-                            <FormLabel className="font-normal cursor-pointer w-full">
-                              Self-drive
-                            </FormLabel>
-                          </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="provided" />
-                            </FormControl>
-                            <FormLabel className="font-normal cursor-pointer w-full">
-                              With driver (+Rp 150.000/day)
-                            </FormLabel>
-                          </FormItem>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
+                      <p className="text-sm text-muted-foreground">
+                        This vehicle is only available{" "}
+                        <strong>With Driver</strong>.
+                      </p>
+                      <input
+                        type="hidden"
+                        value="provided"
+                        {...form.register("driverOption")}
+                      />
                     </FormItem>
+
+                    <FormField
+                      control={form.control}
+                      name="driverId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Assigned Driver</FormLabel>
+                          <Select
+                            disabled
+                            value={
+                              vehicleToUse.assignedDriver?.id || "unavailable"
+                            }
+                            onValueChange={field.onChange}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Driver Assigned" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem
+                                value={
+                                  vehicleToUse.assignedDriver?.id ||
+                                  "unavailable"
+                                }
+                              >
+                                {vehicleToUse.assignedDriver?.name ||
+                                  "No Driver Assigned"}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="driverOption"
+                      render={({ field }) => (
+                        <FormItem className="space-y-3">
+                          <FormLabel>Driver Option</FormLabel>
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={(value) => {
+                                field.onChange(value);
+                                if (value === "self") {
+                                  form.setValue("driverId", null);
+                                }
+                              }}
+                              defaultValue={field.value}
+                              className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                            >
+                              <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                                <FormControl>
+                                  <RadioGroupItem value="self" />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer w-full">
+                                  Self-drive
+                                </FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                                <FormControl>
+                                  <RadioGroupItem value="provided" />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer w-full">
+                                  With driver (+Rp 150.000/day)
+                                </FormLabel>
+                              </FormItem>
+                            </RadioGroup>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {form.watch("driverOption") === "provided" &&
+                  !vehicleToUse?.isWithDriver && (
+                    <FormField
+                      control={form.control}
+                      name="driverId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Select Driver</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value || ""}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a driver" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {isLoadingDrivers ? (
+                                <SelectItem value="loading" disabled>
+                                  Loading drivers...
+                                </SelectItem>
+                              ) : availableDrivers.length > 0 ? (
+                                availableDrivers.map((driver) => (
+                                  <SelectItem key={driver.id} value={driver.id}>
+                                    {driver.name}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="none" disabled>
+                                  No drivers available
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                />
               </div>
             )}
 
             {step === 2 && (
               <div className="space-y-6">
-                <FormField
-                  control={form.control}
-                  name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem className="space-y-3">
-                      <FormLabel>Payment Method</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          className="grid grid-cols-1 sm:grid-cols-3 gap-2"
-                        >
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="cash" />
-                            </FormControl>
-                            <FormLabel className="font-normal flex items-center cursor-pointer w-full">
-                              <Banknote className="mr-2 h-4 w-4" />
-                              Cash
-                            </FormLabel>
-                          </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="bank" />
-                            </FormControl>
-                            <FormLabel className="font-normal flex items-center cursor-pointer w-full">
-                              <Building2 className="mr-2 h-4 w-4" />
-                              Bank Transfer
-                            </FormLabel>
-                          </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="card" />
-                            </FormControl>
-                            <FormLabel className="font-normal flex items-center cursor-pointer w-full">
-                              <CreditCard className="mr-2 h-4 w-4" />
-                              Credit/Debit Card
-                            </FormLabel>
-                          </FormItem>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <BookingSummary
+                  vehicleMake={vehicleToUse.make}
+                  vehicleModel={vehicleToUse.model}
+                  vehicleYear={vehicleToUse.year}
+                  totalDays={calculateTotalDays()}
+                  basePrice={vehicleToUse.price * calculateTotalDays()}
+                  driverFee={
+                    form.watch("driverOption") === "provided"
+                      ? 150000 * calculateTotalDays()
+                      : 0
+                  }
+                  totalAmount={calculateTotal()}
+                  depositAmount={calculateDeposit()}
+                  isPartialPayment={false}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="paymentType"
-                  render={({ field }) => (
-                    <FormItem className="space-y-3">
-                      <FormLabel>Payment Type</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                        >
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="full" />
-                            </FormControl>
-                            <FormLabel className="font-normal cursor-pointer w-full">
-                              Full Payment ({formatCurrency(calculateTotal())})
-                            </FormLabel>
-                          </FormItem>
-                          <FormItem className="flex items-center space-x-3 space-y-0 p-3 border rounded-md hover:bg-muted/50 transition-colors">
-                            <FormControl>
-                              <RadioGroupItem value="partial" />
-                            </FormControl>
-                            <FormLabel className="font-normal cursor-pointer w-full">
-                              Partial Payment (30% Deposit:{" "}
-                              {formatCurrency(calculateDeposit())})
-                            </FormLabel>
-                          </FormItem>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <BookingSummary
+                  vehicleMake={vehicleToUse.make}
+                  vehicleModel={vehicleToUse.model}
+                  vehicleYear={vehicleToUse.year}
+                  totalDays={calculateTotalDays()}
+                  basePrice={vehicleToUse.price * calculateTotalDays()}
+                  driverFee={
+                    form.watch("driverOption") === "provided"
+                      ? 150000 * calculateTotalDays()
+                      : 0
+                  }
+                  totalAmount={calculateTotal()}
+                  depositAmount={calculateDeposit()}
+                  isPartialPayment={false}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="additionalNotes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Additional Notes</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Any special requests or information we should know"
-                          className="resize-none"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="bg-muted p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">Booking Summary</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Vehicle:</span>
-                      <span className="font-medium">
-                        {vehicleToUse.make} {vehicleToUse.model}{" "}
-                        {vehicleToUse.year && `(${vehicleToUse.year})`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Duration:</span>
-                      <span className="font-medium">
-                        {calculateTotalDays()} day(s)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Base Price:</span>
-                      <span className="font-medium">
-                        {formatCurrency(
-                          vehicleToUse.price * calculateTotalDays(),
-                        )}
-                      </span>
-                    </div>
-                    {form.watch("driverOption") === "provided" && (
-                      <div className="flex justify-between">
-                        <span>Driver Fee:</span>
-                        <span className="font-medium">
-                          {formatCurrency(150000 * calculateTotalDays())}
-                        </span>
-                      </div>
-                    )}
-                    <Separator />
-                    <div className="flex justify-between font-bold">
-                      <span>Total Amount:</span>
-                      <span>{formatCurrency(calculateTotal())}</span>
-                    </div>
-                    {form.watch("paymentType") === "partial" && (
-                      <div className="flex justify-between text-primary font-medium">
-                        <span>Deposit Due Now:</span>
-                        <span>{formatCurrency(calculateDeposit())}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
             )}
 
@@ -844,10 +973,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate(-1)}
+                  onClick={() => navigate("/")}
                   className="flex items-center justify-center gap-1 w-full sm:w-auto"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Back
+                  <ArrowLeft className="h-4 w-4" /> Back1
                 </Button>
               ) : (
                 <Button
@@ -862,12 +991,8 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
               {step === 1 ? (
                 isAuthenticated ? (
-                  <Button
-                    type="button"
-                    className="w-full sm:w-auto sm:ml-auto"
-                    onClick={nextStep}
-                  >
-                    Next <ChevronRight className="ml-2 h-4 w-4" />
+                  <Button type="button" onClick={nextStep}>
+                    Next
                   </Button>
                 ) : (
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">

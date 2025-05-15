@@ -17,6 +17,7 @@ interface Payment {
   id: number;
   booking_id: number | null;
   user_id: string | null;
+  user?: { full_name: string } | null;
   amount: number | null;
   payment_method: string | null;
   status: string | null;
@@ -86,7 +87,7 @@ const Payments = () => {
     <div className="p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-indigo-500 to-purple-600 bg-clip-text text-transparent">
-          Payment Management
+          Payment Management1
         </h1>
         <div className="flex gap-2">
           <Button
@@ -129,7 +130,7 @@ const Payments = () => {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Booking ID</TableHead>
-                  <TableHead>User ID</TableHead>
+                  <TableHead>Customer</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Payment Method</TableHead>
                   <TableHead>Status</TableHead>

@@ -118,7 +118,13 @@ const DamagePaymentForm = () => {
       try {
         const { data, error } = await supabase
           .from("bookings")
-          .select("*, user:users(full_name, email)")
+          .select(
+            `
+        *,
+        user:users(full_name, email),
+        vehicle:vehicles(make, model, license_plate)
+      `,
+          )
           .eq("id", bookingId)
           .single();
 
@@ -409,10 +415,26 @@ const DamagePaymentForm = () => {
             <div className="grid grid-cols-2 gap-2">
               <p className="text-sm font-medium">Customer:</p>
               <p className="text-sm">{bookingDetails.user?.full_name}</p>
+
               <p className="text-sm font-medium">Email:</p>
               <p className="text-sm">{bookingDetails.user?.email}</p>
+
               <p className="text-sm font-medium">Vehicle ID:</p>
               <p className="text-sm">{bookingDetails.vehicle_id}</p>
+
+              <p className="text-sm font-medium">Make:</p>
+              <p className="text-sm">{bookingDetails.vehicle?.make || "N/A"}</p>
+
+              <p className="text-sm font-medium">Model:</p>
+              <p className="text-sm">
+                {bookingDetails.vehicle?.model || "N/A"}
+              </p>
+
+              <p className="text-sm font-medium">License Plate:</p>
+              <p className="text-sm">
+                {bookingDetails.vehicle?.license_plate || "N/A"}
+              </p>
+
               <p className="text-sm font-medium">Status:</p>
               <p className="text-sm">{bookingDetails.status}</p>
             </div>

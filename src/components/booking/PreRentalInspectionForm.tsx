@@ -461,7 +461,8 @@ const PreRentalInspectionForm: React.FC<PreRentalInspectionFormProps> = ({
           inspectorName: inspectorName,
         }),
         photo_urls: uploadedPhotoUrls,
-        created_at: toISOString(new Date()),
+        created_at: new Date().toISOString(),
+
         total_fees: 0, // No fees for pre-rental inspection
         fee_breakdown: [], // No fees for pre-rental inspection
       };

@@ -1,8 +1,3 @@
-import StaffForm from "../components/auth/forms/StaffForm";
-import { RegisterFormValues } from "../components/auth/RegistrationForm";
-import { useForm, FormProvider } from "react-hook-form";
-
-import { useLocation } from "react-router-dom"; // pastikan import ini ada
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -26,20 +21,18 @@ import {
   Bus,
   Hotel,
   Search,
+  CalendarIcon,
   ArrowRightLeft,
   Globe,
   ChevronDown,
   User,
-  X,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
-import StaffLink from "@/components/StaffLink";
-import useAuth from "@/hooks/useAuth";
+import UserDropdown from "@/components/UserDropdown";
 
-const TravelPage: React.FC = () => {
+const TravelPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, userRole, signOut, setUserRole } = useAuth();
-
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -50,101 +43,139 @@ const TravelPage: React.FC = () => {
   const [returnDate, setReturnDate] = useState<Date | undefined>(new Date());
   const [isRoundTrip, setIsRoundTrip] = useState(true);
   const [passengers, setPassengers] = useState("1 Adult, 0 child, 0 infant");
+  const [adultCount, setAdultCount] = useState(1);
+  const [childCount, setChildCount] = useState(0);
+  const [infantCount, setInfantCount] = useState(0);
   const [travelClass, setTravelClass] = useState("Economy");
-  const [userName, setUserName] = useState<string>("");
 
+  // Check authentication status
   useEffect(() => {
-    if (!isAuthenticated) return;
+    const checkAuth = async () => {
+      // First check localStorage for shared authentication
+      const authUser = localStorage.getItem("auth_user");
+      if (authUser) {
+        setIsAuthenticated(true);
+        // If authenticated, make sure auth form is closed
+        setShowAuthForm(false);
+        return;
+      }
 
-    const authUserStr = localStorage.getItem("auth_user");
-    try {
-      const authUser = authUserStr ? JSON.parse(authUserStr) : null;
-      console.log("✅ authUser object:", authUser);
+      // If not in localStorage, check Supabase session
+      const { data } = await supabase.auth.getSession();
+      setIsAuthenticated(!!data.session);
 
-      const name =
-        (authUser?.name && authUser.name.trim()) ||
-        localStorage.getItem("userName") ||
-        authUser?.email?.split("@")[0] ||
-        "User";
+      // If authenticated, make sure auth form is closed
+      if (data.session) {
+        setShowAuthForm(false);
+      }
 
-      // We don't need to set userRole as it comes from useAuth hook
-      setUserName(name);
+      // If authenticated via Supabase but not in localStorage, store the data
+      if (data.session) {
+        const userId = data.session.user.id;
+        localStorage.setItem("userId", userId);
 
-      console.log("✅ userName:", name);
-      console.log("✅ userRole:", userRole);
-    } catch (e) {
-      console.warn("⚠️ Gagal parse auth_user:", e);
-    }
-  }, [isAuthenticated, userRole]); // Added userRole to dependencies
+        // Try to get user role from metadata or default to "Customer"
+        const userRole = data.session.user.user_metadata?.role || "Customer";
+        localStorage.setItem("userRole", userRole);
 
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === "SIGNED_IN" && session) {
-          const userId = session.user.id;
-          const userEmail = session.user.email;
-
-          // 🔥 Fetch ke staff
-          const { data: staffData, error } = await supabase
-            .from("staff")
-            .select("role, position")
-            .eq("user_id", userId)
-            .single();
-
-          let roleFromDB = "Customer"; // Default role
-
-          if (staffData) {
-            roleFromDB = staffData.role || staffData.position || "Customer";
-          }
-
-          // Simpan ke localStorage
-          localStorage.setItem("userRole", roleFromDB);
-
-          // Set ke state supaya real-time tampil
-          setUserRole(roleFromDB);
-
-          // 🔥 Update userName
-          const userNameFromAuth =
-            (session.user.user_metadata?.full_name &&
-              session.user.user_metadata.full_name.trim()) ||
-            session.user.user_metadata?.name ||
-            userEmail?.split("@")[0] ||
-            "User";
-
-          setUserName(userNameFromAuth);
-
-          // Debug
-          console.log("🟢 SIGNED_IN triggered");
-          console.log("✅ userName:", userNameFromAuth);
-          console.log("✅ userRole:", roleFromDB);
-
-          const token = session.access_token;
-          const refresh = session.refresh_token;
-
-          // ✅ Redirect kalau perlu
-          if (roleFromDB === "Staff" || roleFromDB === "Staff Trips") {
-            console.log("⏳ Redirecting after 300ms...");
-            setTimeout(() => {
-              window.location.href = `https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh}`;
-            }, 300);
-          }
+        // Store email if available
+        if (data.session.user.email) {
+          localStorage.setItem("userEmail", data.session.user.email);
         }
 
-        if (event === "SIGNED_OUT") {
-          console.log("🔴 SIGNED_OUT detected");
-          localStorage.removeItem("userRole");
-          localStorage.removeItem("auth_user");
-          localStorage.removeItem("userName");
-          setUserName("");
-          setUserRole(""); // clear role
+        // ✅ Fetch nama lengkap dari tabel customers
+        const { data: customerData } = await supabase
+          .from("customers")
+          .select("name")
+          .eq("user_id", userId)
+          .single();
+
+        const userName =
+          authUser?.name ||
+          localStorage.getItem("userName") ||
+          authUser?.email?.split("@")[0] ||
+          "User";
+
+        localStorage.setItem("userName", userName);
+
+        // Store in auth_user for shared authentication
+        const userData = {
+          id: userId,
+          role: userRole,
+          email: data.session.user.email || "",
+          name: userName,
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      }
+    };
+    checkAuth();
+
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        const newAuthState = !!session;
+        setIsAuthenticated(newAuthState);
+
+        // If user becomes authenticated, hide the auth form
+        if (newAuthState) {
+          setShowAuthForm(false);
         }
       },
     );
 
     return () => {
-      authListener?.subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
   }, []);
+
+  const handleAuthStateChange = (state: boolean) => {
+    setIsAuthenticated(state);
+    if (state) {
+      // Always close the auth form when authentication state changes to true
+      setShowAuthForm(false);
+
+      // Get user data from localStorage if available
+      const userId = localStorage.getItem("userId");
+      const userRole = localStorage.getItem("userRole");
+      const userEmail = localStorage.getItem("userEmail");
+
+      // Store user data in localStorage for shared authentication
+      if (userId && userRole) {
+        const userData = {
+          id: userId,
+          role: userRole,
+          email: userEmail || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      }
+
+      // Check if user is admin and redirect to admin dashboard
+      console.log("TravelPage auth state change - userRole:", userRole);
+      const authUserStr = localStorage.getItem("auth_user");
+      if (authUserStr) {
+        try {
+          const authUser = JSON.parse(authUserStr);
+          console.log("TravelPage auth_user from localStorage:", authUser);
+        } catch (e) {
+          console.error("Error parsing auth_user in TravelPage:", e);
+        }
+      }
+
+      if (userRole === "Admin") {
+        console.log("Redirecting admin to dashboard");
+        navigate("/admin");
+      } else {
+        // Stay on the current page (TravelPage) after successful login
+        // No navigation needed as we're already on the TravelPage
+      }
+    } else {
+      // Remove user data from localStorage on logout
+      localStorage.removeItem("auth_user");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userEmail");
+    }
+  };
 
   const handleSearch = () => {
     if (!isAuthenticated) {
@@ -194,47 +225,41 @@ const TravelPage: React.FC = () => {
     }
   };
 
-  // userName state is now declared at the top of the component
-
-  // Check if user is admin based on email
-  const isAdmin = React.useMemo(() => {
-    const authUserStr = localStorage.getItem("auth_user");
-    if (authUserStr) {
-      try {
-        const authUser = JSON.parse(authUserStr);
-        return (
-          authUser?.role === "Admin" ||
-          (authUser?.email && authUser.email === "divatranssoetta@gmail.com")
-        );
-      } catch (e) {
-        console.error("Error parsing auth_user:", e);
-        return false;
-      }
-    }
-    return false;
-  }, []);
-
-  const location = useLocation();
-
-  useEffect(() => {
-    if (location.state?.requireAuth) {
-      const formType = location.state?.formType || "login"; // default ke login jika tidak ada
-      setAuthFormType(formType);
-      setShowAuthForm(true);
-    }
-  }, [location.state]);
-
-  const [showStaffRegister, setShowStaffRegister] = useState(false); // ✅ DI SINI
-  const staffForm = useForm<RegisterFormValues>();
+  const [userName, setUserName] = useState<string | null>(null);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-800 to-green-600">
       {/* Header */}
       <header className="bg-green-800 text-white p-4">
-        <div className="container mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <span className="text-xl font-bold">Travelintrips</span>
-            <span className="text-xs">★</span>
+        <div className="container mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center space-x-4 w-full md:w-auto justify-between">
+            {/* <Button
+              size="sm"
+              variant="ghost"
+              className="text-white hover:bg-green-800"
+              onClick={() => navigate("/")}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5"
+              >
+                <path d="m12 19-7-7 7-7" />
+                <path d="M19 12H5" />
+              </svg>
+              <span className="ml-1">Back</span>
+            </Button> */}
+            <div className="flex items-center space-x-2">
+              <span className="text-xl font-bold">Travelintrips</span>
+              <span className="text-xs">★</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center justify-center md:justify-end gap-2 md:gap-4 w-full md:w-auto">
@@ -254,47 +279,6 @@ const TravelPage: React.FC = () => {
               >
                 Deals
               </Button>
-
-              {/*Dtriver Mitra dan Perusahaan*/}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-white hover:bg-green-800"
-                  >
-                    Partnership <ChevronDown className="h-4 w-4 ml-1" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48">
-                  <div className="grid gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start"
-                      onClick={() => navigate("/driver-mitra")}
-                    >
-                      Driver Mitra
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start"
-                      onClick={() => navigate("/driver-perusahaan")}
-                    >
-                      Driver Perusahaan
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="justify-start"
-                      onClick={() => setShowStaffRegister(true)}
-                    >
-                      Staff Register
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
 
               <Popover>
                 <PopoverTrigger asChild>
@@ -318,246 +302,347 @@ const TravelPage: React.FC = () => {
                 </PopoverContent>
               </Popover>
 
-              {isAuthenticated ? (
-                // ✅ Jika sudah login: tampilkan "My Account"
-                <Popover>
-                  <PopoverTrigger asChild>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-white hover:bg-green-800"
+                  >
+                    Partnership <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48">
+                  <div className="grid gap-2">
                     <Button
-                      size="sm"
                       variant="ghost"
-                      className="text-white hover:bg-green-800"
+                      size="sm"
+                      className="justify-start"
+                      onClick={() =>
+                        window.open(
+                          "https://register.travelinairport.com/",
+                          "_blank",
+                        )
+                      }
                     >
-                      My Account <ChevronDown className="h-4 w-4 ml-1" />
+                      Driver Mitra
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-48 z-[10]">
-                    <div className="grid gap-2">
-                      <div className="p-2 border-b">
-                        <p className="font-medium">{userName}</p>
-                        {userRole && (
-                          <Badge variant="outline" className="mt-1">
-                            {userRole}
-                          </Badge>
-                        )}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start"
-                        onClick={() => navigate("/profile")}
-                      >
-                        My Profile
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start"
-                        onClick={() => navigate("/bookings")}
-                      >
-                        My Bookings1
-                      </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="justify-start"
+                      onClick={() =>
+                        window.open(
+                          "https://register.travelinairport.com/",
+                          "_blank",
+                        )
+                      }
+                    >
+                      Driver Perusahaan
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-                      {/* ✅ Tambah ini */}
-                      {userRole === "Staff Trips" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="justify-start"
-                          onClick={() =>
-                            (window.location.href =
-                              "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account")
-                          }
-                        >
-                          Airport Service
-                        </Button>
-                      )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-white hover:bg-green-800"
+              >
+                For Corporates
+              </Button>
 
-                      {isAdmin && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="justify-start"
-                          onClick={() => navigate("/admin")}
-                        >
-                          Admin Dashboard
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start text-red-500"
-                        onClick={() => signOut()}
-                      >
-                        Sign Out
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              ) : (
-                // ❌ Jika belum login: tampilkan tombol Login & Register di luar Popover
-                <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-white hover:bg-green-800"
-                    onClick={() => {
-                      setAuthFormType("login");
-                      setShowAuthForm(true);
-                    }}
-                  >
-                    Login
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-white hover:bg-green-800"
-                    onClick={() => {
-                      setAuthFormType("register");
-                      setShowAuthForm(true);
-                    }}
-                  >
-                    Register
-                  </Button>
-                </>
-              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-white hover:bg-green-800"
+              >
+                Bookings
+              </Button>
             </div>
+
+            <div className="md:hidden">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-white hover:bg-green-800"
+                  >
+                    Menu <ChevronDown className="h-4 w-4 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48">
+                  <div className="grid gap-2">
+                    <Button variant="ghost" size="sm" className="justify-start">
+                      Deals
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start">
+                      Support
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start">
+                      Partnership
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start">
+                      For Corporates
+                    </Button>
+                    <Button variant="ghost" size="sm" className="justify-start">
+                      Bookings
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {isAuthenticated ? (
+              <div className="flex items-center gap-2">
+                <UserDropdown />
+              </div>
+            ) : (
+              <div className="flex space-x-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="bg-transparent text-white border-white hover:bg-green-800"
+                  onClick={() => {
+                    setShowAuthForm(true);
+                    setAuthFormType("login");
+                  }}
+                >
+                  Log In
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-green-500 text-white hover:bg-green-600"
+                  onClick={() => {
+                    setShowAuthForm(true);
+                    setAuthFormType("register");
+                  }}
+                >
+                  Register
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {/* Travel Options */}
-        <div className="bg-white rounded-lg shadow-md p-4 mb-8">
-          <Tabs defaultValue="flights" className="w-full">
-            <TabsList className="grid grid-cols-4 md:grid-cols-8 gap-2">
-              <TabsTrigger
-                value="flights"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Flights")}
-              >
-                <Plane className="h-5 w-5 mb-1" />
-                <span className="text-xs">Flights</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="hotels"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Hotels")}
-              >
-                <Hotel className="h-5 w-5 mb-1" />
-                <span className="text-xs">Hotels</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="trains"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Trains")}
-              >
-                <Train className="h-5 w-5 mb-1" />
-                <span className="text-xs">Trains</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="bus"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Bus & Travel")}
-              >
-                <Bus className="h-5 w-5 mb-1" />
-                <span className="text-xs">Bus & Travel</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="airport"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Airport Transfer")}
-              >
-                <Plane className="h-5 w-5 mb-1" />
-                <span className="text-xs">Airport Transfer</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="car"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Car Rental")}
-              >
-                <Car className="h-5 w-5 mb-1" />
-                <span className="text-xs">Car Rental</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="activities"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("Things to Do")}
-              >
-                <Globe className="h-5 w-5 mb-1" />
-                <span className="text-xs">Things to Do</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="more"
-                className="flex flex-col items-center"
-                onClick={() => handleTravelOptionClick("More")}
-              >
-                <ChevronDown className="h-5 w-5 mb-1" />
-                <span className="text-xs">More</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+      {/* Navigation */}
+      <nav className="bg-green-900 text-white py-2 border-t border-green-700 overflow-x-auto">
+        <div className="container mx-auto flex justify-center md:justify-start space-x-2 md:space-x-6 px-2 md:px-4">
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Hotels")}
+          >
+            <Hotel className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Hotels
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Flights")}
+          >
+            <Plane className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Flights
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Trains")}
+          >
+            <Train className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Trains
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Bus & Travel")}
+          >
+            <Bus className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Bus & Travel
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Airport Transfer")}
+          >
+            Airport Transfer
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Car Rental")}
+          >
+            <Car className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Car Rental
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("Things to Do")}
+          >
+            Things to Do
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-white hover:bg-green-800 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+            onClick={() => handleTravelOptionClick("More")}
+          >
+            More <ChevronDown className="h-3 w-3 md:h-4 md:w-4 ml-1" />
+          </Button>
         </div>
+      </nav>
 
-        {/* Flight Search */}
-        <Card className="p-6 mb-8">
-          <div className="flex items-center mb-4">
-            <h2 className="text-xl font-bold">Search Flights</h2>
-            <div className="ml-auto flex space-x-2">
-              <Button
-                variant={isRoundTrip ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsRoundTrip(true)}
-              >
-                Round Trip
-              </Button>
-              <Button
-                variant={!isRoundTrip ? "default" : "outline"}
-                size="sm"
-                onClick={() => setIsRoundTrip(false)}
-              >
-                One Way
-              </Button>
-            </div>
+      {/* Hero Section */}
+      <div className="container mx-auto px-4 py-8 md:py-12 text-white">
+        <h1 className="text-xl md:text-3xl font-bold text-center mb-6 md:mb-8">
+          From Southeast Asia to the World, All Yours.
+        </h1>
+
+        {/* Travel Options */}
+        <div className="bg-white rounded-lg p-4 md:p-6 shadow-lg">
+          {/* Tabs */}
+          <div className="flex mb-4 md:mb-6 space-x-2 md:space-x-4 overflow-x-auto pb-2 justify-center">
+            <Button
+              variant="ghost"
+              className="bg-green-100 text-green-600 hover:bg-green-200 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Hotels")}
+            >
+              <Hotel className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Hotels
+            </Button>
+            <Button
+              variant="ghost"
+              className="bg-green-500 text-white hover:bg-green-600 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Flights")}
+            >
+              <Plane className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Flights
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Trains")}
+            >
+              <Train className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Trains
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Bus & Travel")}
+            >
+              <Bus className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Bus &
+              Travel
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Airport Transfer")}
+            >
+              Airport Transfer
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Car Rental")}
+            >
+              <Car className="h-3 w-3 md:h-4 md:w-4 mr-1 md:mr-2" /> Car Rental
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("Things to Do")}
+            >
+              Things to Do
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-gray-600 hover:bg-gray-100 cursor-pointer text-xs md:text-sm whitespace-nowrap flex items-center"
+              onClick={() => handleTravelOptionClick("More")}
+            >
+              More
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* Trip Type */}
+          <div className="flex mb-4 md:mb-6 space-x-2 overflow-x-auto pb-2 justify-center md:justify-start">
+            <Button
+              variant="outline"
+              className={`rounded-full text-xs md:text-sm whitespace-nowrap font-medium border-gray-300 ${isRoundTrip ? "bg-green-500 text-white" : "text-black"}`}
+              onClick={() => setIsRoundTrip(true)}
+            >
+              Round-trip
+            </Button>
+            <Button
+              variant="outline"
+              className={`rounded-full text-xs md:text-sm whitespace-nowrap font-medium border-gray-300 ${!isRoundTrip ? "bg-green-500 text-white" : "text-black"}`}
+              onClick={() => setIsRoundTrip(false)}
+            >
+              One-way
+            </Button>
+            <Button
+              variant="outline"
+              className="rounded-full text-xs md:text-sm whitespace-nowrap font-medium text-black border-gray-300"
+            >
+              Multi-city
+            </Button>
+          </div>
+
+          {/* Swap button - top */}
+          <div className="flex justify-center mb-4">
+            <Button
+              variant="default"
+              className="bg-green-500 text-white rounded-full border border-green-600 z-10 px-4 py-2 flex items-center gap-2 font-medium transition"
+              onClick={swapLocations}
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              SWAP
+            </Button>
+          </div>
+
+          {/* Search Form */}
+          <div className="relative grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="relative">
+              <div className="flex items-center mb-1">
+                <Plane className="h-4 w-4 md:h-5 md:w-5 text-green-600 mr-2" />
+                <label className="block text-xs md:text-sm text-black font-medium">
+                  From
+                </label>
+              </div>
               <Input
-                placeholder="From"
                 value={fromLocation}
                 onChange={(e) => setFromLocation(e.target.value)}
-                className="pr-10"
+                className="py-4 md:py-6 text-sm md:text-base text-black"
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-0 h-full"
-                onClick={swapLocations}
-              >
-                <ArrowRightLeft className="h-4 w-4" />
-              </Button>
             </div>
-            <Input
-              placeholder="To"
-              value={toLocation}
-              onChange={(e) => setToLocation(e.target.value)}
-            />
+
+            <div className="relative">
+              <div className="flex items-center mb-1">
+                <Plane className="h-4 w-4 md:h-5 md:w-5 text-green-600 mr-2" />
+                <label className="block text-xs md:text-sm text-black font-medium">
+                  To
+                </label>
+              </div>
+              <Input
+                value={toLocation}
+                onChange={(e) => setToLocation(e.target.value)}
+                className="py-4 md:py-6 text-sm md:text-base text-black"
+              />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 relative">
+            <div className="relative">
+              <div className="flex items-center mb-1">
+                <CalendarIcon className="h-4 w-4 md:h-5 md:w-5 text-green-600 mr-2" />
+                <label className="block text-xs md:text-sm text-black font-medium">
+                  Departure
+                </label>
+              </div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal"
+                    className="w-full justify-start text-left font-normal py-4 md:py-6 text-sm md:text-base text-black"
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
                     {departureDate ? (
                       format(departureDate, "PPP")
                     ) : (
-                      <span>Departure Date</span>
+                      <span>Pick a date</span>
                     )}
                   </Button>
                 </PopoverTrigger>
@@ -565,7 +650,10 @@ const TravelPage: React.FC = () => {
                   <Calendar
                     mode="single"
                     selected={departureDate}
-                    onSelect={(date) => date && setDepartureDate(date)}
+                    onSelect={(date) => {
+                      setDepartureDate(date);
+                      document.body.click(); // Close the popover
+                    }}
                     initialFocus
                   />
                 </PopoverContent>
@@ -573,18 +661,23 @@ const TravelPage: React.FC = () => {
             </div>
 
             {isRoundTrip && (
-              <div>
+              <div className="relative">
+                <div className="flex items-center mb-1">
+                  <CalendarIcon className="h-4 w-4 md:h-5 md:w-5 text-green-600 mr-2" />
+                  <label className="block text-xs md:text-sm text-black font-medium">
+                    Return
+                  </label>
+                </div>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-full justify-start text-left font-normal"
+                      className="w-full justify-start text-left font-normal py-4 md:py-6 text-sm md:text-base text-black"
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
                       {returnDate ? (
                         format(returnDate, "PPP")
                       ) : (
-                        <span>Return Date</span>
+                        <span>Pick a date</span>
                       )}
                     </Button>
                   </PopoverTrigger>
@@ -592,7 +685,10 @@ const TravelPage: React.FC = () => {
                     <Calendar
                       mode="single"
                       selected={returnDate}
-                      onSelect={(date) => setReturnDate(date)}
+                      onSelect={(date) => {
+                        setReturnDate(date);
+                        document.body.click(); // Close the popover
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -600,137 +696,184 @@ const TravelPage: React.FC = () => {
               </div>
             )}
 
-            <div>
+            {/* Removed swap button between departure and return */}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="relative">
+              <div className="flex items-center mb-1">
+                <User className="h-4 w-4 md:h-5 md:w-5 text-green-600 mr-2" />
+                <label className="block text-xs md:text-sm text-black font-medium">
+                  Passengers
+                </label>
+              </div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal"
+                    className="w-full justify-start text-left font-normal py-4 md:py-6 text-sm md:text-base text-black"
                   >
-                    <User className="mr-2 h-4 w-4" />
                     {passengers}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <div className="grid gap-4">
-                    <div className="grid gap-2">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Adults</p>
-                          <p className="text-sm text-gray-500">Age 12+</p>
-                        </div>
+                <PopoverContent className="w-80 p-4">
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Passengers</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span>Adults</span>
                         <div className="flex items-center space-x-2">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              setAdultCount(Math.max(1, adultCount - 1))
+                            }
+                            disabled={adultCount <= 1}
                           >
                             -
                           </Button>
-                          <span>1</span>
+                          <span className="w-8 text-center">{adultCount}</span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() => setAdultCount(adultCount + 1)}
                           >
                             +
                           </Button>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Children</p>
-                          <p className="text-sm text-gray-500">Age 2-11</p>
-                        </div>
+                      <div className="flex justify-between items-center">
+                        <span>Children</span>
                         <div className="flex items-center space-x-2">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              setChildCount(Math.max(0, childCount - 1))
+                            }
+                            disabled={childCount <= 0}
                           >
                             -
                           </Button>
-                          <span>0</span>
+                          <span className="w-8 text-center">{childCount}</span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() => setChildCount(childCount + 1)}
                           >
                             +
                           </Button>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium">Infants</p>
-                          <p className="text-sm text-gray-500">Under 2</p>
-                        </div>
+                      <div className="flex justify-between items-center">
+                        <span>Infants</span>
                         <div className="flex items-center space-x-2">
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() =>
+                              setInfantCount(Math.max(0, infantCount - 1))
+                            }
+                            disabled={infantCount <= 0}
                           >
                             -
                           </Button>
-                          <span>0</span>
+                          <span className="w-8 text-center">{infantCount}</span>
                           <Button
                             variant="outline"
                             size="icon"
-                            className="h-8 w-8 rounded-full"
+                            className="h-8 w-8"
+                            onClick={() => setInfantCount(infantCount + 1)}
                           >
                             +
                           </Button>
                         </div>
                       </div>
                     </div>
-                    <Button className="w-full">Apply</Button>
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        const newPassengerText = `${adultCount} Adult${adultCount > 1 ? "s" : ""}, ${childCount} child${childCount > 1 ? "ren" : ""}, ${infantCount} infant${infantCount > 1 ? "s" : ""}`;
+                        setPassengers(newPassengerText);
+                        document.body.click(); // Close the popover
+                      }}
+                    >
+                      Apply
+                    </Button>
                   </div>
                 </PopoverContent>
               </Popover>
             </div>
 
-            <div>
+            <div className="relative">
+              <div className="flex items-center mb-1">
+                <Badge className="h-4 w-4 md:h-5 md:w-5 bg-green-600 text-white p-0 flex items-center justify-center mr-2">
+                  <span className="text-[10px]">C</span>
+                </Badge>
+                <label className="block text-xs md:text-sm text-black font-medium">
+                  Class
+                </label>
+              </div>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
-                    className="w-full justify-start text-left font-normal"
+                    className="w-full justify-start text-left font-normal py-4 md:py-6 text-sm md:text-base text-black"
                   >
-                    <span className="mr-2">🛋️</span>
-                    {travelClass}
+                    <span>{travelClass}</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-56">
-                  <div className="grid gap-2">
-                    <Button
-                      variant="ghost"
-                      className="justify-start"
-                      onClick={() => setTravelClass("Economy")}
-                    >
-                      Economy
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start"
-                      onClick={() => setTravelClass("Premium Economy")}
-                    >
-                      Premium Economy
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start"
-                      onClick={() => setTravelClass("Business")}
-                    >
-                      Business
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="justify-start"
-                      onClick={() => setTravelClass("First Class")}
-                    >
-                      First Class
-                    </Button>
+                <PopoverContent className="w-56 p-4">
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Select Class</h4>
+                    <div className="space-y-2">
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => {
+                          setTravelClass("Economy");
+                          document.body.click(); // Close the popover
+                        }}
+                      >
+                        Economy
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => {
+                          setTravelClass("Premium Economy");
+                          document.body.click(); // Close the popover
+                        }}
+                      >
+                        Premium Economy
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => {
+                          setTravelClass("Business");
+                          document.body.click(); // Close the popover
+                        }}
+                      >
+                        Business
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start"
+                        onClick={() => {
+                          setTravelClass("First Class");
+                          document.body.click(); // Close the popover
+                        }}
+                      >
+                        First Class
+                      </Button>
+                    </div>
                   </div>
                 </PopoverContent>
               </Popover>
@@ -738,135 +881,57 @@ const TravelPage: React.FC = () => {
           </div>
 
           <Button
-            className="w-full md:w-auto px-8 bg-green-600 hover:bg-green-700"
+            className="w-full bg-green-500 hover:bg-green-600 text-white py-4 md:py-6 text-base md:text-lg mt-2"
             onClick={handleSearch}
           >
-            <Search className="mr-2 h-4 w-4" /> Search Flights
+            <Search className="mr-2 h-4 w-4 md:h-5 md:w-5" />
+            Search Flights
           </Button>
-        </Card>
-
-        {/* Featured Deals */}
-        <div className="mb-8">
-          <h2 className="text-xl font-bold mb-4 text-white">Featured Deals</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="overflow-hidden">
-                <div
-                  className="h-40 bg-cover bg-center"
-                  style={{
-                    backgroundImage: `url(https://images.unsplash.com/photo-${1550000000000 + i * 1000}?w=500&q=80)`,
-                  }}
-                ></div>
-                <div className="p-4">
-                  <h3 className="font-bold mb-2">
-                    {
-                      ["Bali Getaway", "Singapore Escape", "Tokyo Adventure"][
-                        i - 1
-                      ]
-                    }
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-2">
-                    {["3 nights", "4 nights", "5 nights"][i - 1]} package with
-                    flights
-                  </p>
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-green-600">
-                      IDR {[2500000, 4500000, 7500000][i - 1].toLocaleString()}
-                    </span>
-                    <Button size="sm">View Deal</Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
         </div>
+      </div>
 
-        {/* Staff Link */}
-        <div className="text-center mt-8">
-          <StaffLink />
-        </div>
-      </main>
-
-      {/* Auth Form Modal */}
+      {/* Auth Form */}
       {showAuthForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full relative">
-            <Button
-              className="absolute top-2 right-2 z-50"
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                console.log("❌ Close clicked");
-                setShowAuthForm(false);
-              }}
-            >
-              <span className="text-xl">✕</span>
-            </Button>
-
-            <h2 className="text-xl font-bold mb-4">
-              {authFormType === "login" ? "Login" : "Register"}
-            </h2>
-            <AuthForm
-              initialTab={authFormType}
-              onClose={() => {
-                console.log("✅ Auth form closed");
-                setShowAuthForm(false);
-              }}
-            />
-          </div>
-        </div>
-      )}
-      {showStaffRegister && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded shadow-md w-full max-w-4xl relative">
-            <Button
-              className="absolute top-2 right-2"
-              size="icon"
-              variant="ghost"
-              onClick={() => setShowStaffRegister(false)}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-            <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
-
-            {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
-            {/*   <FormProvider {...staffForm}>
-              <StaffForm
-                control={staffForm.control}
-                watch={staffForm.watch}
-                setValue={staffForm.setValue}
-                existingImages={{
-                  idCard: "",
-                  ktp: "",
-                  sim: "",
-                  kk: "",
-                  skck: "",
-                }}
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">
+                {authFormType === "login" ? "Log In" : "Register"}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowAuthForm(false)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </Button>
+            </div>
+            <div className="p-4">
+              <AuthForm
+                initialTab={authFormType}
+                onAuthStateChange={handleAuthStateChange}
+                onClose={() => setShowAuthForm(false)}
               />
-            </FormProvider>*/}
-          </div>
+            </div>
+          </Card>
         </div>
       )}
     </div>
   );
 };
-
-const CalendarIcon = (props: any) => (
-  <svg
-    {...props}
-    width="15"
-    height="15"
-    viewBox="0 0 15 15"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      d="M4.5 1C4.77614 1 5 1.22386 5 1.5V2H10V1.5C10 1.22386 10.2239 1 10.5 1C10.7761 1 11 1.22386 11 1.5V2H12.5C13.3284 2 14 2.67157 14 3.5V12.5C14 13.3284 13.3284 14 12.5 14H2.5C1.67157 14 1 13.3284 1 12.5V3.5C1 2.67157 1.67157 2 2.5 2H4V1.5C4 1.22386 4.22386 1 4.5 1ZM2.5 3C2.22386 3 2 3.22386 2 3.5V5H13V3.5C13 3.22386 12.7761 3 12.5 3H2.5ZM13 6H2V12.5C2 12.7761 2.22386 13 2.5 13H12.5C12.7761 13 13 12.7761 13 12.5V6ZM7 7.5C7 7.22386 7.22386 7 7.5 7C7.77614 7 8 7.22386 8 7.5C8 7.77614 7.77614 8 7.5 8C7.22386 8 7 7.77614 7 7.5ZM9.5 7C9.22386 7 9 7.22386 9 7.5C9 7.77614 9.22386 8 9.5 8C9.77614 8 10 7.77614 10 7.5C10 7.22386 9.77614 7 9.5 7ZM11 7.5C11 7.22386 11.2239 7 11.5 7C11.7761 7 12 7.22386 12 7.5C12 7.77614 11.7761 8 11.5 8C11.2239 8 11 7.77614 11 7.5ZM3.5 9C3.22386 9 3 9.22386 3 9.5C3 9.77614 3.22386 10 3.5 10C3.77614 10 4 9.77614 4 9.5C4 9.22386 3.77614 9 3.5 9ZM5 9.5C5 9.22386 5.22386 9 5.5 9C5.77614 9 6 9.22386 6 9.5C6 9.77614 5.77614 10 5.5 10C5.22386 10 5 9.77614 5 9.5ZM7.5 9C7.22386 9 7 9.22386 7 9.5C7 9.77614 7.22386 10 7.5 10C7.77614 10 8 9.77614 8 9.5C8 9.22386 7.77614 9 7.5 9ZM9 9.5C9 9.22386 9.22386 9 9.5 9C9.77614 9 10 9.22386 10 9.5C10 9.77614 9.77614 10 9.5 10C9.22386 10 9 9.77614 9 9.5ZM11.5 9C11.2239 9 11 9.22386 11 9.5C11 9.77614 11.2239 10 11.5 10C11.7761 10 12 9.77614 12 9.5C12 9.22386 11.7761 9 11.5 9ZM3 11.5C3 11.2239 3.22386 11 3.5 11C3.77614 11 4 11.2239 4 11.5C4 11.7761 3.77614 12 3.5 12C3.22386 12 3 11.7761 3 11.5ZM5.5 11C5.22386 11 5 11.2239 5 11.5C5 11.7761 5.22386 12 5.5 12C5.77614 12 6 11.7761 6 11.5C6 11.2239 5.77614 11 5.5 11ZM7 11.5C7 11.2239 7.22386 11 7.5 11C7.77614 11 8 11.2239 8 11.5C8 11.7761 7.77614 12 7.5 12C7.22386 12 7 11.7761 7 11.5ZM9.5 11C9.22386 11 9 11.2239 9 11.5C9 11.7761 9.22386 12 9.5 12C9.77614 12 10 11.7761 10 11.5C10 11.2239 9.77614 11 9.5 11Z"
-      fill="currentColor"
-      fillRule="evenodd"
-      clipRule="evenodd"
-    ></path>
-  </svg>
-);
 
 export default TravelPage;

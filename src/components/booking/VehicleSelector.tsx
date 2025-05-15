@@ -53,6 +53,7 @@ interface Vehicle {
   features: string[];
   vehicle_type_id?: number;
   vehicle_type_name?: string;
+  license_plate?: string;
 }
 
 interface VehicleSelectorProps {
@@ -121,9 +122,12 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
         const { data, error } = await supabase
           .from("vehicles")
           .select(
-            `id, make, model, type, price, image, seats, transmission, fuel_type, available, features, vehicle_type_id, 
-            vehicle_types(id, name)`,
+            `
+    id, make, model, type, price, image, seats, transmission, fuel_type, available, features, license_plate, vehicle_type_id, is_with_driver,
+    vehicle_types(id, name)
+  `,
           )
+
           .limit(10);
 
         if (error) {
@@ -173,6 +177,8 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
             vehicle_type_name: vehicleTypeData
               ? vehicleTypeData.name
               : undefined,
+            license_plate: car.license_plate || "",
+            isWithDriver: car.is_with_driver || false,
           };
         });
 
@@ -418,6 +424,12 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
                         <CardTitle className="text-lg">
                           {vehicle.name}
                         </CardTitle>
+                        {vehicle.license_plate && (
+                          <div className="inline-block bg-gray-100 text-gray-800 text-m font-bold px-2 py-0.5 rounded-md mb-1">
+                            {vehicle.license_plate}
+                          </div>
+                        )}
+
                         <div className="flex items-center mt-1">
                           {getVehicleTypeIcon(vehicle.type)}
                           <span className="text-xs text-muted-foreground ml-1 capitalize">
@@ -432,11 +444,19 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
                       </div>
                       <Badge
                         variant={vehicle.available ? "default" : "outline"}
-                        className={vehicle.available ? "bg-green-500" : ""}
+                        className={
+                          vehicle.available
+                            ? vehicle.isWithDriver
+                              ? "bg-yellow-500" // Warna beda untuk with driver
+                              : "bg-green-500"
+                            : ""
+                        }
                       >
                         {vehicle.available
-                          ? t("vehicleSelector.available")
-                          : t("vehicleSelector.unavailable")}
+                          ? vehicle.isWithDriver
+                            ? "Available - With Driver"
+                            : "Available"
+                          : "Unavailable"}
                       </Badge>
                     </div>
                   </CardHeader>

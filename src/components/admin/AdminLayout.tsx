@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   CheckSquare,
   Package,
+  Plane,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -100,6 +101,13 @@ const AdminLayout = () => {
             >
               <CalendarDays className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">Bookings</span>}
+            </Link>
+            <Link
+              to="/admin/airport-transfer"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/airport-transfer") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen && "justify-center"}`}
+            >
+              <Plane className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Airport Transfer</span>}
             </Link>
             <Link
               to="/admin/cars"

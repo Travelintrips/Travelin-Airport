@@ -39,6 +39,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 interface Booking {
   id: number;
+  driver_name?: string;
   kode_booking?: string;
   user_id: string;
   vehicle_id: number;
@@ -57,7 +58,7 @@ interface Booking {
   };
   driver?: {
     id: number;
-    full_name: string;
+    driver_name: string;
   };
 }
 
@@ -129,10 +130,11 @@ export default function BookingManagement() {
         .from("bookings")
         .select(
           `
-          *,
-          user:users(full_name, email),
-          driver:drivers(id, full_name)
-        `,
+    *,
+    user:users(full_name, email, role),
+    driver:fk_bookings_driver(id, name),
+    vehicle:vehicles(make, model, license_plate)
+  `,
         )
         .order("created_at", { ascending: false });
 
@@ -526,6 +528,17 @@ export default function BookingManagement() {
     });
   };
 
+  function formatTimeTo12Hour(timeString: string) {
+    if (!timeString) return "-";
+    const [hourStr, minuteStr] = timeString.split(":");
+    let hour = parseInt(hourStr, 10);
+    const minute = minuteStr;
+    const ampm = hour >= 12 ? "PM" : "AM";
+    hour = hour % 12;
+    hour = hour ? hour : 12; // jam 0 jadi 12
+    return `${hour}:${minute} ${ampm}`;
+  }
+
   return (
     <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
       <div className="flex justify-between items-center mb-6">
@@ -666,30 +679,33 @@ export default function BookingManagement() {
                 </TableCell>
                 <TableCell>
                   {/* Vehicle information is not available in the current schema */}
-                  Vehicle ID: {booking.vehicle_id || "N/A"}
+                  Vehicle: {booking.vehicle?.make} {booking.vehicle?.model}
                 </TableCell>
                 <TableCell>
-                  {booking.driver_option === "With driver" ? (
-                    <span className="flex items-center gap-1">
+                  {booking.driver_option === "provided" ? (
+                    <>
                       <Badge
                         variant="outline"
-                        className="bg-blue-100 text-blue-800 border-blue-300"
+                        className="bg-blue-100 text-blue-800 border-blue-300 mb-1"
                       >
                         With Driver
                       </Badge>
-                      {booking.driver?.full_name || "Assigned driver"}
-                    </span>
-                  ) : booking.driver_option === "Without driver" ? (
+                      <div>
+                        {booking.driver?.name || booking.driver_name || "-"}
+                      </div>
+                    </>
+                  ) : booking.driver_option === "self" ? (
                     <Badge
                       variant="outline"
                       className="bg-gray-100 text-gray-800 border-gray-300"
                     >
-                      Without Driver
+                      Self Drive
                     </Badge>
                   ) : (
                     "-"
                   )}
                 </TableCell>
+
                 <TableCell>
                   {formatDateDDMMYYYY(booking.start_date)} -{" "}
                   {formatDateDDMMYYYY(booking.end_date)}
@@ -721,7 +737,9 @@ export default function BookingManagement() {
                     variant="outline"
                     size="sm"
                     className="flex items-center gap-1 bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-300 font-medium"
-                    onClick={() => navigate(`/damage-payment/${booking.id}`)}
+                    onClick={() =>
+                      navigate(`/admin/damage-payment/${booking.id}`)
+                    }
                   >
                     <AlertTriangle className="h-4 w-4" />
                     Damage Payment
@@ -759,7 +777,7 @@ export default function BookingManagement() {
                         <Activity className="h-4 w-4" />
                         Onride{" "}
                         {booking.pickup_time
-                          ? `(${formatDateDDMMYYYY(booking.pickup_time)})`
+                          ? `(${formatTimeTo12Hour(booking.pickup_time)})`
                           : ""}
                       </Button>
                       <Button
@@ -773,6 +791,7 @@ export default function BookingManagement() {
                       </Button>
                     </>
                   )}
+
                   {booking.status !== "onride" &&
                     booking.status !== "completed" &&
                     booking.status !== "cancelled" && (
@@ -819,23 +838,43 @@ export default function BookingManagement() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold">Vehicle Information</h3>
+
                   <p>
                     <span className="font-medium">Vehicle ID:</span>{" "}
                     {currentBooking.vehicle_id || "N/A"}
                   </p>
+
+                  <p>
+                    <span className="font-medium">Make:</span>{" "}
+                    {currentBooking.vehicle?.make || "N/A"}
+                  </p>
+
+                  <p>
+                    <span className="font-medium">Model:</span>{" "}
+                    {currentBooking.vehicle?.model || "N/A"}
+                  </p>
+
+                  <p>
+                    <span className="font-medium">License Plate:</span>{" "}
+                    {currentBooking.vehicle?.license_plate || "N/A"}
+                  </p>
                 </div>
+
                 <div>
                   <h3 className="text-lg font-semibold">Booking Information</h3>
                   <p>
                     <span className="font-medium">Start Date:</span>{" "}
                     {formatDateDDMMYYYY(currentBooking.start_date)}
                   </p>
-                  {currentBooking.driver_option === "With driver" && (
-                    <p>
+                  {currentBooking.driver_option === "provided" && (
+                    <div>
                       <span className="font-medium">Driver:</span>{" "}
-                      {currentBooking.driver?.full_name || "Assigned driver"}
-                    </p>
+                      {currentBooking.driver?.name ||
+                        currentBooking.driver_name ||
+                        "Assigned driver"}
+                    </div>
                   )}
+
                   <p>
                     <span className="font-medium">End Date:</span>{" "}
                     {formatDateDDMMYYYY(currentBooking.end_date)}
@@ -855,9 +894,10 @@ export default function BookingManagement() {
                   {currentBooking.pickup_time && (
                     <p>
                       <span className="font-medium">Pickup Time:</span>{" "}
-                      {formatDateDDMMYYYY(currentBooking.pickup_time)}
+                      {formatTimeTo12Hour(currentBooking.pickup_time)}
                     </p>
                   )}
+
                   <p>
                     <span className="font-medium">Created At:</span>{" "}
                     {formatDateDDMMYYYY(currentBooking.created_at)}
@@ -900,23 +940,34 @@ export default function BookingManagement() {
                       Payment Transactions
                     </h4>
                     {payments.map((payment) => (
-                      <div key={payment.id} className="p-3 border rounded-md">
+                      <div
+                        key={payment.id}
+                        className="p-3 border rounded-md space-y-1"
+                      >
                         <p>
                           <span className="font-medium">Amount:</span>{" "}
                           {formatCurrency(payment.amount || 0)}
                         </p>
                         <p>
                           <span className="font-medium">Method:</span>{" "}
-                          {payment.payment_method}
+                          {payment.payment_method || "-"}
                         </p>
                         <p>
                           <span className="font-medium">Status:</span>{" "}
-                          {payment.status}
+                          {payment.status || "-"}
                         </p>
                         <p>
                           <span className="font-medium">Date:</span>{" "}
                           {formatDateDDMMYYYY(payment.created_at)}
                         </p>
+
+                        {/* Jika ada kerusakan */}
+                        {payment.damage_payment?.damage_description && (
+                          <p className="text-sm text-red-500 mt-2">
+                            <span className="font-medium">Damage:</span>{" "}
+                            {payment.damage_payment.damage_description}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>

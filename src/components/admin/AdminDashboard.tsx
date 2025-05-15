@@ -602,6 +602,7 @@ const AdminDashboard = () => {
               <UserCog className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">Drivers</span>}
             </Link>
+
             <Link
               to="bookings"
               className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/bookings") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
@@ -609,6 +610,7 @@ const AdminDashboard = () => {
               <CalendarDays className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">Bookings</span>}
             </Link>
+            {/*Airport Transfer*/}
             <Link
               to="cars"
               className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/cars") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}

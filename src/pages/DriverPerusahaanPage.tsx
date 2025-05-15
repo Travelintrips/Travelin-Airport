@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { ArrowLeft, UploadCloud, User, LogIn } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import AuthForm from "@/components/auth/AuthForm";
-import useAuth from "../hooks/useAuth";
+import { useAuth } from "../hooks/useAuth";
 
 const UploadField = ({
   label,

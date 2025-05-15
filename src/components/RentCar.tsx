@@ -27,7 +27,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { Badge } from "./ui/badge";
-import useAuth from "../hooks/useAuth";
+import { useAuth } from "../hooks/useAuth";
 import { useVehicleData } from "@/hooks/useVehicleData";
 
 interface Vehicle {
@@ -54,7 +54,7 @@ const RentCar = () => {
   const navigate = useNavigate();
   const { modelName } = useParams<{ modelName: string }>();
   const { t, i18n } = useTranslation();
-  const { isAuthenticated, userRole, userEmail, signOut } = useAuth();
+  const { isAuthenticated, userRole, userEmail, userName, signOut } = useAuth();
 
   // Use the custom hook for vehicle data
   const {
@@ -277,6 +277,8 @@ const RentCar = () => {
     }
   };
 
+  const [customerName, setCustomerName] = useState<string | null>(null);
+
   return (
     <div
       className={`min-h-screen bg-background ${theme === "dark" ? "dark" : ""}`}
@@ -355,7 +357,9 @@ const RentCar = () => {
                 )}
                 <Button variant="outline" className="flex items-center gap-2">
                   <User className="h-4 w-4" />
-                  {userEmail ? userEmail.split("@")[0] : t("navbar.myAccount")}
+                  {userName
+                    ? userName
+                    : userEmail?.split("@")[0] || t("navbar.myAccount")}
                 </Button>
                 <Button variant="destructive" onClick={handleLogout}>
                   {t("navbar.signOut")}
@@ -409,8 +413,7 @@ const RentCar = () => {
                 size="lg"
                 className="flex items-center gap-2 shadow-md hover:shadow-lg transition-all hover:bg-primary-dark cursor-pointer active:scale-95"
                 onClick={() => {
-                  window.location.href =
-                    "https://amazing-cannon2-qguam.view-3.tempo-dev.app/rentcar";
+                  window.location.href = "/rentcar";
                 }}
               >
                 <Car className="h-5 w-5" />

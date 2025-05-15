@@ -27,7 +27,7 @@ export async function processPayment(paymentData: PaymentRequest) {
           .from("payments")
           .insert({
             user_id: paymentData.userId,
-            booking_id: paymentData.bookingId,
+            booking_id: paymentData.bookingId.toString(),
             amount: paymentData.amount,
             payment_method: paymentData.paymentMethod,
             status: "completed",
@@ -35,6 +35,7 @@ export async function processPayment(paymentData: PaymentRequest) {
             bank_name: paymentData.bankName || null,
             is_partial_payment: paymentData.isPartialPayment || false,
             // Remove is_damage_payment as it doesn't exist in the schema
+
             created_at: new Date().toISOString(),
           })
           .select()
@@ -87,19 +88,26 @@ export async function processPayment(paymentData: PaymentRequest) {
         JSON.stringify(edgeFunctionError),
       );
 
+      // Handle guest users with a special guest ID format
+      let userId = paymentData.userId;
+      if (userId === "guest-user") {
+        userId = `guest-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+      }
+
       // Direct database operation fallback
       // 1. Create payment record
       const { data: paymentRecord, error: paymentError } = await supabase
         .from("payments")
         .insert({
-          user_id: paymentData.userId,
-          booking_id: paymentData.bookingId,
+          user_id: userId,
+          booking_id: paymentData.bookingId.toString(), // Ensure bookingId is a string
           amount: paymentData.amount,
           payment_method: paymentData.paymentMethod,
           status: "completed",
           transaction_id: paymentData.transactionId || null,
           bank_name: paymentData.bankName || null,
           is_partial_payment: paymentData.isPartialPayment || false,
+
           created_at: new Date().toISOString(),
         })
         .select()
@@ -225,17 +233,24 @@ export async function createPayment(paymentData: {
   isPartialPayment?: boolean;
 }) {
   try {
+    // Handle guest users with a special guest ID format
+    let userId = paymentData.userId;
+    if (userId === "guest-user") {
+      userId = `guest-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    }
+
     const { data, error } = await supabase
       .from("payments")
       .insert({
-        user_id: paymentData.userId,
-        booking_id: paymentData.bookingId,
+        user_id: userId,
+        booking_id: paymentData.bookingId.toString(), // Ensure bookingId is a string
         amount: paymentData.amount,
         payment_method: paymentData.paymentMethod,
         status: paymentData.status || "completed",
         transaction_id: paymentData.transactionId || null,
         bank_name: paymentData.bankName || null,
         is_partial_payment: paymentData.isPartialPayment || false,
+
         created_at: new Date().toISOString(),
       })
       .select();

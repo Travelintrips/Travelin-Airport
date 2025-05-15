@@ -91,6 +91,35 @@ const AuthForm: React.FC<AuthFormProps> = ({
     },
   });
 
+  const handleLoginSuccess = (authData: Session) => {
+    const userMeta = authData.user?.user_metadata || {};
+    const userFullName =
+      (userMeta.full_name && userMeta.full_name.trim()) ||
+      (userMeta.name && userMeta.name.trim()) ||
+      authData.user.email?.split("@")[0] ||
+      "Guest";
+
+    const userData = {
+      id: authData.user.id,
+      role: userMeta.role || "", // Kalau ada userMeta.role
+      email: authData.user.email || "",
+      name: userFullName,
+    };
+
+    localStorage.setItem("auth_user", JSON.stringify(userData));
+    localStorage.setItem("userName", userFullName);
+    localStorage.setItem("userId", authData.user.id);
+    if (authData.user.email) {
+      localStorage.setItem("userEmail", authData.user.email);
+    }
+
+    console.log("User logged in:", userData);
+
+    if (onAuthStateChange) {
+      onAuthStateChange(true);
+    }
+  };
+
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -101,17 +130,21 @@ const AuthForm: React.FC<AuthFormProps> = ({
     try {
       console.log("Login submission started with email:", data.email);
 
-      // Force sign out first to clear any existing session
-      await supabase.auth.signOut();
-      console.log("✅ Forced signOut before login attempt");
+      // Clear any previous session data to prevent conflicts
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("auth_user");
+      localStorage.removeItem("driverData");
+      localStorage.removeItem("userName");
 
-      // Small delay to ensure signOut completes
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
+      console.log("Attempting to sign in with email:", data.email);
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
+
+      console.log("Sign in response:", error ? "Error" : "Success");
 
       if (error) {
         console.error("Login error:", error);
@@ -119,7 +152,9 @@ const AuthForm: React.FC<AuthFormProps> = ({
         return;
       }
 
-      const userRole = authData.user?.user_metadata?.role || "User";
+      const userRole = authData.user?.user_metadata?.role || "Customer";
+      const isAdmin = userRole === "Admin";
+      localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
 
       if (userRole === "Driver") {
         const { data: driverData, error: driverError } = await supabase
@@ -138,19 +173,39 @@ const AuthForm: React.FC<AuthFormProps> = ({
           return;
         }
       }
+      handleLoginSuccess(authData);
+      onLogin(data);
 
-      localStorage.setItem("userRole", userRole);
+      {
+        /*    localStorage.setItem("userRole", userRole);
       localStorage.setItem("userId", authData.user.id);
       if (authData.user.email) {
         localStorage.setItem("userEmail", authData.user.email);
+      } */
+      }
+
+      const userMeta = authData.user?.user_metadata || {};
+
+      let userFullName = "";
+      if (userMeta.full_name) {
+        userFullName = userMeta.full_name.trim();
+      } else if (userMeta.name) {
+        userFullName = userMeta.name.trim();
+      } else if (authData.user?.email) {
+        userFullName = authData.user.email.split("@")[0];
+      } else {
+        userFullName = "Guest"; // fallback kalau semuanya gagal
       }
 
       const userData = {
         id: authData.user.id,
         role: userRole,
         email: authData.user.email || "",
+        name: userFullName,
       };
+
       localStorage.setItem("auth_user", JSON.stringify(userData));
+      localStorage.setItem("userName", userFullName);
 
       console.log("User logged in with role:", userRole);
       console.log("User logged in successfully with ID:", authData.user.id);
@@ -164,9 +219,27 @@ const AuthForm: React.FC<AuthFormProps> = ({
         console.log("No onAuthStateChange handler provided");
       }
 
-      if (userRole === "Admin" || userRole === "Staff") {
-        console.log(`Redirecting ${userRole} user to admin panel`);
+      // Force immediate redirect for Admin users
+      if (userRole === "Admin" || isAdmin) {
+        console.log("Redirecting Admin user to admin panel");
         navigate("/admin");
+      } else if (userRole === "Staff Trips") {
+        console.log("Redirecting Staff user to sub-account panel");
+        const token = authData.session?.access_token; // ambil access_token dari session
+        const refresh_token = authData.session?.refresh_token;
+
+        if (token && refresh_token) {
+          window.open(
+            `https://agitated-chaplygin5-37ywx.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh_token}`,
+            "_blank",
+          );
+        } else {
+          console.error(
+            "No access token or refresh token found for Staff Trips user.",
+          );
+        }
+      } else {
+        console.log("No redirect needed for role:", userRole);
       }
 
       if (onClose) {

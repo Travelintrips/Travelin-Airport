@@ -6,6 +6,8 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
+import AirportTransferPreview from "./pages/AirportTransferPreview";
+
 import DamagePaymentForm from "./components/payment/DamagePaymentForm";
 import routes from "tempo-routes";
 import RentCar from "./components/RentCar";
@@ -29,11 +31,12 @@ import InspectionManagement from "./components/admin/InspectionManagement";
 import ChecklistManagement from "./components/admin/ChecklistManagement";
 import DamageManagement from "./components/admin/DamageManagement";
 import VehicleInventory from "./components/admin/VehicleInventory";
+import AirportTransferManagement from "./components/admin/AirportTransferManagement";
 import AirportTransferPage from "./pages/AirportTransferPage";
 import DriverMitraPage from "./pages/DriverMitraPage";
 import DriverPerusahaanPage from "./pages/DriverPerusahaanPage";
 import DriverProfile from "./components/DriverProfile";
-import useAuth from "./hooks/useAuth";
+import { useAuth } from "./hooks/useAuth";
 
 declare global {
   interface Window {
@@ -53,6 +56,12 @@ const ROLES = {
 function App() {
   const { isAuthenticated, userRole, isLoading, userEmail, isAdmin } =
     useAuth();
+
+  console.log("App.tsx - Current auth state:", {
+    isAuthenticated,
+    userRole,
+    isAdmin,
+  });
   const navigate = useNavigate();
 
   // isAdmin is now directly provided by the useAuth hook
@@ -60,17 +69,39 @@ function App() {
 
   React.useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      if (userRole === ROLES.STAFF_TRIPS) {
-        window.location.href =
-          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
-      } else if (userRole === ROLES.STAFF) {
-        window.location.href =
-          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
+      const currentPath = window.location.pathname;
+
+      // Debug output to help diagnose issues
+      console.log("Current authentication state:", {
+        isAuthenticated,
+        userRole,
+        isAdmin,
+        userEmail,
+        currentPath,
+      });
+
+      // Check if user is admin either by role or isAdmin flag
+      if (userRole === ROLES.ADMIN || isAdmin) {
+        console.log("Admin user detected, redirecting to admin dashboard");
+        // Always redirect admin users to admin dashboard if they're not already there
+        if (!currentPath.includes("/admin")) {
+          // Use navigate with replace: true to prevent back button issues
+          navigate("/admin", { replace: true });
+        }
+      } else if (userRole === ROLES.STAFF_TRIPS || userRole === ROLES.STAFF) {
+        // Hanya block redirect kalau sekarang sudah di home page ("/")
+        if (currentPath === "/" || currentPath === "/home") {
+          // ✅ Stay di TravelPage, tidak redirect
+        } else {
+          // ✅ Kalau login di /auth atau dimanapun selain "/" atau "/home", langsung redirect ke sub-account
+          window.location.href =
+            "https://priceless-moore1-lbkq9.view-3.tempo-dev.app/sub-account";
+        }
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
-        navigate("/driver-profile"); // ✅ SPA navigation
+        navigate("/driver-profile");
       }
     }
-  }, [isAuthenticated, isLoading, userRole]);
+  }, [isAuthenticated, isLoading, userRole, isAdmin, userEmail, navigate]);
 
   const ProtectedRoute = ({
     children,
@@ -85,8 +116,10 @@ function App() {
       return <div>Loading...</div>;
     }
 
-    // Special case for admin email
-    if (isAdmin) {
+    // Special case for admin - check both isAdmin flag and userRole
+    // This ensures that users with admin emails or admin roles can access admin routes
+    if (isAdmin || userRole === ROLES.ADMIN) {
+      console.log("Admin access granted via isAdmin flag or Admin role");
       return children;
     }
 
@@ -95,9 +128,12 @@ function App() {
       return <Navigate to="/" />;
     }
 
-    console.log("Current user role:", userRole);
-    console.log("Required role:", requiredRole);
-    console.log("Allowed roles:", allowedRoles);
+    console.log("Protected route check:", {
+      userRole,
+      requiredRole,
+      allowedRoles,
+      isAdmin,
+    });
 
     if (requiredRole && userRole !== requiredRole) {
       console.log(
@@ -169,6 +205,10 @@ function App() {
               />
               <Route path="/driver-profile" element={<DriverProfile />} />
               <Route
+                path="/airport-preview"
+                element={<AirportTransferPreview />}
+              />
+              <Route
                 path="/new-booking"
                 element={
                   <ProtectedRoute
@@ -215,6 +255,14 @@ function App() {
                 <Route
                   path="vehicle-inventory"
                   element={<VehicleInventory />}
+                />
+                <Route
+                  path="airport-transfer"
+                  element={<AirportTransferManagement />}
+                />
+                <Route
+                  path="damage-payment/:bookingId"
+                  element={<DamagePaymentForm />}
                 />
               </Route>
 
@@ -301,6 +349,14 @@ function App() {
               <Route path="checklist" element={<ChecklistManagement />} />
               <Route path="damages" element={<DamageManagement />} />
               <Route path="vehicle-inventory" element={<VehicleInventory />} />
+              <Route
+                path="airport-transfer"
+                element={<AirportTransferManagement />}
+              />
+              <Route
+                path="damage-payment/:bookingId"
+                element={<DamagePaymentForm />}
+              />
             </Route>
 
             <Route path="*" element={<Navigate to="/" />} />
