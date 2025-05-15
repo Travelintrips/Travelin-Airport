@@ -69,7 +69,6 @@ function App() {
 
   React.useEffect(() => {
     if (isAuthenticated && !isLoading) {
-<<<<<<< HEAD
       const currentPath = window.location.pathname;
 
       // Debug output to help diagnose issues
@@ -90,26 +89,11 @@ function App() {
           navigate("/admin", { replace: true });
         }
       } else if (userRole === ROLES.STAFF_TRIPS || userRole === ROLES.STAFF) {
-        // Hanya block redirect kalau sekarang sudah di home page ("/")
-        if (currentPath === "/" || currentPath === "/home") {
-          // ✅ Stay di TravelPage, tidak redirect
-        } else {
-          // ✅ Kalau login di /auth atau dimanapun selain "/" atau "/home", langsung redirect ke sub-account
-          window.location.href =
-            "https://priceless-moore1-lbkq9.view-3.tempo-dev.app/sub-account";
-        }
-      } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
-        navigate("/driver-profile");
-=======
-      if (userRole === ROLES.STAFF_TRIPS) {
-        window.location.href =
-          "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
-      } else if (userRole === ROLES.STAFF) {
+        // Redirect to sub-account
         window.location.href =
           "https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account";
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
-        navigate("/driver-profile"); // ✅ SPA navigation
->>>>>>> 369d854 (roby2)
+        navigate("/driver-profile"); // SPA navigation
       }
     }
   }, [isAuthenticated, isLoading, userRole, isAdmin, userEmail, navigate]);
