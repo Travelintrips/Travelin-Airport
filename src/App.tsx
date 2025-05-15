@@ -7,7 +7,6 @@ import {
   useNavigate,
 } from "react-router-dom";
 import AirportTransferPreview from "./pages/AirportTransferPreview";
-
 import DamagePaymentForm from "./components/payment/DamagePaymentForm";
 import routes from "tempo-routes";
 import RentCar from "./components/RentCar";
@@ -205,10 +204,6 @@ function App() {
               />
               <Route path="/driver-profile" element={<DriverProfile />} />
               <Route
-                path="/airport-preview"
-                element={<AirportTransferPreview />}
-              />
-              <Route
                 path="/new-booking"
                 element={
                   <ProtectedRoute
@@ -301,6 +296,10 @@ function App() {
             />
             <Route path="/airport-transfer" element={<AirportTransferPage />} />
             <Route path="/driver-mitra" element={<DriverMitraPage />} />
+            <Route
+              path="/airport-preview"
+              element={<AirportTransferPreview />}
+            />
             <Route
               path="/driver-perusahaan"
               element={<DriverPerusahaanPage />}
