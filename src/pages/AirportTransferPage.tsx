@@ -179,64 +179,61 @@ export default function AirportTransferPage() {
     return `AT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
-  async function handlePreview() {
-    if (
-      !airportLocation ||
-      !pickupDate ||
-      !pickupTime ||
-      !vehicleType ||
-      !fullName ||
-      !phoneNumber ||
-      !fromTerminalName ||
-      !toAddress
-    ) {
-      alert("Please complete all required fields.");
-      return;
-    }
+  async function handlePreview(event: React.MouseEvent<HTMLButtonElement>) {
+  event.preventDefault(); // ⬅️ INI PENTING
 
-    const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-    const price = calculatePrice(distance, vehicleType);
-
-    const previewData = {
-      airport_location: airportLocation,
-      customer_name: fullName,
-      phone: phoneNumber,
-      pickup_location: fromTerminalName,
-      dropoff_location: toAddress,
-      pickup_date: pickupDate,
-      pickup_time: pickupTime,
-      type: vehicleType,
-      passenger,
-      price,
-      model: null,
-      vehicle_name: null,
-      booking_code: generateBookingCode(),
-      customer_id: null,
-    };
-
-    const previewCode = `preview-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 6)}`;
-
-    const { error, data } = await supabase
-      .from("airport_transfer_preview")
-      .insert([{ preview_code: previewCode, data: previewData }]);
-
-    console.log("Insert result:", { data, error, previewCode });
-
-    if (error) {
-      alert("Gagal membuat preview: " + error.message);
-      return;
-    }
-
-    // ✅ Cek apakah previewCode valid
-    if (!previewCode) {
-      alert("Kode preview tidak valid.");
-      return;
-    }
-
-    navigate(`/airport-preview/${previewCode}`);
+  if (
+    !airportLocation ||
+    !pickupDate ||
+    !pickupTime ||
+    !vehicleType ||
+    !fullName ||
+    !phoneNumber ||
+    !fromTerminalName ||
+    !toAddress
+  ) {
+    alert("Please complete all required fields.");
+    return;
   }
+
+  const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
+  const price = calculatePrice(distance, vehicleType);
+
+  const previewData = {
+    airport_location: airportLocation,
+    customer_name: fullName,
+    phone: phoneNumber,
+    pickup_location: fromTerminalName,
+    dropoff_location: toAddress,
+    pickup_date: pickupDate,
+    pickup_time: pickupTime,
+    type: vehicleType,
+    passenger,
+    price,
+    model: null,
+    vehicle_name: null,
+    booking_code: generateBookingCode(),
+    customer_id: null,
+  };
+
+  const previewCode = `preview-${Date.now()}-${Math.random()
+    .toString(36)
+    .substring(2, 6)}`;
+
+  const { error, data } = await supabase
+    .from("airport_transfer_preview")
+    .insert([{ preview_code: previewCode, data: previewData }]);
+
+  console.log("Insert result:", { data, error, previewCode });
+
+  if (error) {
+    alert("Gagal membuat preview: " + error.message);
+    return;
+  }
+
+  navigate(`/airport-preview/${previewCode}`);
+}
+
 
   async function getRouteDistanceViaOSRM(
     from: [number, number],
