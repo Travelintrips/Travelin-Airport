@@ -405,14 +405,11 @@ export function useAuth() {
   }, []);
 
   const [userName, setUserName] = useState<string | null>(null);
-  const [showAuthForm, setShowAuthForm] = useState(false);
 
   return {
     isAuthenticated,
-    setIsAuthenticated,
     userRole,
     role: userRole, // Add role alias for userRole to match component expectations
-    setUserRole,
     userId,
     userEmail,
     userName,

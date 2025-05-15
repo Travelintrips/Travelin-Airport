@@ -1,7 +1,7 @@
 import StaffForm from "../components/auth/forms/StaffForm";
 import { RegisterFormValues } from "../components/auth/RegistrationForm";
 import { useForm, FormProvider } from "react-hook-form";
-import { useLocation } from "react-router-dom"; // pastikan import ini ada
+import { useLocation } from "react-router-dom";
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -30,16 +30,14 @@ import {
   Globe,
   ChevronDown,
   User,
-  X,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
-import UserDropdown from "@/components/UserDropdown";
-import { useAuth } from "@/hooks/useAuth";
+import StaffLink from "@/components/StaffLink";
+import useAuth from "@/hooks/useAuth";
 
 const TravelPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, setIsAuthenticated, userRole, signOut, isAdmin } =
-    useAuth();
+  const { isAuthenticated, userRole, signOut, setUserRole } = useAuth();
 
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
@@ -55,7 +53,7 @@ const TravelPage = () => {
   const [childCount, setChildCount] = useState(0);
   const [infantCount, setInfantCount] = useState(0);
   const [travelClass, setTravelClass] = useState("Economy");
-  const [showStaffRegister, setShowStaffRegister] = useState(false);
+  const [userName, setUserName] = useState<string>("");
 
   // Check authentication status
   useEffect(() => {
@@ -99,35 +97,52 @@ const TravelPage = () => {
           .eq("user_id", userId)
           .single();
 
-        const authUserObj = authUser ? JSON.parse(authUser) : {};
-        const userName =
-          authUserObj?.name ||
-          localStorage.getItem("userName") ||
-          (authUserObj?.email ? authUserObj.email.split("@")[0] : "User");
+          let roleFromDB = "Customer"; // Default role
 
-        localStorage.setItem("userName", userName);
+          if (staffData) {
+            roleFromDB = staffData.role || staffData.position || "Customer";
+          }
 
-        // Store in auth_user for shared authentication
-        const userData = {
-          id: userId,
-          role: userRole,
-          email: data.session.user.email || "",
-          name: userName,
-        };
-        localStorage.setItem("auth_user", JSON.stringify(userData));
-      }
-    };
-    checkAuth();
+          // Simpan ke localStorage
+          localStorage.setItem("userRole", roleFromDB);
 
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        const newAuthState = !!session;
-        setIsAuthenticated(newAuthState);
+          // Set ke state supaya real-time tampil
+          setUserRole(roleFromDB);
 
-        // If user becomes authenticated, hide the auth form
-        if (newAuthState) {
-          setShowAuthForm(false);
+          // 🔥 Update userName
+          const userNameFromAuth =
+            (session.user.user_metadata?.full_name &&
+              session.user.user_metadata.full_name.trim()) ||
+            session.user.user_metadata?.name ||
+            userEmail?.split("@")[0] ||
+            "User";
+
+          setUserName(userNameFromAuth);
+
+          // Debug
+          console.log("🟢 SIGNED_IN triggered");
+          console.log("✅ userName:", userNameFromAuth);
+          console.log("✅ userRole:", roleFromDB);
+
+          const token = session.access_token;
+          const refresh = session.refresh_token;
+
+          // ✅ Redirect kalau perlu
+          if (roleFromDB === "Staff" || roleFromDB === "Staff Trips") {
+            console.log("⏳ Redirecting after 300ms...");
+            setTimeout(() => {
+              window.location.href = `https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh}`;
+            }, 300);
+          }
+        }
+
+        if (event === "SIGNED_OUT") {
+          console.log("🔴 SIGNED_OUT detected");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("auth_user");
+          localStorage.removeItem("userName");
+          setUserName("");
+          setUserRole(""); // clear role
         }
       },
     );
@@ -136,55 +151,6 @@ const TravelPage = () => {
       authListener?.subscription.unsubscribe();
     };
   }, []);
-
-  const handleAuthStateChange = (state: boolean) => {
-    setIsAuthenticated(state);
-    if (state) {
-      // Always close the auth form when authentication state changes to true
-      setShowAuthForm(false);
-
-      // Get user data from localStorage if available
-      const userId = localStorage.getItem("userId");
-      const userRole = localStorage.getItem("userRole");
-      const userEmail = localStorage.getItem("userEmail");
-
-      // Store user data in localStorage for shared authentication
-      if (userId && userRole) {
-        const userData = {
-          id: userId,
-          role: userRole,
-          email: userEmail || "",
-        };
-        localStorage.setItem("auth_user", JSON.stringify(userData));
-      }
-
-      // Check if user is admin and redirect to admin dashboard
-      console.log("TravelPage auth state change - userRole:", userRole);
-      const authUserStr = localStorage.getItem("auth_user");
-      if (authUserStr) {
-        try {
-          const authUser = JSON.parse(authUserStr);
-          console.log("TravelPage auth_user from localStorage:", authUser);
-        } catch (e) {
-          console.error("Error parsing auth_user in TravelPage:", e);
-        }
-      }
-
-      if (userRole === "Admin") {
-        console.log("Redirecting admin to dashboard");
-        navigate("/admin");
-      } else {
-        // Stay on the current page (TravelPage) after successful login
-        // No navigation needed as we're already on the TravelPage
-      }
-    } else {
-      // Remove user data from localStorage on logout
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
-    }
-  };
 
   const handleSearch = () => {
     if (!isAuthenticated) {
@@ -940,6 +906,22 @@ const TravelPage = () => {
               <X className="w-4 h-4" />
             </Button>
             <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
+
+            {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
+            {/*   <FormProvider {...staffForm}>
+              <StaffForm
+                control={staffForm.control}
+                watch={staffForm.watch}
+                setValue={staffForm.setValue}
+                existingImages={{
+                  idCard: "",
+                  ktp: "",
+                  sim: "",
+                  kk: "",
+                  skck: "",
+                }}
+              />
+            </FormProvider>*/}
           </div>
         </div>
       )}
