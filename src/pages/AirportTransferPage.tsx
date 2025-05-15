@@ -26,29 +26,26 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY,
 );
 
-// This function will be moved inside the component where it has access to state variables
+const handleSwapLocation = () => {
+  console.log("🔁 Swapping pickup & dropoff...");
+
+  // 1. Swap koordinat
+  const tempLoc = fromLocation;
+  setFromLocation(toLocation);
+  setToLocation(tempLoc);
+
+  // 2. Swap label
+  const tempTerminal = fromTerminalName;
+  const tempAddress = toAddress;
+
+  const isAddressValidTerminal = terminals.some((t) => t.name === tempAddress);
+
+  // 3. Atur label dengan aman
+  setFromTerminalName(isAddressValidTerminal ? tempAddress : "");
+  setToAddress(tempTerminal); // walaupun ini nama terminal, AddressSearch bisa menampilkannya
+};
 
 export default function AirportTransferPage() {
-  const handleSwapLocation = () => {
-    console.log("🔁 Swapping pickup & dropoff...");
-
-    // 1. Swap koordinat
-    const tempLoc = fromLocation;
-    setFromLocation(toLocation);
-    setToLocation(tempLoc);
-
-    // 2. Swap label
-    const tempTerminal = fromTerminalName;
-    const tempAddress = toAddress;
-
-    const isAddressValidTerminal = terminals.some(
-      (t) => t.name === tempAddress,
-    );
-
-    // 3. Atur label dengan aman
-    setFromTerminalName(isAddressValidTerminal ? tempAddress : "");
-    setToAddress(tempTerminal); // walaupun ini nama terminal, AddressSearch bisa menampilkannya
-  };
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -145,7 +142,7 @@ export default function AirportTransferPage() {
 
   async function handleSubmit() {
     const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-    const price = calculatePrice(distance, vehicleType);
+    const price = calculatePrice(distance);
 
     const payload = {
       airport_location: airportLocation,
@@ -176,6 +173,10 @@ export default function AirportTransferPage() {
       console.log("Insert success:", data);
       navigate("/success");
     }
+  }
+
+  function generateBookingCode() {
+    return `AT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
   async function handlePreview() {
@@ -398,9 +399,7 @@ export default function AirportTransferPage() {
                     );
                     if (selectedTerminal) {
                       setFromTerminalName(selectedTerminal.name);
-                      setFromLocation(
-                        selectedTerminal.position as [number, number],
-                      );
+                      setFromLocation(selectedTerminal.position);
                     } else if (selected === null) {
                       setFromTerminalName("");
                       setFromLocation([0, 0]); // opsional: reset koordinat
@@ -436,7 +435,29 @@ export default function AirportTransferPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleSwapLocation()}
+                    onClick={() => {
+                      console.log("🔁 Swapping locations...");
+
+                      // Swap koordinat
+                      const tempLoc = fromLocation;
+                      setFromLocation(toLocation);
+                      setToLocation(tempLoc);
+
+                      // Swap label
+                      const tempTerminal = fromTerminalName;
+                      const tempAddress = toAddress;
+
+                      // Validasi: apakah alamat tujuan adalah terminal valid?
+                      const isValidTerminal = terminals.some(
+                        (t) => t.name === tempAddress,
+                      );
+
+                      // Jika alamat valid sebagai terminal, set ke dropdown
+                      setFromTerminalName(tempAddress);
+
+                      // Jika yang sebelumnya terminal valid, tampilkan di dropoff
+                      setToAddress(tempTerminal);
+                    }}
                     title="Swap pickup & dropoff"
                   >
                     <ArrowRightLeft className="h-5 w-5" />
@@ -464,7 +485,7 @@ export default function AirportTransferPage() {
                 className="w-full border rounded-md p-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 ref={(input) => {
                   if (input) {
-                    (window as any).flatpickr(input, {
+                    window.flatpickr(input, {
                       dateFormat: "Y-m-d",
                       onChange: (selectedDates, dateStr) => {
                         setPickupDate(dateStr);
