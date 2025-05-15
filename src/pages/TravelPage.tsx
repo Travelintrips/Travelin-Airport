@@ -1,7 +1,3 @@
-import StaffForm from "../components/auth/forms/StaffForm";
-import { RegisterFormValues } from "../components/auth/RegistrationForm";
-import { useForm, FormProvider } from "react-hook-form";
-import { useLocation } from "react-router-dom";
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -32,13 +28,11 @@ import {
   User,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
-import StaffLink from "@/components/StaffLink";
-import useAuth from "@/hooks/useAuth";
+import UserDropdown from "@/components/UserDropdown";
 
 const TravelPage = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, userRole, signOut, setUserRole } = useAuth();
-
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -53,7 +47,6 @@ const TravelPage = () => {
   const [childCount, setChildCount] = useState(0);
   const [infantCount, setInfantCount] = useState(0);
   const [travelClass, setTravelClass] = useState("Economy");
-  const [userName, setUserName] = useState<string>("");
 
   // Check authentication status
   useEffect(() => {
@@ -97,60 +90,92 @@ const TravelPage = () => {
           .eq("user_id", userId)
           .single();
 
-          let roleFromDB = "Customer"; // Default role
+        const userName =
+          authUser?.name ||
+          localStorage.getItem("userName") ||
+          authUser?.email?.split("@")[0] ||
+          "User";
 
-          if (staffData) {
-            roleFromDB = staffData.role || staffData.position || "Customer";
-          }
+        localStorage.setItem("userName", userName);
 
-          // Simpan ke localStorage
-          localStorage.setItem("userRole", roleFromDB);
+        // Store in auth_user for shared authentication
+        const userData = {
+          id: userId,
+          role: userRole,
+          email: data.session.user.email || "",
+          name: userName,
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      }
+    };
+    checkAuth();
 
-          // Set ke state supaya real-time tampil
-          setUserRole(roleFromDB);
+    // Listen for auth changes
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        const newAuthState = !!session;
+        setIsAuthenticated(newAuthState);
 
-          // 🔥 Update userName
-          const userNameFromAuth =
-            (session.user.user_metadata?.full_name &&
-              session.user.user_metadata.full_name.trim()) ||
-            session.user.user_metadata?.name ||
-            userEmail?.split("@")[0] ||
-            "User";
-
-          setUserName(userNameFromAuth);
-
-          // Debug
-          console.log("🟢 SIGNED_IN triggered");
-          console.log("✅ userName:", userNameFromAuth);
-          console.log("✅ userRole:", roleFromDB);
-
-          const token = session.access_token;
-          const refresh = session.refresh_token;
-
-          // ✅ Redirect kalau perlu
-          if (roleFromDB === "Staff" || roleFromDB === "Staff Trips") {
-            console.log("⏳ Redirecting after 300ms...");
-            setTimeout(() => {
-              window.location.href = `https://elated-swanson3-mpqbn.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh}`;
-            }, 300);
-          }
-        }
-
-        if (event === "SIGNED_OUT") {
-          console.log("🔴 SIGNED_OUT detected");
-          localStorage.removeItem("userRole");
-          localStorage.removeItem("auth_user");
-          localStorage.removeItem("userName");
-          setUserName("");
-          setUserRole(""); // clear role
+        // If user becomes authenticated, hide the auth form
+        if (newAuthState) {
+          setShowAuthForm(false);
         }
       },
     );
 
     return () => {
-      authListener?.subscription.unsubscribe();
+      authListener.subscription.unsubscribe();
     };
   }, []);
+
+  const handleAuthStateChange = (state: boolean) => {
+    setIsAuthenticated(state);
+    if (state) {
+      // Always close the auth form when authentication state changes to true
+      setShowAuthForm(false);
+
+      // Get user data from localStorage if available
+      const userId = localStorage.getItem("userId");
+      const userRole = localStorage.getItem("userRole");
+      const userEmail = localStorage.getItem("userEmail");
+
+      // Store user data in localStorage for shared authentication
+      if (userId && userRole) {
+        const userData = {
+          id: userId,
+          role: userRole,
+          email: userEmail || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      }
+
+      // Check if user is admin and redirect to admin dashboard
+      console.log("TravelPage auth state change - userRole:", userRole);
+      const authUserStr = localStorage.getItem("auth_user");
+      if (authUserStr) {
+        try {
+          const authUser = JSON.parse(authUserStr);
+          console.log("TravelPage auth_user from localStorage:", authUser);
+        } catch (e) {
+          console.error("Error parsing auth_user in TravelPage:", e);
+        }
+      }
+
+      if (userRole === "Admin") {
+        console.log("Redirecting admin to dashboard");
+        navigate("/admin");
+      } else {
+        // Stay on the current page (TravelPage) after successful login
+        // No navigation needed as we're already on the TravelPage
+      }
+    } else {
+      // Remove user data from localStorage on logout
+      localStorage.removeItem("auth_user");
+      localStorage.removeItem("userId");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("userEmail");
+    }
+  };
 
   const handleSearch = () => {
     if (!isAuthenticated) {
@@ -867,62 +892,42 @@ const TravelPage = () => {
 
       {/* Auth Form */}
       {showAuthForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full relative">
-            <Button
-              className="absolute top-2 right-2 z-50"
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                console.log("❌ Close clicked");
-                setShowAuthForm(false);
-              }}
-            >
-              <span className="text-xl">✕</span>
-            </Button>
-
-            <h2 className="text-xl font-bold mb-4">
-              {authFormType === "login" ? "Login" : "Register"}
-            </h2>
-            <AuthForm
-              initialTab={authFormType}
-              onClose={() => {
-                console.log("✅ Auth form closed");
-                setShowAuthForm(false);
-              }}
-            />
-          </div>
-        </div>
-      )}
-      {showStaffRegister && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
-          <div className="bg-white p-6 rounded shadow-md w-full max-w-4xl relative">
-            <Button
-              className="absolute top-2 right-2"
-              size="icon"
-              variant="ghost"
-              onClick={() => setShowStaffRegister(false)}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-            <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
-
-            {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
-            {/*   <FormProvider {...staffForm}>
-              <StaffForm
-                control={staffForm.control}
-                watch={staffForm.watch}
-                setValue={staffForm.setValue}
-                existingImages={{
-                  idCard: "",
-                  ktp: "",
-                  sim: "",
-                  kk: "",
-                  skck: "",
-                }}
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">
+                {authFormType === "login" ? "Log In" : "Register"}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowAuthForm(false)}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-5"
+                >
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </Button>
+            </div>
+            <div className="p-4">
+              <AuthForm
+                initialTab={authFormType}
+                onAuthStateChange={handleAuthStateChange}
+                onClose={() => setShowAuthForm(false)}
               />
-            </FormProvider>*/}
-          </div>
+            </div>
+          </Card>
         </div>
       )}
     </div>
