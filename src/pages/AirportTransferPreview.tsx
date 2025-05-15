@@ -14,6 +14,7 @@ const supabase = createClient(
 );
 
 export default function AirportTransferPreview() {
+  const { previewCode } = useParams();
   const [data, setData] = useState<any>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>("cash");
   const [bankName, setBankName] = useState<string>("");
@@ -23,7 +24,6 @@ export default function AirportTransferPreview() {
   >("idle");
   const [progress, setProgress] = useState<number>(0);
   const navigate = useNavigate();
-
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
