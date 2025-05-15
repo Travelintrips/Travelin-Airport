@@ -179,10 +179,7 @@ export default function AirportTransferPage() {
     return `AT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
-  async function handlePreview(event: React.MouseEvent<HTMLButtonElement>) {
-<<<<<<< HEAD
-    event.preventDefault(); // ⬅️ INI PENTING
-
+  async function handlePreview() {
     if (
       !airportLocation ||
       !pickupDate ||
@@ -226,67 +223,20 @@ export default function AirportTransferPage() {
       .insert([{ preview_code: previewCode, data: previewData }]);
 
     console.log("Insert result:", { data, error, previewCode });
-=======
-  event.preventDefault(); // ⬅️ INI PENTING
 
-  if (
-    !airportLocation ||
-    !pickupDate ||
-    !pickupTime ||
-    !vehicleType ||
-    !fullName ||
-    !phoneNumber ||
-    !fromTerminalName ||
-    !toAddress
-  ) {
-    alert("Please complete all required fields.");
-    return;
-  }
->>>>>>> f3b8922034a4aa01839bde6629f77c9b23c84ffd
+    if (error) {
+      alert("Gagal membuat preview: " + error.message);
+      return;
+    }
 
-  const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-  const price = calculatePrice(distance, vehicleType);
+    // ✅ Cek apakah previewCode valid
+    if (!previewCode) {
+      alert("Kode preview tidak valid.");
+      return;
+    }
 
-  const previewData = {
-    airport_location: airportLocation,
-    customer_name: fullName,
-    phone: phoneNumber,
-    pickup_location: fromTerminalName,
-    dropoff_location: toAddress,
-    pickup_date: pickupDate,
-    pickup_time: pickupTime,
-    type: vehicleType,
-    passenger,
-    price,
-    model: null,
-    vehicle_name: null,
-    booking_code: generateBookingCode(),
-    customer_id: null,
-  };
-
-  const previewCode = `preview-${Date.now()}-${Math.random()
-    .toString(36)
-    .substring(2, 6)}`;
-
-  const { error, data } = await supabase
-    .from("airport_transfer_preview")
-    .insert([{ preview_code: previewCode, data: previewData }]);
-
-  console.log("Insert result:", { data, error, previewCode });
-
-  if (error) {
-    alert("Gagal membuat preview: " + error.message);
-    return;
-  }
-
-<<<<<<< HEAD
     navigate(`/airport-preview/${previewCode}`);
   }
-=======
-  navigate(`/airport-preview/${previewCode}`);
-}
-
->>>>>>> f3b8922034a4aa01839bde6629f77c9b23c84ffd
 
   async function getRouteDistanceViaOSRM(
     from: [number, number],
