@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { processPayment } from "@/lib/paymentService";
 import { CreditCard, Wallet, Building2, ArrowLeft } from "lucide-react";
+import { useParams } from "react-router-dom";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -23,28 +24,37 @@ export default function AirportTransferPreview() {
   const [progress, setProgress] = useState<number>(0);
   const navigate = useNavigate();
 
+  const { previewCode } = useParams();
+
   useEffect(() => {
-    const stored = localStorage.getItem("airport_preview");
-    if (stored) {
-      const parsedData = JSON.parse(stored);
+    const fetchPreview = async () => {
+      const { data: record, error } = await supabase
+        .from("airport_transfer_preview")
+        .select("data")
+        .eq("preview_code", previewCode)
+        .single();
 
-      // Check if user is logged in and update customer_id
-      const getUser = async () => {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          // If user is logged in, use their ID as customer_id
-          parsedData.customer_id = user.id;
-        }
-        setData(parsedData);
-      };
+      if (!record || error) {
+        console.error("Preview not found", error);
+        navigate("/airport-transfer");
+        return;
+      }
 
-      getUser();
-    } else {
-      navigate("/airport-transfer");
-    }
-  }, []);
+      const previewData = record.data;
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        previewData.customer_id = user.id;
+      }
+
+      setData(previewData);
+    };
+
+    fetchPreview();
+  }, [previewCode]);
 
   if (!data) return <div>Loading...</div>;
 

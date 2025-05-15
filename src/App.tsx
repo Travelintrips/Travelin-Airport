@@ -197,9 +197,10 @@ function App() {
                 element={<AirportTransferPage />}
               />
               <Route
-                path="/airport-preview"
+                path="/airport-preview/:previewCode"
                 element={<AirportTransferPreview />}
               />
+
               <Route path="/driver-mitra" element={<DriverMitraPage />} />
               <Route
                 path="/driver-perusahaan"

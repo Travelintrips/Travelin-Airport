@@ -214,8 +214,13 @@ export default function AirportTransferPage() {
       customer_id: null,
     };
 
-    localStorage.setItem("airport_preview", JSON.stringify(previewData));
-    navigate("/airport-preview");
+    const previewCode = `PREVIEW-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+    await supabase
+      .from("airport_transfer_preview")
+      .insert([{ preview_code: previewCode, data: previewData }]);
+
+    navigate(`/airport-preview/${previewCode}`);
   }
 
   async function getRouteDistanceViaOSRM(
