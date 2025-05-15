@@ -24,40 +24,36 @@ export default function AirportTransferPreview() {
   const [progress, setProgress] = useState<number>(0);
   const navigate = useNavigate();
 
-  const { previewCode } = useParams();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState(null);
 
   useEffect(() => {
     const fetchPreview = async () => {
+      if (!previewCode) return;
+
       const { data: record, error } = await supabase
         .from("airport_transfer_preview")
         .select("data")
         .eq("preview_code", previewCode)
         .single();
 
-      if (!record || error) {
-        console.error("Preview not found", error);
-        console.log("Fetching preview with code:", previewCode);
-        console.log("Supabase result:", record, error);
+      console.log("Fetching preview with code:", previewCode);
+      console.log("Supabase result:", record, error);
 
+      if (error || !record) {
+        console.error("Preview not found", error);
         navigate("/airport-transfer");
         return;
       }
 
-      const previewData = record.data;
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        previewData.customer_id = user.id;
-      }
-
-      setData(previewData);
+      setData(record.data);
+      setLoading(false);
     };
 
     fetchPreview();
   }, [previewCode]);
+
+  if (loading) return <div className="p-4">Loading preview...</div>;
 
   if (!data) return <div>Loading...</div>;
 
