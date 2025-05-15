@@ -1,3 +1,11 @@
+<<<<<<< HEAD
+=======
+import StaffForm from "../components/auth/forms/StaffForm";
+import { RegisterFormValues } from "../components/auth/forms/RegistrationForm";
+import { useForm, FormProvider } from "react-hook-form";
+
+import { useLocation } from "react-router-dom"; // pastikan import ini ada
+>>>>>>> f1e6284 (TravelPage.ts)
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
@@ -922,7 +930,6 @@ const TravelPage = () => {
           </div>
         </div>
       )}
-      {/* Staff Register Modal */}
       {showStaffRegister && (
         <div className="fixed inset-0 bg-black/50 z-50 flex justify-center items-center p-4">
           <div className="bg-white p-6 rounded shadow-md w-full max-w-4xl relative">
@@ -935,6 +942,7 @@ const TravelPage = () => {
               <X className="w-4 h-4" />
             </Button>
             <h2 className="text-xl font-bold mb-4">Staff Registration</h2>
+<<<<<<< HEAD
             {/* 
         Disini StaffForm 
         Pastikan kamu juga import StaffForm 
@@ -951,9 +959,27 @@ const TravelPage = () => {
                 skck: "",
               }}
             />
+=======
+
+            {/* ✅ Tambahkan FormProvider agar useFormContext di StaffForm bekerja */}
+         {/*   <FormProvider {...staffForm}>
+              <StaffForm
+                control={staffForm.control}
+                watch={staffForm.watch}
+                setValue={staffForm.setValue}
+                existingImages={{
+                  idCard: "",
+                  ktp: "",
+                  sim: "",
+                  kk: "",
+                  skck: "",
+                }}
+              />
+            </FormProvider>
+>>>>>>> f1e6284 (TravelPage.ts)
           </div>
         </div>
-      )}
+      )}*/}
     </div>
   );
 };
