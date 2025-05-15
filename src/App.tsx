@@ -163,7 +163,6 @@ function App() {
         {import.meta.env.VITE_TEMPO ? (
           <>
             {useRoutes(routes)}
-
             <Routes>
               <Route path="/payment/form/:id" element={<PaymentFormPage />} />
               <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
@@ -196,6 +195,10 @@ function App() {
               <Route
                 path="/airport-transfer"
                 element={<AirportTransferPage />}
+              />
+              <Route
+                path="/airport-preview"
+                element={<AirportTransferPreview />}
               />
               <Route path="/driver-mitra" element={<DriverMitraPage />} />
               <Route
@@ -296,10 +299,6 @@ function App() {
             />
             <Route path="/airport-transfer" element={<AirportTransferPage />} />
             <Route path="/driver-mitra" element={<DriverMitraPage />} />
-            <Route
-              path="/airport-preview"
-              element={<AirportTransferPreview />}
-            />
             <Route
               path="/driver-perusahaan"
               element={<DriverPerusahaanPage />}
