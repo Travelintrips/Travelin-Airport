@@ -179,7 +179,9 @@ export default function AirportTransferPage() {
     return `AT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
-  async function handlePreview() {
+  async function handlePreview(event: React.MouseEvent) {
+    event.preventDefault(); // ⬅️ ini sangat penting
+
     if (
       !airportLocation ||
       !pickupDate ||
@@ -222,20 +224,12 @@ export default function AirportTransferPage() {
       .from("airport_transfer_preview")
       .insert([{ preview_code: previewCode, data: previewData }]);
 
-    console.log("Insert result:", { data, error, previewCode });
-
     if (error) {
       alert("Gagal membuat preview: " + error.message);
       return;
     }
 
-    // ✅ Cek apakah previewCode valid
-    if (!previewCode) {
-      alert("Kode preview tidak valid.");
-      return;
-    }
-
-    navigate(`/airport-preview/${previewCode}`);
+    navigate(`/airport-preview/${previewCode}`); // ✅ Routing React
   }
 
   async function getRouteDistanceViaOSRM(
