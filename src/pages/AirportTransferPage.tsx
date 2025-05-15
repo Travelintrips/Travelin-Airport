@@ -46,6 +46,26 @@ const handleSwapLocation = () => {
 };
 
 export default function AirportTransferPage() {
+  const handleSwapLocation = () => {
+    console.log("🔁 Swapping pickup & dropoff...");
+
+    // 1. Swap koordinat
+    const tempLoc = fromLocation;
+    setFromLocation(toLocation);
+    setToLocation(tempLoc);
+
+    // 2. Swap label
+    const tempTerminal = fromTerminalName;
+    const tempAddress = toAddress;
+
+    const isAddressValidTerminal = terminals.some(
+      (t) => t.name === tempAddress,
+    );
+
+    // 3. Atur label dengan aman
+    setFromTerminalName(isAddressValidTerminal ? tempAddress : "");
+    setToAddress(tempTerminal); // walaupun ini nama terminal, AddressSearch bisa menampilkannya
+  };
   const { t } = useTranslation();
   const navigate = useNavigate();
 
