@@ -92,9 +92,11 @@ const TravelPage = () => {
 
         const authUserObj = authUser ? JSON.parse(authUser) : null;
         const userName =
-          authUserObj?.name ||
+          (authUserObj && "name" in authUserObj ? authUserObj.name : null) ||
           localStorage.getItem("userName") ||
-          (authUserObj?.email ? authUserObj.email.split("@")[0] : null) ||
+          (authUserObj && "email" in authUserObj && authUserObj.email
+            ? authUserObj.email.split("@")[0]
+            : null) ||
           "User";
 
         localStorage.setItem("userName", userName);
