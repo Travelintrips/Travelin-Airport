@@ -272,6 +272,11 @@ function App() {
           </>
         ) : (
           <Routes>
+            <Route
+              path="/airport-preview/:previewCode"
+              element={<AirportTransferPreview />}
+            />
+
             <Route path="/payment/form/:id" element={<PaymentFormPage />} />
             <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
             <Route path="/payment/:id" element={<PaymentDetailsPage />} />
