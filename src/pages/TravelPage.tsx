@@ -90,10 +90,11 @@ const TravelPage = () => {
           .eq("user_id", userId)
           .single();
 
+        const authUserObj = authUser ? JSON.parse(authUser) : null;
         const userName =
-          authUser?.name ||
+          authUserObj?.name ||
           localStorage.getItem("userName") ||
-          authUser?.email?.split("@")[0] ||
+          (authUserObj?.email ? authUserObj.email.split("@")[0] : null) ||
           "User";
 
         localStorage.setItem("userName", userName);

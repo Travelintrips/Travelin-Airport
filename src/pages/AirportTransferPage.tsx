@@ -449,29 +449,7 @@ export default function AirportTransferPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => {
-                      console.log("🔁 Swapping locations...");
-
-                      // Swap koordinat
-                      const tempLoc = fromLocation;
-                      setFromLocation(toLocation);
-                      setToLocation(tempLoc);
-
-                      // Swap label
-                      const tempTerminal = fromTerminalName;
-                      const tempAddress = toAddress;
-
-                      // Validasi: apakah alamat tujuan adalah terminal valid?
-                      const isValidTerminal = terminals.some(
-                        (t) => t.name === tempAddress,
-                      );
-
-                      // Jika alamat valid sebagai terminal, set ke dropdown
-                      setFromTerminalName(tempAddress);
-
-                      // Jika yang sebelumnya terminal valid, tampilkan di dropoff
-                      setToAddress(tempTerminal);
-                    }}
+                    onClick={handleSwapLocation}
                     title="Swap pickup & dropoff"
                   >
                     <ArrowRightLeft className="h-5 w-5" />
