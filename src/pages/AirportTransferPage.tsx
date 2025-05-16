@@ -41,25 +41,28 @@ export default function AirportTransferPage() {
   const [fromTerminalName, setFromTerminalName] = useState(""); // untuk pickup (dropdown)
   const [toAddress, setToAddress] = useState(""); // untuk dropoff (input alamat)
 
+  const [isPickupManual, setIsPickupManual] = useState(false); // true = input, false = dropdown
+  const [isDropoffManual, setIsDropoffManual] = useState(true); // awalnya dropoff adalah AddressSearch
+
   const handleSwapLocation = () => {
     console.log("🔁 Swapping pickup & dropoff...");
 
-    // 1. Swap koordinat
+    // Swap koordinat
     const tempLoc = fromLocation;
     setFromLocation(toLocation);
     setToLocation(tempLoc);
 
-    // 2. Swap label
-    const tempTerminal = fromTerminalName;
-    const tempAddress = toAddress;
+    // Swap nilai
+    const tempPickup = fromTerminalName;
+    const tempDrop = toAddress;
 
-    const isAddressValidTerminal = terminals.some(
-      (t) => t.name === tempAddress,
-    );
+    setFromTerminalName(tempDrop);
+    setToAddress(tempPickup);
 
-    // 3. Atur label dengan aman
-    setFromTerminalName(isAddressValidTerminal ? tempAddress : "");
-    setToAddress(tempTerminal); // walaupun ini nama terminal, AddressSearch bisa menampilkannya
+    // Swap mode input
+    const tempMode = isPickupManual;
+    setIsPickupManual(isDropoffManual);
+    setIsDropoffManual(tempMode);
   };
 
   function calculateDistance(
@@ -128,6 +131,8 @@ export default function AirportTransferPage() {
   const [airportLocation, setAirportLocation] = useState("");
   const [previewDistance, setPreviewDistance] = useState<number | null>(null);
   const [previewPrice, setPreviewPrice] = useState<number | null>(null);
+  const isFromTerminal = terminals.some((t) => t.name === fromTerminalName);
+  const isToTerminal = terminals.some((t) => t.name === toAddress);
 
   useEffect(() => {
     (async () => {
@@ -397,35 +402,44 @@ export default function AirportTransferPage() {
                 <label className="text-sm font-medium mb-2">
                   Pickup Location
                 </label>
-                <Select
-                  value={
-                    fromTerminalName
-                      ? { label: fromTerminalName, value: fromTerminalName }
-                      : null
-                  }
-                  options={terminals.map((t) => ({
-                    label: t.name,
-                    value: t.name,
-                  }))}
-                  onChange={(selected) => {
-                    const selectedTerminal = terminals.find(
-                      (t) => t.name === selected?.value,
-                    );
-                    if (selectedTerminal) {
-                      setFromTerminalName(selectedTerminal.name);
-                      setFromLocation(
-                        selectedTerminal.position as [number, number],
-                      );
-                    } else if (selected === null) {
-                      setFromTerminalName("");
-                      setFromLocation([0, 0]); // opsional: reset koordinat
+                {isPickupManual ? (
+                  <Input
+                    value={fromTerminalName}
+                    onChange={(e) => setFromTerminalName(e.target.value)}
+                    placeholder="Enter pickup address"
+                    className="border rounded-md p-2"
+                  />
+                ) : (
+                  <Select
+                    value={
+                      fromTerminalName
+                        ? { label: fromTerminalName, value: fromTerminalName }
+                        : null
                     }
-                  }}
-                  isClearable
-                  placeholder="Terminal or address"
-                  className="react-select-container"
-                  classNamePrefix="react-select"
-                />
+                    options={terminals.map((t) => ({
+                      label: t.name,
+                      value: t.name,
+                    }))}
+                    onChange={(selected) => {
+                      const selectedTerminal = terminals.find(
+                        (t) => t.name === selected?.value,
+                      );
+                      if (selectedTerminal) {
+                        setFromTerminalName(selectedTerminal.name);
+                        setFromLocation(
+                          selectedTerminal.position as [number, number],
+                        );
+                      } else if (selected === null) {
+                        setFromTerminalName("");
+                        setFromLocation([0, 0]);
+                      }
+                    }}
+                    isClearable
+                    placeholder="Terminal or address"
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                  />
+                )}
               </div>
 
               {/* To Location */}
@@ -435,18 +449,48 @@ export default function AirportTransferPage() {
                 </label>
                 <div className="flex items-center gap-2">
                   <div className="flex-grow">
-                    <AddressSearch
-                      label=""
-                      value={toAddress}
-                      onChange={(value) => {
-                        console.log("🏁 Selected Address:", value);
-                        setToAddress(value);
-                      }}
-                      onSelectPosition={(pos) => {
-                        console.log("📍 Dropoff Coordinates:", pos);
-                        setToLocation(pos);
-                      }}
-                    />
+                    {isDropoffManual ? (
+                      <AddressSearch
+                        label=""
+                        value={toAddress}
+                        onChange={(value) => {
+                          setToAddress(value);
+                        }}
+                        onSelectPosition={(pos) => {
+                          setToLocation(pos);
+                        }}
+                      />
+                    ) : (
+                      <Select
+                        value={
+                          toAddress
+                            ? { label: toAddress, value: toAddress }
+                            : null
+                        }
+                        options={terminals.map((t) => ({
+                          label: t.name,
+                          value: t.name,
+                        }))}
+                        onChange={(selected) => {
+                          const selectedTerminal = terminals.find(
+                            (t) => t.name === selected?.value,
+                          );
+                          if (selectedTerminal) {
+                            setToAddress(selectedTerminal.name);
+                            setToLocation(
+                              selectedTerminal.position as [number, number],
+                            );
+                          } else if (selected === null) {
+                            setToAddress("");
+                            setToLocation([0, 0]);
+                          }
+                        }}
+                        isClearable
+                        placeholder="Terminal or address"
+                        className="react-select-container"
+                        classNamePrefix="react-select"
+                      />
+                    )}
                   </div>
                   <Button
                     variant="ghost"
@@ -582,11 +626,13 @@ export default function AirportTransferPage() {
             {fromLocation && toLocation && (
               <div className="col-span-4 p-4 mt-4 bg-white rounded-lg shadow-lg max-w-md">
                 <h2 className="text-lg font-bold mb-4">Booking Summary</h2>
+
                 <p>
-                  <strong>From:</strong> {fromTerminalName || "-"}
+                  <strong>Pickup Location:</strong> {fromTerminalName || "-"}
                 </p>
+
                 <p>
-                  <strong>To Address:</strong> {toAddress || "-"}
+                  <strong>Dropoff Location:</strong> {toAddress || "-"}
                 </p>
 
                 <div className="mt-2">
