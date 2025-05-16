@@ -374,7 +374,7 @@ export default function AirportTransferPage() {
 
           <div className="mb-4">
             {/* Flex Horizontal */}
-            <div className="flex flex-col md:flex-row gap-3">
+            <div className="flex flex-col md:flex-row gap-3 mb-4">
               {/* From Terminal */}
               <div className="flex flex-col w-full md:w-1/4">
                 <label
@@ -510,7 +510,7 @@ export default function AirportTransferPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-5">
             {/* Pick Date */}
             <div className="flex flex-col">
               <label htmlFor="pickDate" className="text-sm font-medium mb-1">
@@ -624,7 +624,7 @@ export default function AirportTransferPage() {
 
             {/* Booking Summary - Positioned to the left and wider */}
             {fromLocation && toLocation && (
-              <div className="col-span-4 p-4 mt-4 bg-white rounded-lg shadow-lg max-w-md">
+              <div className="col-span-1 md:col-span-3 p-4 mt-4 bg-white rounded-lg shadow-lg max-w-full md:max-w-md">
                 <h2 className="text-lg font-bold mb-4">Booking Summary</h2>
 
                 <p>
@@ -673,61 +673,61 @@ export default function AirportTransferPage() {
       {/* Payment methods */}
       <div className="bg-gray-100 py-8">
         <div className="max-w-4xl mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-4 mb-12">
+          <div className="flex flex-wrap justify-center gap-3 md:gap-4 mb-8 md:mb-12">
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2025/05/visa-1.jpg"
               alt="Visa"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2025/05/paypal.png"
               alt="PayPal"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2025/05/MasterCard_Logo.svg.png"
               alt="Mastercard"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2025/05/Mandiri.png"
               alt="Mandiri"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/permata-bank3459.jpg"
               alt="Permata"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/bca-1.png"
               alt="BCA"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/maybank.png"
               alt="MayBank"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/danamon.png"
               alt="Danamon"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/cimb-niaga.png"
               alt="CIMB"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/bni.png"
               alt="BNI"
-              className="h-8"
+              className="h-6 md:h-8"
             />
             <img
               src="https://travelintrips.co.id/wp-content/uploads/2023/10/bri.png"
               alt="BRI"
-              className="h-8"
+              className="h-6 md:h-8"
             />
           </div>
 
@@ -743,10 +743,10 @@ export default function AirportTransferPage() {
               {t("airportTransfer.bookSteps.subtitle", "in 3 easy steps")}
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8">
               <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
-                  <Calendar className="h-8 w-8 text-yellow-500" />
+                <div className="bg-yellow-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
+                  <Calendar className="h-6 w-6 md:h-8 md:w-8 text-yellow-500" />
                 </div>
                 <h4 className="font-bold mb-2">
                   {t(
@@ -763,10 +763,10 @@ export default function AirportTransferPage() {
               </div>
 
               <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
+                <div className="bg-yellow-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-8 w-8 text-yellow-500"
+                    className="h-6 w-6 md:h-8 md:w-8 text-yellow-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -794,10 +794,10 @@ export default function AirportTransferPage() {
               </div>
 
               <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
+                <div className="bg-yellow-50 p-3 md:p-4 rounded-full mb-3 md:mb-4">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-8 w-8 text-yellow-500"
+                    className="h-6 w-6 md:h-8 md:w-8 text-yellow-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
