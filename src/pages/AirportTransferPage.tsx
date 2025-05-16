@@ -228,6 +228,9 @@ export default function AirportTransferPage() {
       alert("Gagal membuat preview: " + error.message);
       return;
     }
+    console.log("Preview payload:", previewData);
+    console.log("Navigating to:", `/airport-preview/${previewCode}`);
+    console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
 
     navigate(`/airport-preview/${previewCode}`); // ✅ Routing React
   }

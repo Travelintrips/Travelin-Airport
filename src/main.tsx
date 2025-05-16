@@ -7,8 +7,7 @@ import "./lib/i18n";
 
 import { TempoDevtools } from "tempo-devtools";
 
-// Only initialize TempoDevtools if Redux DevTools extension is available
-// This prevents the warning when the extension is not installed
+// Inisialisasi TempoDevtools hanya jika Redux DevTools tersedia
 if (
   typeof window !== "undefined" &&
   (window as any).__REDUX_DEVTOOLS_EXTENSION__
@@ -16,11 +15,9 @@ if (
   TempoDevtools.init();
 }
 
-const basename = import.meta.env.BASE_URL;
-
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter basename={basename}>
+    <BrowserRouter>
       <App />
     </BrowserRouter>
   </React.StrictMode>,
