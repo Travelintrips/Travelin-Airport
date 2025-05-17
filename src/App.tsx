@@ -1,4 +1,5 @@
-import React, { Suspense } from "react";
+import React, { Suspense, lazy } from "react";
+import ApiSettings from "./components/admin/ApiSettings";
 import {
   useRoutes,
   Routes,
@@ -207,6 +208,7 @@ function App() {
                 element={<DriverPerusahaanPage />}
               />
               <Route path="/driver-profile" element={<DriverProfile />} />
+
               <Route
                 path="/new-booking"
                 element={
@@ -237,6 +239,7 @@ function App() {
                   </ProtectedRoute>
                 }
               >
+                <Route path="api-settings" element={<ApiSettings />} />
                 <Route index element={<AdminDashboard />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="customers" element={<CustomerManagement />} />
@@ -357,6 +360,7 @@ function App() {
                 path="airport-transfer"
                 element={<AirportTransferManagement />}
               />
+              <Route path="api-settings" element={<ApiSettings />} />
               <Route
                 path="damage-payment/:bookingId"
                 element={<DamagePaymentForm />}

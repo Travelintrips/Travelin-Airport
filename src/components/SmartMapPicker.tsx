@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 type MapMode = "osm" | "google" | "static";
 
@@ -15,6 +16,28 @@ export default function SmartMapPicker({
 }: SmartMapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [mapMode, setMapMode] = useState<MapMode>("osm");
+
+  const [apiKey, setApiKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchKey = async () => {
+      const { data, error } = await supabase
+        .from("api_settings")
+        .select("google_maps_key")
+        .eq("id", 1) // ganti sesuai ID kamu
+        .single();
+
+      if (error) {
+        console.error("Failed to load Google Maps key", error);
+      } else {
+        setApiKey(data.google_maps_key);
+      }
+    };
+
+    fetchKey();
+  }, []);
+
+  if (!apiKey) return <div>Loading map...</div>;
 
   useEffect(() => {
     // AUTO MODE: detect saveData preference
@@ -70,10 +93,19 @@ export default function SmartMapPicker({
   };
 
   const loadGoogleMap = () => {
+    // Cegah duplikasi script
+    if (document.getElementById("google-maps-script")) {
+      initGoogleMap();
+      return;
+    }
+
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyDJDt0ULxwXGwov094dnxmgyNk3Njsu9Hg`;
+    script.id = "google-maps-script";
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
     script.async = true;
+    script.defer = true;
     script.onload = () => initGoogleMap();
+
     document.body.appendChild(script);
   };
 
@@ -98,7 +130,7 @@ export default function SmartMapPicker({
   if (mapMode === "static") {
     return (
       <img
-        src={`https://maps.googleapis.com/maps/api/staticmap?center=${position[0]},${position[1]}&zoom=14&size=600x300&maptype=roadmap&markers=color:red%7C${position[0]},${position[1]}&key=AIzaSyDJDt0ULxwXGwov094dnxmgyNk3Njsu9Hg`}
+        src={`https://maps.googleapis.com/maps/api/staticmap?center=${position[0]},${position[1]}&zoom=14&size=600x300&maptype=roadmap&markers=color:red%7C${position[0]},${position[1]}&key=${apiKey}`}
         alt="Static Map"
         className="rounded-md border w-full h-[300px] object-cover"
       />
