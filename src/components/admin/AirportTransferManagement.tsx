@@ -482,16 +482,6 @@ const AirportTransferManagement = () => {
                               <div className="flex space-x-1">
                                 <Button
                                   size="sm"
-                                  variant="default"
-                                  className="bg-primary-tosca hover:bg-primary-dark text-white"
-                                  onClick={() =>
-                                    handleProcessTransfer(transfer.id)
-                                  }
-                                >
-                                  Auto Assign
-                                </Button>
-                                <Button
-                                  size="sm"
                                   variant="outline"
                                   onClick={() =>
                                     setShowDriverSearch(transfer.id)
