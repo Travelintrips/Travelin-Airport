@@ -168,6 +168,10 @@ export default function AirportTransferPreview() {
           <strong>Vehicle Type:</strong> {data.type}
         </li>
         <li>
+          <strong>Driver Name:</strong> {data.driver_name || "–"}
+        </li>
+
+        <li>
           <strong>Price:</strong> Rp{" "}
           {Number(data.price).toLocaleString("id-ID")}
         </li>

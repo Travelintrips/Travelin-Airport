@@ -177,7 +177,7 @@ const AirportTransferManagement = () => {
       // Step 2: Real update with selected driver
       const { error: updateError } = await supabase
         .from("airport_transfer")
-        .update({ driver_id: selectedDriver.id, status: "assigned" })
+        .update({ driver_id: selectedDriver.id, status: "pending" })
         .eq("id", transferId);
       if (updateError) throw updateError;
 
@@ -187,13 +187,15 @@ const AirportTransferManagement = () => {
         .eq("id", selectedDriver.id);
 
       // Step 3: Create notification in airport_transfer_notifications table
-      const { data: transferData } = await supabase
-        .from("airport_transfer")
-        .select("*")
-        .eq("id", transferId)
-        .single();
+      // Step 3: Create notification if not exists
+      const { data: existingNotification } = await supabase
+        .from("airport_transfer_notifications")
+        .select("id")
+        .eq("transfer_id", transferId)
+        .eq("driver_id", selectedDriver.id)
+        .maybeSingle();
 
-      if (transferData) {
+      if (!existingNotification) {
         const { error: notificationError } = await supabase
           .from("airport_transfer_notifications")
           .insert([
@@ -210,6 +212,31 @@ const AirportTransferManagement = () => {
           console.error("Error creating notification:", notificationError);
         }
       }
+
+      // Update the local transfers array with the driver name
+      setTransfers((prevTransfers) =>
+        prevTransfers.map((t) =>
+          t.id === transferId
+            ? {
+                ...t,
+                driver_id: selectedDriver.id,
+                driver_name: selectedDriver.name,
+              }
+            : t,
+        ),
+      );
+
+      setFilteredTransfers((prevFiltered) =>
+        prevFiltered.map((t) =>
+          t.id === transferId
+            ? {
+                ...t,
+                driver_id: selectedDriver.id,
+                driver_name: selectedDriver.name,
+              }
+            : t,
+        ),
+      );
 
       alert(
         `Transfer #${transferId} has been assigned to driver ${selectedDriver.name} (ID: ${selectedDriver.id_driver ?? selectedDriver.id})`,
@@ -347,7 +374,7 @@ const AirportTransferManagement = () => {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={13} className="py-6 text-center">
+                      <td colSpan={14} className="py-6 text-center">
                         Loading transfers...
                       </td>
                     </tr>
@@ -374,7 +401,8 @@ const AirportTransferManagement = () => {
                         <td className="py-3 px-4">
                           <span
                             className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              transfer.status === "completed"
+                              transfer.status === "completed" ||
+                              transfer.status === "confirmed"
                                 ? "bg-green-100 text-green-800"
                                 : transfer.status === "assigned"
                                   ? "bg-blue-100 text-blue-800"
@@ -459,21 +487,29 @@ const AirportTransferManagement = () => {
 
                         <td className="py-3 px-4">
                           {(() => {
-                            // If this transfer has a driver assigned, find and display the driver name
-                            if (transfer.driver_id) {
+                            // If this transfer has a driver_name directly, use it
+                            if (transfer.driver_name) {
+                              return transfer.driver_name;
+                            }
+                            // If this transfer has a driver assigned but no name, find and display the driver name
+                            else if (transfer.driver_id) {
                               const assignedDriver = drivers.find(
                                 (d) => d.id === transfer.driver_id,
                               );
                               return assignedDriver ? assignedDriver.name : "-";
                             }
                             // If we're in driver selection mode for this transfer, show nothing
-                            if (showDriverSearch === transfer.id) {
+                            else if (showDriverSearch === transfer.id) {
                               return "-";
                             }
                             // Otherwise show the selected driver name if applicable
-                            return selectedDriverId && selectedDriverName
-                              ? selectedDriverName
-                              : "-";
+                            else {
+                              return selectedDriverId &&
+                                selectedDriverName &&
+                                showDriverSearch === null
+                                ? selectedDriverName
+                                : "-";
+                            }
                           })()}
                         </td>
                         <td className="py-3 px-4">

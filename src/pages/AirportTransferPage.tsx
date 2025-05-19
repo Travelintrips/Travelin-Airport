@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import React, { useState, useEffect } from "react";
 import TimePicker from "react-time-picker";
@@ -20,6 +21,11 @@ import {
 import { useNavigate } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
 import Select from "react-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
@@ -134,6 +140,12 @@ export default function AirportTransferPage() {
   const isFromTerminal = terminals.some((t) => t.name === fromTerminalName);
   const isToTerminal = terminals.some((t) => t.name === toAddress);
 
+  // Driver search states
+  const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
+  const [driverSearchQuery, setDriverSearchQuery] = useState("");
+  const [driverSearchResults, setDriverSearchResults] = useState<any[]>([]);
+  const [isSearchingDriver, setIsSearchingDriver] = useState(false);
+
   useEffect(() => {
     (async () => {
       const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
@@ -165,6 +177,7 @@ export default function AirportTransferPage() {
       booking_code: generateBookingCode(),
       customer_id: null, // nanti bisa diisi dari Supabase Auth jika login
       passenger: passenger,
+      driver_name: selectedDriver?.name ?? "",
     };
 
     const { data, error } = await supabase
@@ -216,6 +229,8 @@ export default function AirportTransferPage() {
       vehicle_name: null,
       booking_code: generateBookingCode(),
       customer_id: null,
+      driver_id: selectedDriver?.id ?? null,
+      driver_name: selectedDriver?.driver_name ?? "",
     };
 
     const previewCode = `preview-${Date.now()}-${Math.random()
@@ -230,12 +245,84 @@ export default function AirportTransferPage() {
       alert("Gagal membuat preview: " + error.message);
       return;
     }
+    console.log("🧾 Selected driver ID:", selectedDriver?.id);
+    console.log("📦 selectedDriver object:", selectedDriver);
+
     console.log("Preview payload:", previewData);
     console.log("Navigating to:", `/airport-preview/${previewCode}`);
     console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
 
     navigate(`/airport-preview/${previewCode}`); // ✅ Routing React
   }
+
+  const searchDrivers = async (query: string) => {
+    setIsSearchingDriver(true);
+    try {
+      const { data, error } = await supabase
+        .from("drivers")
+        .select("id, name, phone, status")
+        .ilike("name", `%${query.trim()}%`)
+        .in("status", ["onride", "confirmed"]);
+
+      if (error) {
+        console.error("❌ Error searching drivers:", error);
+        return;
+      }
+
+      const driverData = (data || []).map((driver) => ({
+        id: driver.id,
+        driver_name: driver.name,
+        phone_number: driver.phone, // ✅ FIXED
+        status: driver.status,
+      }));
+
+      setDriverSearchResults(driverData);
+    } catch (err) {
+      console.error("Search error:", err);
+    } finally {
+      setIsSearchingDriver(false);
+    }
+  };
+
+  const fetchOnrideDrivers = async () => {
+    setIsSearchingDriver(true);
+    try {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(
+          `
+        driver_id,
+        status,
+        drivers (
+          id,
+          name,
+          phone
+        )
+      `,
+        )
+        .in("status", ["onride", "confirmed"]);
+
+      if (error) {
+        console.error("Fetch error:", error);
+        return;
+      }
+
+      const driverData = (data || [])
+        .filter((item) => item.drivers)
+        .map((item) => ({
+          id: item.drivers.id,
+          driver_name: item.drivers.name,
+          phone_number: item.drivers.phone, // ✅ FIXED
+          status: item.status,
+        }));
+
+      setDriverSearchResults(driverData);
+    } catch (err) {
+      console.error("Error fetching drivers:", err);
+    } finally {
+      setIsSearchingDriver(false);
+    }
+  };
 
   async function getRouteDistanceViaOSRM(
     from: [number, number],
@@ -622,6 +709,121 @@ export default function AirportTransferPage() {
               />
             </div>
 
+            {/* Find Driver */}
+            <div className="flex flex-col w-full md:w-2/2">
+              <label htmlFor="findDriver" className="text-sm font-medium mb-1">
+                Find Driver
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  id="findDriver"
+                  type="text"
+                  placeholder="Search driver name"
+                  className="pl-3"
+                  value={
+                    selectedDriver
+                      ? selectedDriver.driver_name
+                      : driverSearchQuery
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setDriverSearchQuery(value);
+                    setSelectedDriver(null); // kosongkan selected saat user ketik baru
+
+                    if (value.trim().length >= 3) {
+                      searchDrivers(value);
+                    } else {
+                      setDriverSearchResults([]);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (!driverSearchQuery) {
+                      fetchOnrideDrivers();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      searchDrivers(driverSearchQuery);
+                    }
+                  }}
+                />
+
+                <Button
+                  type="button"
+                  onClick={() => searchDrivers(driverSearchQuery)}
+                  variant="outline"
+                  size="icon"
+                  disabled={isSearchingDriver}
+                >
+                  {isSearchingDriver ? (
+                    <div className="h-4 w-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+                  ) : (
+                    <Search className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              {driverSearchResults.length > 0 && (
+                <div
+                  className="mt-2 border rounded-md max-h-40 overflow-y-auto bg-white shadow-md"
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  {driverSearchResults.map((driver) => (
+                    <div
+                      key={driver.id}
+                      className="p-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                      onMouseDown={() => {
+                        setSelectedDriver(driver); // langsung simpan driver yang dipilih
+                        setDriverSearchQuery(""); // kosongkan keyword pencarian
+                        setDriverSearchResults([]); // tutup dropdown
+                      }}
+                    >
+                      <span>{driver.driver_name || "Unknown Driver"}</span>
+                      <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                        {driver.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {selectedDriver && (
+                <div className="mt-2 p-2 border rounded-md bg-blue-50">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">
+                      {selectedDriver.driver_name}
+                    </span>
+
+                    {/* Tooltip Button */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (confirm("Yakin hapus driver?")) {
+                                setSelectedDriver(null);
+                              }
+                            }}
+                            className="h-6 w-6 p-0"
+                          >
+                            ×
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p>Remove driver</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {selectedDriver.phone_number || "No phone"}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Booking Summary - Positioned to the left and wider */}
             {fromLocation && toLocation && (
               <div className="col-span-4 p-4 mt-4 bg-white rounded-lg shadow-lg max-w-md">
@@ -652,6 +854,12 @@ export default function AirportTransferPage() {
                         <strong>Estimated Price:</strong> Rp{" "}
                         {previewPrice.toLocaleString("id-ID")}
                       </p>
+                      {selectedDriver && (
+                        <p>
+                          <strong>Selected Driver:</strong>{" "}
+                          {selectedDriver.driver_name}
+                        </p>
+                      )}
                     </>
                   ) : (
                     <p>Calculating distance...</p>
