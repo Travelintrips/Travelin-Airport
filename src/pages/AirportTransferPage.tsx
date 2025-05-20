@@ -626,13 +626,14 @@ function AirportTransferPageContent() {
 
           {/* Pickup Location */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <label className="text-sm font-medium">Pickup Location</label>
 
-              {/* Use My Location Option – di kanan label */}
+              {/* Use My Location Option – responsif di mobile */}
               <div
-                className="inline-flex items-center gap-1 bg-white border border-gray-300 rounded-md shadow-sm px-2 py-0.5 text-sm cursor-pointer hover:bg-gray-100"
+                className="inline-flex items-center gap-1 bg-white border border-gray-300 rounded-md shadow-sm px-3 py-1 text-sm cursor-pointer hover:bg-gray-100 active:scale-[0.98] transition"
                 onClick={useCurrentLocation}
+                onTouchStart={useCurrentLocation} // ✅ fix untuk mobile touch
               >
                 <MapPin className="h-4 w-4 text-blue-500" />
                 <span>Use My Location</span>
@@ -640,7 +641,7 @@ function AirportTransferPageContent() {
             </div>
 
             {/* Input field */}
-            <div className="relative">
+            <div className="relative z-20">
               <AddressSearch
                 label=""
                 value={formData.fromAddress}
@@ -657,29 +658,33 @@ function AirportTransferPageContent() {
 
           {/* Dropoff Location */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <label className="text-sm font-medium">Dropoff Location</label>
+
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleSwapLocation}
-                className="h-8 px-2"
+                className="h-8 px-2 w-max"
               >
                 <ArrowRightLeft className="h-4 w-4 mr-1" />
                 Swap
               </Button>
             </div>
-            <AddressSearch
-              label=""
-              value={formData.toAddress}
-              onChange={(value) =>
-                setFormData((prev) => ({ ...prev, toAddress: value }))
-              }
-              onSelectPosition={(pos) =>
-                setFormData((prev) => ({ ...prev, toLocation: pos }))
-              }
-              placeholder="Enter dropoff location"
-            />
+
+            <div className="relative z-20">
+              <AddressSearch
+                label=""
+                value={formData.toAddress}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, toAddress: value }))
+                }
+                onSelectPosition={(pos) =>
+                  setFormData((prev) => ({ ...prev, toLocation: pos }))
+                }
+                placeholder="Enter dropoff location"
+              />
+            </div>
           </div>
         </div>
 
