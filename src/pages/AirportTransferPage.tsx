@@ -584,7 +584,20 @@ function AirportTransferPageContent() {
 
           {/* Pickup Location */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Pickup Location</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Pickup Location</label>
+
+              {/* Use My Location Option – di kanan label */}
+              <div
+                className="inline-flex items-center gap-1 bg-white border border-gray-300 rounded-md shadow-sm px-2 py-0.5 text-sm cursor-pointer hover:bg-gray-100"
+                onClick={useCurrentLocation}
+              >
+                <MapPin className="h-4 w-4 text-blue-500" />
+                <span>Use My Location</span>
+              </div>
+            </div>
+
+            {/* Input field */}
             <div className="relative">
               <AddressSearch
                 label=""
@@ -597,17 +610,6 @@ function AirportTransferPageContent() {
                 }
                 placeholder="Enter pickup location"
               />
-
-              {/* Use My Location Option */}
-              <div
-                className="absolute z-10 top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg mt-1 p-2 cursor-pointer hover:bg-gray-50"
-                onClick={useCurrentLocation}
-              >
-                <div className="flex items-center gap-2 p-2">
-                  <MapPin className="h-4 w-4 text-blue-500" />
-                  <span>Use My Location</span>
-                </div>
-              </div>
             </div>
           </div>
 
