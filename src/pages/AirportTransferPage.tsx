@@ -117,6 +117,8 @@ function AirportTransferPageContent() {
     vehicleName: "",
     vehicleModel: "",
     vehiclePlate: "",
+    surcharge: 0,
+    parking: 10000,
   });
 
   // UI states
@@ -238,8 +240,17 @@ function AirportTransferPageContent() {
   function calculatePrice(distanceKm: number, pricePerKm: number): number {
     const baseDistance = 10;
     const basePrice = 100000;
-    const surcharge = 30000;
     const parking = 10000;
+
+    // Tentukan surcharge berdasarkan jenis kendaraan
+    const vehicleType = formData.vehicleType;
+    let surcharge = 30000; // default
+
+    if (vehicleType === "Electric") {
+      surcharge = 45000;
+    } else if (vehicleType === "MPV") {
+      surcharge = 30000;
+    }
 
     let total = basePrice;
 
@@ -403,6 +414,14 @@ function AirportTransferPageContent() {
   // Select a driver
   const handleSelectDriver = (driver: Driver) => {
     setSelectedDriver(driver);
+
+    const dynamicSurcharge =
+      driver.vehicle_type === "Electric"
+        ? 45000
+        : driver.vehicle_type === "MPV"
+          ? 30000
+          : 30000; // default fallback
+
     setFormData((prev) => ({
       ...prev,
       driverId: driver.id,
@@ -415,7 +434,9 @@ function AirportTransferPageContent() {
       vehiclePlate: driver.license_plate || "N/A",
       vehicleColor: driver.vehicle_color || "N/A",
       vehiclePricePerKm: driver.price_km || 0,
+      surcharge: dynamicSurcharge, // ✅ Tambahan penting
     }));
+
     console.log("Driver selected:", driver);
   };
 
@@ -1032,7 +1053,7 @@ function AirportTransferPageContent() {
                 <div className="flex justify-between">
                   <span className="text-gray-500">Surcharge</span>
                   <span className="font-medium">
-                    Rp {formData.surcharge?.toLocaleString() || "30,000"}
+                    Rp {formData.surcharge?.toLocaleString()}
                   </span>
                 </div>
 

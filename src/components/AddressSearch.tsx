@@ -131,7 +131,7 @@ export default function AddressSearch({
         className="w-full"
       />
       {results.length > 0 && (
-        <div className="bg-white shadow rounded-md mt-2 max-h-40 overflow-y-auto z-50">
+        <div className="bg-white shadow rounded-md mt-2 max-h-40 overflow-y-auto z-50 absolute w-full">
           {results.map((place, index) => (
             <div
               key={index}
