@@ -1,118 +1,167 @@
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Label } from "@/components/ui/label";
+import { LoadScriptNext } from "@react-google-maps/api";
 import React, { useState, useEffect } from "react";
-import TimePicker from "react-time-picker";
-import PaymentMethods from "@/components/PaymentMethods";
-import AddressSearch from "@/components/AddressSearch";
-import MapPicker from "@/components/MapPicker";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { supabase } from "../lib/supabase";
+import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+
+// UI Components
+import { ArrowRightCircle, UserCheck, CarFront } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useTranslation } from "react-i18next";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+
+// Custom Components
+import AddressSearch from "@/components/AddressSearch";
+import MapPicker from "@/components/MapPicker";
+
+// Icons
 import {
   ArrowLeft,
-  Search,
   Calendar,
   Clock,
   Users,
-  Repeat,
   ArrowRightLeft,
+  Loader2,
+  MapPin,
+  Car,
+  CheckCircle,
+  Phone,
+  Home,
+  ChevronRight,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { createClient } from "@supabase/supabase-js";
-import Select from "react-select";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
+// Types
+interface BookingFormData {
+  fromLocation: [number, number];
+  toLocation: [number, number];
+  fromAddress: string;
+  toAddress: string;
+  pickupDate: string;
+  pickupTime: string;
+  passenger: number;
+  vehicleType: string;
+  fullName: string;
+  phoneNumber: string;
+  paymentMethod: string;
+  price: number;
+  distance: number;
+  duration: number;
+  bookingCode: string;
+  driverId: string | null;
+  driverName: string;
+  driverPhone: string;
+  driverPhoto: string;
+  vehicleName: string;
+  vehicleModel: string;
+  vehiclePlate: string;
+  vehicleColor: string;
+  vehicleType: string;
+}
 
-export default function AirportTransferPage() {
+interface Driver {
+  id: string;
+  driver_name: string;
+  phone_number: string;
+  status: string;
+  photo_url?: string;
+  vehicle_name?: string;
+  vehicle_model?: string;
+  license_plate?: string;
+  distance?: number;
+  eta?: number;
+}
+
+function AirportTransferPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const { isAuthenticated, userId, userName, userEmail } = useAuth();
 
-  const [fromLocation, setFromLocation] = React.useState<[number, number]>([
-    -6.2, 106.8,
-  ]); // Jakarta
-  const [toLocation, setToLocation] = React.useState<[number, number]>([
-    -6.2, 106.8,
-  ]);
-  const [showFromMap, setShowFromMap] = React.useState(false);
-  const [showToMap, setShowToMap] = React.useState(false);
-  const [fromTerminalName, setFromTerminalName] = useState(""); // untuk pickup (dropdown)
-  const [toAddress, setToAddress] = useState(""); // untuk dropoff (input alamat)
+  // Step tracking
+  const [currentStep, setCurrentStep] = useState<number>(1);
+  const totalSteps = 5;
+  const progressPercentage = (currentStep / totalSteps) * 100;
 
-  const [isPickupManual, setIsPickupManual] = useState(false); // true = input, false = dropdown
-  const [isDropoffManual, setIsDropoffManual] = useState(true); // awalnya dropoff adalah AddressSearch
+  // Form data
+  const [formData, setFormData] = useState<BookingFormData>({
+    fromLocation: [-6.2, 106.8], // Jakarta default
+    toLocation: [-6.2, 106.8],
+    fromAddress: "",
+    toAddress: "",
+    pickupDate: "",
+    pickupTime: "10:00",
+    passenger: 1,
+    vehicleType: "Sedan",
+    fullName: userName || "",
+    phoneNumber: "",
+    paymentMethod: "cash",
+    price: 0,
+    distance: 0,
+    duration: 0,
+    bookingCode: generateBookingCode(),
+    driverId: null,
+    driverName: "",
+    driverPhone: "",
+    driverPhoto: "",
+    vehicleName: "",
+    vehicleModel: "",
+    vehiclePlate: "",
+  });
 
-  const handleSwapLocation = () => {
-    console.log("🔁 Swapping pickup & dropoff...");
+  // UI states
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showFromMap, setShowFromMap] = useState<boolean>(false);
+  const [showToMap, setShowToMap] = useState<boolean>(false);
+  const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
+  const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [isSearchingDriver, setIsSearchingDriver] = useState<boolean>(false);
 
-    // Swap koordinat
-    const tempLoc = fromLocation;
-    setFromLocation(toLocation);
-    setToLocation(tempLoc);
+  // Fetch user data if authenticated
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (isAuthenticated && userId) {
+        try {
+          const { data, error } = await supabase
+            .from("users")
+            .select("full_name, phone")
+            .eq("id", userId)
+            .single();
 
-    // Swap nilai
-    const tempPickup = fromTerminalName;
-    const tempDrop = toAddress;
+          if (data && !error) {
+            console.log("User data fetched:", data);
+            setFormData((prev) => ({
+              ...prev,
+              fullName: data.full_name || userName || "",
+              phoneNumber: data.phone || "",
+            }));
+          } else {
+            console.log("No user data found, using auth data");
+            setFormData((prev) => ({
+              ...prev,
+              fullName: userName || "",
+            }));
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    };
 
-    setFromTerminalName(tempDrop);
-    setToAddress(tempPickup);
+    fetchUserData();
+  }, [isAuthenticated, userId, userName]);
 
-    // Swap mode input
-    const tempMode = isPickupManual;
-    setIsPickupManual(isDropoffManual);
-    setIsDropoffManual(tempMode);
-  };
-
-  function calculateDistance(
-    from: [number, number],
-    to: [number, number],
-  ): number {
-    const R = 6371; // Radius bumi dalam kilometer
-    const lat1 = from[0] * (Math.PI / 180);
-    const lon1 = from[1] * (Math.PI / 180);
-    const lat2 = to[0] * (Math.PI / 180);
-    const lon2 = to[1] * (Math.PI / 180);
-
-    const dLat = lat2 - lat1;
-    const dLon = lon2 - lon1;
-
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
-    return distance;
-  }
-
-  function calculatePrice(distanceKm: number, vehicleType: string): number {
-    const baseDistance = 10;
-    const basePrice = 100000;
-    const additionalRate = 4000;
-    const surcharge = 30000;
-    const parking = 10000;
-
-    const electricFee = vehicleType === "Electric" ? 30000 : 0;
-    const premiumFee = vehicleType === "MPV Premium" ? 50000 : 0;
-
-    let total = basePrice;
-
-    if (distanceKm > baseDistance) {
-      const additionalDistance = Math.ceil(distanceKm - baseDistance);
-      total += additionalDistance * additionalRate;
-    }
-
-    return total + surcharge + parking + electricFee + premiumFee;
-  }
-
+  // Terminal options for airport
   const terminals = [
     { name: "Terminal 1A", position: [-6.125766, 106.65616] },
     { name: "Terminal 2D", position: [-6.123753973054377, 106.65172265118323] },
@@ -128,206 +177,82 @@ export default function AirportTransferPage() {
     },
   ];
 
-  const [fullName, setFullName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [vehicleType, setVehicleType] = useState("");
-  const [pickupDate, setPickupDate] = useState("");
-  const [pickupTime, setPickupTime] = useState("10:00"); // default waktu
-  const [passenger, setPassenger] = useState<number>(1);
-  const [airportLocation, setAirportLocation] = useState("");
-  const [previewDistance, setPreviewDistance] = useState<number | null>(null);
-  const [previewPrice, setPreviewPrice] = useState<number | null>(null);
-  const isFromTerminal = terminals.some((t) => t.name === fromTerminalName);
-  const isToTerminal = terminals.some((t) => t.name === toAddress);
+  // Vehicle types
+  const vehicleTypes = [
+    // { name: "Sedan", basePrice: 100000, additionalRate: 4000 },
+    { name: "SUV", basePrice: 120000, additionalRate: 5000 },
+    { name: "MPV", basePrice: 100000, additionalRate: 4500 },
+    { name: "MPV Premium", basePrice: 120000, additionalRate: 6000 },
+    { name: "Electric", basePrice: 100000, additionalRate: 5500 },
+  ];
 
-  // Driver search states
-  const [selectedDriver, setSelectedDriver] = useState<any | null>(null);
-  const [driverSearchQuery, setDriverSearchQuery] = useState("");
-  const [driverSearchResults, setDriverSearchResults] = useState<any[]>([]);
-  const [isSearchingDriver, setIsSearchingDriver] = useState(false);
-
+  // Calculate route distance and duration
   useEffect(() => {
-    (async () => {
-      const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-      setPreviewDistance(distance);
-      setPreviewPrice(calculatePrice(distance, vehicleType));
-    })();
-  }, [fromLocation, toLocation, vehicleType]);
+    if (formData.fromLocation[0] !== 0 && formData.toLocation[0] !== 0) {
+      getRouteDetails(formData.fromLocation, formData.toLocation);
+    }
+  }, [formData.fromLocation, formData.toLocation]);
 
+  // Calculate price when distance or vehicle type changes
+  useEffect(() => {
+    if (formData.distance > 0 && formData.vehiclePricePerKm > 0) {
+      const price = calculatePrice(
+        formData.distance,
+        formData.vehiclePricePerKm,
+      );
+      setFormData((prev) => ({ ...prev, price }));
+    }
+  }, [formData.distance, formData.vehiclePricePerKm]);
+
+  // Validate form based on current step
+  const isCurrentStepValid = () => {
+    switch (currentStep) {
+      case 1: // Location & Schedule
+        return (
+          formData.fromAddress.trim() !== "" &&
+          formData.toAddress.trim() !== "" &&
+          formData.pickupDate !== "" &&
+          formData.pickupTime !== ""
+        );
+      case 2: // Map & Route
+        return formData.distance > 0;
+      case 3: // Driver Selection
+        return selectedDriver !== null;
+      case 4: // Booking Confirmation
+        return (
+          formData.fullName.trim() !== "" &&
+          formData.phoneNumber.trim() !== "" &&
+          formData.paymentMethod !== ""
+        );
+      default:
+        return true;
+    }
+  };
+
+  // Generate a unique booking code
   function generateBookingCode() {
     return `AT-${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
-  async function handleSubmit() {
-    const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-    const price = calculatePrice(distance, vehicleType);
+  // Calculate price based on distance and vehicle type
+  function calculatePrice(distanceKm: number, pricePerKm: number): number {
+    const baseDistance = 10;
+    const basePrice = 100000;
+    const surcharge = 30000;
+    const parking = 10000;
 
-    const payload = {
-      airport_location: airportLocation,
-      customer_name: fullName,
-      phone: phoneNumber,
-      pickup_location: fromTerminalName,
-      dropoff_location: toAddress,
-      pickup_date: pickupDate,
-      pickup_time: pickupTime,
-      type: vehicleType,
-      price,
-      model: null,
-      vehicle_name: null,
-      booking_code: generateBookingCode(),
-      customer_id: null, // nanti bisa diisi dari Supabase Auth jika login
-      passenger: passenger,
-      driver_name: selectedDriver?.name ?? "",
-    };
+    let total = basePrice;
 
-    const { data, error } = await supabase
-      .from("airport_transfer")
-      .insert([payload]);
-
-    if (error) {
-      alert("Gagal menyimpan booking: " + error.message);
-      console.error("Insert error:", error);
-    } else {
-      alert("Booking berhasil!");
-      console.log("Insert success:", data);
-      navigate("/success");
+    if (distanceKm > baseDistance) {
+      const additionalDistance = Math.ceil(distanceKm - baseDistance);
+      total += additionalDistance * pricePerKm;
     }
+
+    return total + surcharge + parking;
   }
 
-  async function handlePreview(event: React.MouseEvent) {
-    event.preventDefault(); // ⬅️ ini sangat penting
-
-    if (
-      !airportLocation ||
-      !pickupDate ||
-      !pickupTime ||
-      !vehicleType ||
-      !fullName ||
-      !phoneNumber ||
-      !fromTerminalName ||
-      !toAddress
-    ) {
-      alert("Please complete all required fields.");
-      return;
-    }
-
-    const distance = await getRouteDistanceViaOSRM(fromLocation, toLocation);
-    const price = calculatePrice(distance, vehicleType);
-
-    const previewData = {
-      airport_location: airportLocation,
-      customer_name: fullName,
-      phone: phoneNumber,
-      pickup_location: fromTerminalName,
-      dropoff_location: toAddress,
-      pickup_date: pickupDate,
-      pickup_time: pickupTime,
-      type: vehicleType,
-      passenger,
-      price,
-      model: null,
-      vehicle_name: null,
-      booking_code: generateBookingCode(),
-      customer_id: null,
-      driver_id: selectedDriver?.id ?? null,
-      driver_name: selectedDriver?.driver_name ?? "",
-    };
-
-    const previewCode = `preview-${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(2, 6)}`;
-
-    const { error, data } = await supabase
-      .from("airport_transfer_preview")
-      .insert([{ preview_code: previewCode, data: previewData }]);
-
-    if (error) {
-      alert("Gagal membuat preview: " + error.message);
-      return;
-    }
-    console.log("🧾 Selected driver ID:", selectedDriver?.id);
-    console.log("📦 selectedDriver object:", selectedDriver);
-
-    console.log("Preview payload:", previewData);
-    console.log("Navigating to:", `/airport-preview/${previewCode}`);
-    console.log("SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
-
-    navigate(`/airport-preview/${previewCode}`); // ✅ Routing React
-  }
-
-  const searchDrivers = async (query: string) => {
-    setIsSearchingDriver(true);
-    try {
-      const { data, error } = await supabase
-        .from("drivers")
-        .select("id, name, phone, status")
-        .ilike("name", `%${query.trim()}%`)
-        .in("status", ["onride", "confirmed"]);
-
-      if (error) {
-        console.error("❌ Error searching drivers:", error);
-        return;
-      }
-
-      const driverData = (data || []).map((driver) => ({
-        id: driver.id,
-        driver_name: driver.name,
-        phone_number: driver.phone, // ✅ FIXED
-        status: driver.status,
-      }));
-
-      setDriverSearchResults(driverData);
-    } catch (err) {
-      console.error("Search error:", err);
-    } finally {
-      setIsSearchingDriver(false);
-    }
-  };
-
-  const fetchOnrideDrivers = async () => {
-    setIsSearchingDriver(true);
-    try {
-      const { data, error } = await supabase
-        .from("bookings")
-        .select(
-          `
-        driver_id,
-        status,
-        drivers (
-          id,
-          name,
-          phone
-        )
-      `,
-        )
-        .in("status", ["onride", "confirmed"]);
-
-      if (error) {
-        console.error("Fetch error:", error);
-        return;
-      }
-
-      const driverData = (data || [])
-        .filter((item) => item.drivers)
-        .map((item) => ({
-          id: item.drivers.id,
-          driver_name: item.drivers.name,
-          phone_number: item.drivers.phone, // ✅ FIXED
-          status: item.status,
-        }));
-
-      setDriverSearchResults(driverData);
-    } catch (err) {
-      console.error("Error fetching drivers:", err);
-    } finally {
-      setIsSearchingDriver(false);
-    }
-  };
-
-  async function getRouteDistanceViaOSRM(
-    from: [number, number],
-    to: [number, number],
-  ): Promise<number> {
+  // Get route details using OSRM
+  async function getRouteDetails(from: [number, number], to: [number, number]) {
     const [fromLat, fromLng] = from;
     const [toLat, toLng] = to;
 
@@ -338,17 +263,929 @@ export default function AirportTransferPage() {
       const data = await res.json();
 
       if (data.routes && data.routes.length > 0) {
-        const distanceMeters = data.routes[0].distance;
-        return distanceMeters / 1000; // convert to km
+        const distanceKm = data.routes[0].distance / 1000; // convert to km
+        const durationMin = Math.ceil(data.routes[0].duration / 60); // convert to minutes
+
+        setFormData((prev) => ({
+          ...prev,
+          distance: distanceKm,
+          duration: durationMin,
+        }));
       } else {
         console.warn("No route found from OSRM");
-        return 0;
+        toast({
+          title: "Route Error",
+          description: "Could not calculate route between locations",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error("Error calling OSRM:", err);
-      return 0;
+      toast({
+        title: "Service Error",
+        description: "Could not connect to routing service",
+        variant: "destructive",
+      });
     }
   }
+
+  // Handle location swap
+  const handleSwapLocation = () => {
+    setFormData((prev) => ({
+      ...prev,
+      fromLocation: prev.toLocation,
+      toLocation: prev.fromLocation,
+      fromAddress: prev.toAddress,
+      toAddress: prev.fromAddress,
+    }));
+  };
+
+  // Search for available drivers
+  const searchDrivers = async () => {
+    setIsSearchingDriver(true);
+    try {
+      // First try to find onride drivers
+      const { data: onrideDrivers, error: onrideError } = await supabase
+        .from("bookings")
+        .select(
+          `
+    driver_id,
+    vehicle_id,
+    status,
+    drivers (
+      id,
+      name,
+      phone,
+      selfie_url
+    ),
+    vehicles (
+      make,
+      model,
+      type,
+      license_plate,
+      color,
+      price_km
+    )
+  `,
+        )
+        .in("status", ["onride", "confirmed"]);
+
+      if (onrideError) {
+        console.error("Error fetching onride drivers:", onrideError);
+        throw onrideError;
+      }
+
+      // Format driver data
+      const driverData = (onrideDrivers || [])
+        .filter((item) => item.drivers && item.vehicles)
+        .filter((item) => item.vehicles.type === formData.vehicleType) // ✅ Filter by selected vehicleType
+        .map((item) => ({
+          id: item.drivers.id,
+          driver_name: item.drivers.name,
+          phone_number: item.drivers.phone,
+          status: item.status,
+          photo_url: item.drivers.selfie_url,
+          license_plate: item.vehicles.license_plate,
+          vehicle_name: item.vehicles.make,
+          vehicle_model: item.vehicles.model,
+          vehicle_type: item.vehicles.type,
+          vehicle_color: item.vehicles.color,
+          distance: Math.round(Math.random() * 5 + 1),
+          eta: Math.round(Math.random() * 10 + 5),
+          price_km: item.vehicles.price_km || 0,
+        }));
+
+      if (driverData.length > 0) {
+        setAvailableDrivers(driverData);
+        return;
+      }
+
+      // If no onride drivers, find available drivers
+      const { data: availableDriversData, error: availableError } =
+        await supabase
+          .from("drivers")
+          .select("id, name, phone, status, selfie_url")
+          .eq("status", "available")
+          .limit(5);
+
+      if (availableError) {
+        console.error("Error fetching available drivers:", availableError);
+        throw availableError;
+      }
+
+      // Format available drivers
+      const availableDriversFormatted = (availableDriversData || []).map(
+        (driver) => ({
+          id: driver.id,
+          driver_name: driver.name,
+          phone_number: driver.phone,
+          status: driver.status,
+          photo_url: driver.selfie_url,
+          // Simulate distance and ETA for demo purposes
+          distance: Math.round(Math.random() * 10 + 5), // 5-15 km
+          eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
+        }),
+      );
+
+      setAvailableDrivers(availableDriversFormatted);
+    } catch (err) {
+      console.error("Error searching drivers:", err);
+      toast({
+        title: "Driver Search Failed",
+        description: "Could not find available drivers",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearchingDriver(false);
+    }
+  };
+
+  // Select a driver
+  const handleSelectDriver = (driver: Driver) => {
+    setSelectedDriver(driver);
+    setFormData((prev) => ({
+      ...prev,
+      driverId: driver.id,
+      driverName: driver.driver_name,
+      driverPhone: driver.phone_number,
+      driverPhoto: driver.photo_url || "",
+      vehicleType: driver.vehicle_type || "",
+      vehicleName: driver.vehicle_name || "Unknown",
+      vehicleModel: driver.vehicle_model || "",
+      vehiclePlate: driver.license_plate || "N/A",
+      vehicleColor: driver.vehicle_color || "N/A",
+      vehiclePricePerKm: driver.price_km || 0,
+    }));
+    console.log("Driver selected:", driver);
+  };
+
+  // Handle next step
+  const handleNextStep = async () => {
+    if (currentStep === 2) {
+      // Before moving to driver selection, search for drivers
+      setIsLoading(true);
+      await searchDrivers();
+      setIsLoading(false);
+    }
+
+    if (currentStep === 4) {
+      // Submit booking
+      await handleSubmitBooking();
+    } else {
+      // Move to next step
+      setCurrentStep((prev) => Math.min(prev + 1, totalSteps));
+    }
+  };
+
+  // Handle previous step
+  const handlePrevStep = () => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+  };
+
+  // Submit booking to database
+  const handleSubmitBooking = async () => {
+    setIsLoading(true);
+    try {
+      const bookingData = {
+        booking_code: formData.bookingCode,
+        customer_name: formData.fullName,
+        phone: formData.phoneNumber,
+        pickup_location: formData.fromAddress,
+        dropoff_location: formData.toAddress,
+        pickup_date: formData.pickupDate,
+        pickup_time: formData.pickupTime,
+        type: formData.vehicleType,
+        price: formData.price,
+        passenger: formData.passenger,
+        driver_id: formData.driverId,
+        driver_name: formData.driverName,
+        payment_method: formData.paymentMethod,
+        distance: formData.distance,
+        duration: formData.duration,
+        status: "confirmed",
+      };
+
+      const { data, error } = await supabase
+        .from("airport_transfer")
+        .insert([bookingData]);
+
+      if (error) {
+        throw error;
+      }
+
+      // Move to success step
+      setCurrentStep(5);
+
+      // Send notification (simulated)
+      console.log("Sending booking notification to customer and driver");
+    } catch (error) {
+      console.error("Error submitting booking:", error);
+      toast({
+        title: "Booking Failed",
+        description: "Could not complete your booking. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentStep === 3) {
+      searchDrivers(); // Re-search when vehicle type changes
+    }
+  }, [formData.vehicleType]);
+
+  // Use current location
+  const useCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          try {
+            const response = await fetch(
+              `https://wvqlwgmlijtcutvseyey.functions.supabase.co/google-place-details`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  location: { lat, lng },
+                  get_address_from_location: true,
+                }),
+              },
+            );
+            const data = await response.json();
+            if (data.formatted_address) {
+              setFormData((prev) => ({
+                ...prev,
+                fromLocation: [lat, lng],
+                fromAddress: data.formatted_address,
+              }));
+              toast({
+                title: "Location Found",
+                description: "Using your current location as pickup point",
+              });
+            }
+          } catch (error) {
+            console.error("Error getting address from location:", error);
+            toast({
+              title: "Location Error",
+              description: "Could not determine your address",
+              variant: "destructive",
+            });
+          }
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          toast({
+            title: "Location Access Denied",
+            description: "Please enable location services to use this feature",
+            variant: "destructive",
+          });
+        },
+      );
+    } else {
+      toast({
+        title: "Not Supported",
+        description: "Geolocation is not supported by your browser",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Render step content based on current step
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return renderLocationAndScheduleStep();
+      case 2:
+        return renderMapAndRouteStep();
+      case 3:
+        return renderDriverSelectionStep();
+      case 4:
+        return renderBookingConfirmationStep();
+      case 5:
+        return renderBookingSuccessStep();
+      default:
+        return renderLocationAndScheduleStep();
+    }
+  };
+
+  // Step 1: Location and Schedule
+  const renderLocationAndScheduleStep = () => {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Pickup & Dropoff Locations</h3>
+
+          {/* Pickup Location */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Pickup Location</label>
+            <div className="relative">
+              <AddressSearch
+                label=""
+                value={formData.fromAddress}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, fromAddress: value }))
+                }
+                onSelectPosition={(pos) =>
+                  setFormData((prev) => ({ ...prev, fromLocation: pos }))
+                }
+                placeholder="Enter pickup location"
+              />
+
+              {/* Use My Location Option */}
+              <div
+                className="absolute z-10 top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg mt-1 p-2 cursor-pointer hover:bg-gray-50"
+                onClick={useCurrentLocation}
+              >
+                <div className="flex items-center gap-2 p-2">
+                  <MapPin className="h-4 w-4 text-blue-500" />
+                  <span>Use My Location</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dropoff Location */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Dropoff Location</label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSwapLocation}
+                className="h-8 px-2"
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-1" />
+                Swap
+              </Button>
+            </div>
+            <AddressSearch
+              label=""
+              value={formData.toAddress}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, toAddress: value }))
+              }
+              onSelectPosition={(pos) =>
+                setFormData((prev) => ({ ...prev, toLocation: pos }))
+              }
+              placeholder="Enter dropoff location"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Schedule & Passengers</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Pickup Date */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Pickup Date</label>
+              <div className="relative">
+                <Input
+                  type="date"
+                  value={formData.pickupDate}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      pickupDate: e.target.value,
+                    }))
+                  }
+                  min={new Date().toISOString().split("T")[0]}
+                  className="pl-10"
+                />
+                <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
+            </div>
+
+            {/* Pickup Time */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Pickup Time</label>
+              <div className="relative">
+                <Input
+                  type="time"
+                  value={formData.pickupTime}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      pickupTime: e.target.value,
+                    }))
+                  }
+                  className="pl-10"
+                />
+                <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+            {/* Passengers */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Passengers</label>
+              <div className="relative">
+                <Input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={formData.passenger}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      passenger: parseInt(e.target.value),
+                    }))
+                  }
+                  className="pl-10"
+                />
+                <Users className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Step 2: Map and Route
+  const renderMapAndRouteStep = () => {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Route Preview</h3>
+
+          <div className="bg-white rounded-md overflow-hidden border">
+            <MapPicker
+              fromLocation={formData.fromLocation}
+              toLocation={formData.toLocation}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <h4 className="text-sm font-medium text-gray-500">
+                    Distance
+                  </h4>
+                  <p className="text-2xl font-bold">
+                    {formData.distance.toFixed(1)} km
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <h4 className="text-sm font-medium text-gray-500">
+                    Duration
+                  </h4>
+                  <p className="text-2xl font-bold">{formData.duration} min</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="pt-6 text-center">
+                <div className="flex items-center justify-center">
+                  <div className="bg-blue-100 text-blue-600 rounded-full p-3">
+                    <Car className="h-6 w-6" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="bg-blue-50 p-4 rounded-md">
+            <h4 className="font-medium text-blue-700">Route Details</h4>
+            <div className="mt-2 space-y-2">
+              <div className="flex items-start gap-3">
+                <div className="mt-1">
+                  <div className="h-4 w-4 rounded-full bg-green-500"></div>
+                </div>
+                <div>
+                  <p className="font-medium">Pickup</p>
+                  <p className="text-sm text-gray-600">
+                    {formData.fromAddress}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="mt-1">
+                  <div className="h-4 w-4 rounded-full bg-red-500"></div>
+                </div>
+                <div>
+                  <p className="font-medium">Dropoff</p>
+                  <p className="text-sm text-gray-600">{formData.toAddress}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Step 3: Driver Selection
+  const renderDriverSelectionStep = () => {
+    return (
+      <div className="space-y-6">
+        {/* Vehicle Type */}
+        <div className="space-y-2">
+          <h3 className="text-lg font-medium">Vehicle Type</h3>
+          <select
+            value={formData.vehicleType}
+            onChange={(e) =>
+              setFormData((prev) => ({
+                ...prev,
+                vehicleType: e.target.value,
+              }))
+            }
+            className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {vehicleTypes.map((type) => (
+              <option key={type.name} value={type.name}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Available Drivers</h3>
+
+          {isSearchingDriver ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
+              <p className="text-gray-500">
+                Searching for available drivers...
+              </p>
+            </div>
+          ) : availableDrivers.length > 0 ? (
+            <div className="space-y-4">
+              {availableDrivers.map((driver) => (
+                <div
+                  key={driver.id}
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedDriver?.id === driver.id ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                  onClick={() => handleSelectDriver(driver)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="h-16 w-16 rounded-full bg-gray-200 overflow-hidden">
+                      {driver.photo_url ? (
+                        <img
+                          src={driver.photo_url}
+                          alt={driver.driver_name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-500">
+                          <Users className="h-8 w-8" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1">
+                      <h4 className="font-medium flex items-center gap-2">
+                        {driver.driver_name}
+                        {driver.vehicle_type && (
+                          <span className="text-xs font-medium text-white px-2 py-0.5 rounded bg-gray-700">
+                            {driver.vehicle_type}
+                          </span>
+                        )}
+                      </h4>
+
+                      <p className="text-sm text-gray-500">
+                        {driver.phone_number}
+                      </p>
+
+                      <div className="flex items-center gap-4 mt-1 flex-wrap">
+                        {/* Status */}
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                          {driver.status === "onride" ? "On Ride" : "Available"}
+                        </span>
+
+                        {/* Detail kendaraan */}
+                        <span className="text-xs text-gray-500">
+                          {driver.vehicle_name && driver.vehicle_model
+                            ? `${driver.vehicle_name} ${driver.vehicle_model}`
+                            : "Unknown Model"}{" "}
+                          • {driver.license_plate || "N/A"}{" "}
+                          {driver.vehicle_color && (
+                            <span className="ml-1 text-xs text-gray-700 font-semibold">
+                              {driver.vehicle_color}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-sm font-medium">
+                        {driver.distance} km away
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        ETA: {driver.eta} min
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+              <div className="flex flex-col items-center">
+                <Car className="h-12 w-12 text-yellow-500 mb-4" />
+                <h4 className="text-lg font-medium mb-2">No drivers found</h4>
+                <p className="text-gray-600 mb-4">
+                  We couldn't find any available drivers at the moment.
+                </p>
+                <Button onClick={searchDrivers}>Try Again</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Step 4: Booking Confirmation
+  const renderBookingConfirmationStep = () => {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Personal Information</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Full Name</label>
+              {isAuthenticated ? (
+                <div className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                  {formData.fullName}
+                </div>
+              ) : (
+                <Input
+                  type="text"
+                  value={formData.fullName}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      fullName: e.target.value,
+                    }))
+                  }
+                  placeholder="Enter your full name"
+                />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Phone Number</label>
+              {isAuthenticated ? (
+                <div className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                  {formData.phoneNumber}
+                </div>
+              ) : (
+                <Input
+                  type="tel"
+                  value={formData.phoneNumber}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      phoneNumber: e.target.value,
+                    }))
+                  }
+                  placeholder="Enter your phone number"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Booking Summary</h3>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Pickup</span>
+                  <span className="font-medium text-right">
+                    {formData.fromAddress}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Dropoff</span>
+                  <span className="font-medium text-right">
+                    {formData.toAddress}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Date & Time</span>
+                  <span className="font-medium">
+                    {new Date(formData.pickupDate).toLocaleDateString()} at{" "}
+                    {formData.pickupTime}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Driver</span>
+                  <span className="font-medium">{formData.driverName}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Vehicle Model</span>
+                  <span className="font-medium">{formData.vehicleModel}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Vehicle Type</span>
+                  <span className="font-medium">{formData.vehicleType}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Plate Number</span>
+                  <span className="font-medium">
+                    {formData.vehiclePlate || "N/A"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Vehicle Color</span>
+                  <span className="font-medium">
+                    {formData.vehicleColor || "Unknown"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Passengers</span>
+                  <span className="font-medium">{formData.passenger}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Surcharge</span>
+                  <span className="font-medium">
+                    Rp {formData.surcharge?.toLocaleString() || "30,000"}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Parking</span>
+                  <span className="font-medium">
+                    Rp {formData.parking?.toLocaleString() || "10,000"}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t">
+                  <div className="flex justify-between">
+                    <span className="font-medium">Total Price</span>
+                    <span className="font-bold text-lg">
+                      Rp {formData.price.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Payment Method</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-all ${formData.paymentMethod === "cash" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+              onClick={() =>
+                setFormData((prev) => ({ ...prev, paymentMethod: "cash" }))
+              }
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`h-4 w-4 rounded-full border ${formData.paymentMethod === "cash" ? "border-4 border-blue-500" : "border border-gray-300"}`}
+                ></div>
+                <span>Cash</span>
+              </div>
+            </div>
+
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-all ${formData.paymentMethod === "qris" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+              onClick={() =>
+                setFormData((prev) => ({ ...prev, paymentMethod: "qris" }))
+              }
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`h-4 w-4 rounded-full border ${formData.paymentMethod === "qris" ? "border-4 border-blue-500" : "border border-gray-300"}`}
+                ></div>
+                <span>QRIS / E-wallet</span>
+              </div>
+            </div>
+
+            <div
+              className={`border rounded-lg p-4 cursor-pointer transition-all ${formData.paymentMethod === "transfer" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+              onClick={() =>
+                setFormData((prev) => ({ ...prev, paymentMethod: "transfer" }))
+              }
+            >
+              <div className="flex items-center gap-2">
+                <div
+                  className={`h-4 w-4 rounded-full border ${formData.paymentMethod === "transfer" ? "border-4 border-blue-500" : "border border-gray-300"}`}
+                ></div>
+                <span>Bank Transfer</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Step 5: Booking Success
+  const renderBookingSuccessStep = () => {
+    return (
+      <div className="flex flex-col items-center justify-center py-8">
+        <div className="bg-green-100 rounded-full p-4 mb-6">
+          <CheckCircle className="h-12 w-12 text-green-500" />
+        </div>
+
+        <h2 className="text-2xl font-bold mb-2">Booking Successful!</h2>
+        <p className="text-gray-600 mb-6 text-center">
+          Your airport transfer has been booked successfully.
+        </p>
+
+        <div className="bg-gray-50 w-full max-w-md rounded-lg p-6 mb-8">
+          <div className="text-center mb-4">
+            <h3 className="text-sm font-medium text-gray-500">
+              Booking Reference
+            </h3>
+            <p className="text-xl font-bold">{formData.bookingCode}</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Date & Time</span>
+              <span className="font-medium">
+                {new Date(formData.pickupDate).toLocaleDateString()} at{" "}
+                {formData.pickupTime}
+              </span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-gray-500">Driver</span>
+              <span className="font-medium">{formData.driverName}</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-gray-500">Vehicle</span>
+              <span className="font-medium">{formData.vehicleType}</span>
+            </div>
+
+            <div className="flex justify-between">
+              <span className="text-gray-500">Payment</span>
+              <span className="font-medium capitalize">
+                {formData.paymentMethod}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() => navigate(`/booking/${formData.bookingCode}`)}
+          >
+            <Car className="h-4 w-4" />
+            Track Booking
+          </Button>
+
+          <Button
+            variant="outline"
+            className="flex items-center gap-2"
+            onClick={() =>
+              (window.location.href = `tel:${formData.driverPhone}`)
+            }
+          >
+            <Phone className="h-4 w-4" />
+            Call Driver
+          </Button>
+
+          <Button
+            className="flex items-center gap-2"
+            onClick={() => navigate("/")}
+          >
+            <Home className="h-4 w-4" />
+            Back to Home
+          </Button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-blue-500 to-blue-700">
@@ -381,657 +1218,100 @@ export default function AirportTransferPage() {
       </header>
 
       {/* Hero section */}
-      <div className="text-center text-white px-4 py-8">
+      <div className="text-center text-white px-4 py-6">
         <h1 className="text-3xl md:text-4xl font-bold mb-2">
           {t("airportTransfer.title", "Airport transfers made")}
         </h1>
-        <h2 className="text-2xl md:text-3xl font-bold mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold mb-4">
           {t("airportTransfer.subtitle", "surprisingly easy and enjoyable!")}
         </h2>
-
-        {/* Features */}
-        <div className="flex flex-wrap justify-center gap-6 mb-8">
-          <div className="flex items-center gap-2">
-            <div className="bg-pink-500 rounded-full p-1">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-white"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <span>
-              {t("airportTransfer.freeCancellation", "Free cancellation")}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="bg-pink-500 rounded-full p-1">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-white"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <span>
-              {t("airportTransfer.flightTracking", "Flight tracking")}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="bg-pink-500 rounded-full p-1">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-4 w-4 text-white"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <span>{t("airportTransfer.support", "24/7 customer support")}</span>
-          </div>
-        </div>
       </div>
 
-      {/* Booking form */}
-      <div className="mx-auto w-full max-w-5xl px-4 pb-8">
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4">
-            {t(
-              "airportTransfer.bookingTitle",
-              "Book your airport taxi transfer. Worldwide.",
-            )}
-          </h2>
-
-          <div className="mb-4">
-            {/* Flex Horizontal */}
-            <div className="flex flex-col md:flex-row gap-3">
-              {/* From Terminal */}
-              <div className="flex flex-col w-full md:w-1/4">
-                <label
-                  htmlFor="airportLocation"
-                  className="text-sm font-medium mb-1"
-                >
-                  Airport Location
-                </label>
-                <select
-                  className="w-full border rounded-md p-2"
-                  value={airportLocation}
-                  onChange={(e) => setAirportLocation(e.target.value)}
-                >
-                  <option value="">Select Airport</option>
-                  <option value="Soekarno-Hatta">Soekarno-Hatta</option>
-                  <option value="Halim Perdanakusuma">
-                    Halim Perdanakusuma
-                  </option>
-                  <option value="Ngurah Rai">Ngurah Rai</option>
-                  <option value="Juanda">Juanda</option>
-                </select>
+      {/* Main content */}
+      <div className="mx-auto w-full max-w-5xl px-4 pb-8 flex-1 flex flex-col">
+        <Card className="w-full">
+          <CardHeader>
+            <div className="w-full">
+              {/* Progress bar */}
+              <div className="mb-4">
+                <Progress value={progressPercentage} className="h-2" />
               </div>
 
-              <div className="flex flex-col w-full md:w-1/3">
-                <label className="text-sm font-medium mb-2">
-                  Pickup Location
-                </label>
-                {isPickupManual ? (
-                  <Input
-                    value={fromTerminalName}
-                    onChange={(e) => setFromTerminalName(e.target.value)}
-                    placeholder="Enter pickup address"
-                    className="border rounded-md p-2"
-                  />
-                ) : (
-                  <Select
-                    value={
-                      fromTerminalName
-                        ? { label: fromTerminalName, value: fromTerminalName }
-                        : null
-                    }
-                    options={terminals.map((t) => ({
-                      label: t.name,
-                      value: t.name,
-                    }))}
-                    onChange={(selected) => {
-                      const selectedTerminal = terminals.find(
-                        (t) => t.name === selected?.value,
-                      );
-                      if (selectedTerminal) {
-                        setFromTerminalName(selectedTerminal.name);
-                        setFromLocation(
-                          selectedTerminal.position as [number, number],
-                        );
-                      } else if (selected === null) {
-                        setFromTerminalName("");
-                        setFromLocation([0, 0]);
-                      }
-                    }}
-                    isClearable
-                    placeholder="Terminal or address"
-                    className="react-select-container"
-                    classNamePrefix="react-select"
-                  />
-                )}
-              </div>
-
-              {/* To Location */}
-              <div className="flex flex-col w-full md:w-1/3">
-                <label className="text-sm font-medium mb-1">
-                  Dropoff Location
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-grow">
-                    {isDropoffManual ? (
-                      <AddressSearch
-                        label=""
-                        value={toAddress}
-                        onChange={(value) => {
-                          setToAddress(value);
-                        }}
-                        onSelectPosition={(pos) => {
-                          setToLocation(pos);
-                        }}
-                      />
-                    ) : (
-                      <Select
-                        value={
-                          toAddress
-                            ? { label: toAddress, value: toAddress }
-                            : null
-                        }
-                        options={terminals.map((t) => ({
-                          label: t.name,
-                          value: t.name,
-                        }))}
-                        onChange={(selected) => {
-                          const selectedTerminal = terminals.find(
-                            (t) => t.name === selected?.value,
-                          );
-                          if (selectedTerminal) {
-                            setToAddress(selectedTerminal.name);
-                            setToLocation(
-                              selectedTerminal.position as [number, number],
-                            );
-                          } else if (selected === null) {
-                            setToAddress("");
-                            setToLocation([0, 0]);
-                          }
-                        }}
-                        isClearable
-                        placeholder="Terminal or address"
-                        className="react-select-container"
-                        classNamePrefix="react-select"
-                      />
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleSwapLocation()}
-                    title="Swap pickup & dropoff"
+              {/* Step indicators */}
+              <div className="flex justify-between">
+                {[1, 2, 3, 4, 5].map((step) => (
+                  <div
+                    key={step}
+                    className={`flex flex-col items-center ${currentStep >= step ? "text-blue-600" : "text-gray-400"}`}
                   >
-                    <ArrowRightLeft className="h-5 w-5" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Map */}
-            <div className="mt-2">
-              <MapPicker fromLocation={fromLocation} toLocation={toLocation} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-5 mb-5">
-            {/* Pick Date */}
-            <div className="flex flex-col">
-              <label htmlFor="pickDate" className="text-sm font-medium mb-1">
-                Pickup Date
-              </label>
-              <input
-                id="pickDate"
-                type="text"
-                placeholder="Select date"
-                className="w-full border rounded-md p-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                ref={(input) => {
-                  if (input) {
-                    (window as any).flatpickr(input, {
-                      dateFormat: "Y-m-d",
-                      onChange: (selectedDates, dateStr) => {
-                        setPickupDate(dateStr);
-                      },
-                    });
-                  }
-                }}
-              />
-            </div>
-
-            {/* Pick Time */}
-            <div className="flex flex-col">
-              <label htmlFor="pickTime" className="text-sm font-medium mb-1">
-                Pickup Time
-              </label>
-              <input
-                id="pickTime"
-                type="time"
-                className="w-full border rounded-md p-2 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                value={pickupTime || ""}
-                onChange={(e) => setPickupTime(e.target.value)}
-                required
-              />
-            </div>
-
-            {/* Passenger */}
-            <div className="flex flex-col">
-              <label htmlFor="passenger" className="text-sm font-medium mb-1">
-                Passenger
-              </label>
-              <input
-                id="passenger"
-                type="number"
-                min="1"
-                placeholder="1"
-                value={passenger}
-                onChange={(e) => setPassenger(parseInt(e.target.value))}
-                className="w-full border rounded-md p-2 px-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Checkbox id="roundTrip" />
-              <label
-                htmlFor="roundTrip"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                {t("airportTransfer.roundTrip", "Round trip")}
-              </label>
-            </div>
-
-            <div className="flex flex-col w-full md:w-2/2">
-              <label htmlFor="vehicleType" className="text-sm font-medium mb-1">
-                Vehicle Type
-              </label>
-              <select
-                id="vehicleType"
-                className="w-full border rounded-md p-2"
-                value={vehicleType}
-                onChange={(e) => setVehicleType(e.target.value)}
-              >
-                <option value="">Select Type</option>
-                <option value="MPV">MPV</option>
-                <option value="Electric">Electric (EV)</option>
-                <option value="MPV Premium">MPV Premium</option>
-              </select>
-            </div>
-
-            {/* Nama Lengkap */}
-            <div className="flex flex-col w-full md:w-4/4">
-              <label htmlFor="fullName" className="text-sm font-medium mb-1">
-                Full Name
-              </label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="Nama Lengkap"
-                className="pl-3"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            </div>
-
-            {/* Nomor Telepon */}
-            <div className="flex flex-col w-full md:w-2/2">
-              <label htmlFor="phoneNumber" className="text-sm font-medium mb-1">
-                Phone
-              </label>
-              <Input
-                id="phoneNumber"
-                type="tel"
-                placeholder="Nomor Telepon"
-                className="pl-3"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-              />
-            </div>
-
-            {/* Find Driver */}
-            <div className="flex flex-col w-full md:w-2/2">
-              <label htmlFor="findDriver" className="text-sm font-medium mb-1">
-                Find Driver
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  id="findDriver"
-                  type="text"
-                  placeholder="Search driver name"
-                  className="pl-3"
-                  value={
-                    selectedDriver
-                      ? selectedDriver.driver_name
-                      : driverSearchQuery
-                  }
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setDriverSearchQuery(value);
-                    setSelectedDriver(null); // kosongkan selected saat user ketik baru
-
-                    if (value.trim().length >= 3) {
-                      searchDrivers(value);
-                    } else {
-                      setDriverSearchResults([]);
-                    }
-                  }}
-                  onFocus={() => {
-                    if (!driverSearchQuery) {
-                      fetchOnrideDrivers();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      searchDrivers(driverSearchQuery);
-                    }
-                  }}
-                />
-
-                <Button
-                  type="button"
-                  onClick={() => searchDrivers(driverSearchQuery)}
-                  variant="outline"
-                  size="icon"
-                  disabled={isSearchingDriver}
-                >
-                  {isSearchingDriver ? (
-                    <div className="h-4 w-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
-                  ) : (
-                    <Search className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-
-              {driverSearchResults.length > 0 && (
-                <div
-                  className="mt-2 border rounded-md max-h-40 overflow-y-auto bg-white shadow-md"
-                  onMouseDown={(e) => e.preventDefault()}
-                >
-                  {driverSearchResults.map((driver) => (
                     <div
-                      key={driver.id}
-                      className="p-2 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
-                      onMouseDown={() => {
-                        setSelectedDriver(driver); // langsung simpan driver yang dipilih
-                        setDriverSearchQuery(""); // kosongkan keyword pencarian
-                        setDriverSearchResults([]); // tutup dropdown
-                      }}
+                      className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${currentStep >= step ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"}`}
                     >
-                      <span>{driver.driver_name || "Unknown Driver"}</span>
-                      <span className="text-xs text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                        {driver.status}
-                      </span>
+                      {step}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedDriver && (
-                <div className="mt-2 p-2 border rounded-md bg-blue-50">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">
-                      {selectedDriver.driver_name}
+                    <span className="text-xs mt-1 hidden sm:block">
+                      {step === 1 && "Location"}
+                      {step === 2 && "Route"}
+                      {step === 3 && "Driver"}
+                      {step === 4 && "Confirm"}
+                      {step === 5 && "Success"}
                     </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardHeader>
 
-                    {/* Tooltip Button */}
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm("Yakin hapus driver?")) {
-                                setSelectedDriver(null);
-                              }
-                            }}
-                            className="h-6 w-6 p-0"
-                          >
-                            ×
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          <p>Remove driver</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                  <div className="text-xs text-gray-600">
-                    {selectedDriver.phone_number || "No phone"}
-                  </div>
-                </div>
+          <CardContent>{renderStepContent()}</CardContent>
+
+          {currentStep < 5 && (
+            <CardFooter className="flex justify-between">
+              {currentStep > 1 ? (
+                <Button
+                  variant="outline"
+                  onClick={handlePrevStep}
+                  disabled={isLoading}
+                >
+                  Back
+                </Button>
+              ) : (
+                <div></div>
               )}
-            </div>
 
-            {/* Booking Summary - Positioned to the left and wider */}
-            {fromLocation && toLocation && (
-              <div className="col-span-4 p-4 mt-4 bg-white rounded-lg shadow-lg max-w-md">
-                <h2 className="text-lg font-bold mb-4">Booking Summary</h2>
-
-                <p>
-                  <strong>Pickup Location:</strong> {fromTerminalName || "-"}
-                </p>
-
-                <p>
-                  <strong>Dropoff Location:</strong> {toAddress || "-"}
-                </p>
-
-                <div className="mt-2">
-                  {previewDistance !== null && previewPrice !== null ? (
-                    <>
-                      <p>
-                        <strong>Distance:</strong> {previewDistance.toFixed(2)}{" "}
-                        km
-                      </p>
-                      <p>
-                        <strong>Surcharge:</strong> Rp 30.000
-                      </p>
-                      <p>
-                        <strong>Parking:</strong> Rp 10.000
-                      </p>
-                      <p>
-                        <strong>Estimated Price:</strong> Rp{" "}
-                        {previewPrice.toLocaleString("id-ID")}
-                      </p>
-                      {selectedDriver && (
-                        <p>
-                          <strong>Selected Driver:</strong>{" "}
-                          {selectedDriver.driver_name}
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p>Calculating distance...</p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <Button
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-6"
-            onClick={handlePreview}
-          >
-            {t("airportTransfer.bookNow", "Book Now")}
-          </Button>
-        </div>
-      </div>
-
-      {/* Payment methods */}
-      <div className="bg-gray-100 py-8">
-        <div className="max-w-4xl mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-4 mb-12">
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2025/05/visa-1.jpg"
-              alt="Visa"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2025/05/paypal.png"
-              alt="PayPal"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2025/05/MasterCard_Logo.svg.png"
-              alt="Mastercard"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2025/05/Mandiri.png"
-              alt="Mandiri"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/permata-bank3459.jpg"
-              alt="Permata"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/bca-1.png"
-              alt="BCA"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/maybank.png"
-              alt="MayBank"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/danamon.png"
-              alt="Danamon"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/cimb-niaga.png"
-              alt="CIMB"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/bni.png"
-              alt="BNI"
-              className="h-8"
-            />
-            <img
-              src="https://travelintrips.co.id/wp-content/uploads/2023/10/bri.png"
-              alt="BRI"
-              className="h-8"
-            />
-          </div>
-
-          {/* Steps section */}
-          <div className="text-center mb-12">
-            <p className="text-sm uppercase tracking-wider mb-2">
-              {t("airportTransfer.arranged", "ARRANGED IN A MINUTE")}
-            </p>
-            <h2 className="text-2xl font-bold mb-1">
-              {t("airportTransfer.bookSteps.title", "Book an airport transfer")}
-            </h2>
-            <h3 className="text-xl font-bold mb-8">
-              {t("airportTransfer.bookSteps.subtitle", "in 3 easy steps")}
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
-                  <Calendar className="h-6 w-6 md:h-8 md:w-8 text-yellow-500" />
-                </div>
-                <h4 className="font-bold mb-2">
-                  {t(
-                    "airportTransfer.bookSteps.step1.title",
-                    "Schedule in advance",
-                  )}
-                </h4>
-                <p className="text-sm">
-                  {t(
-                    "airportTransfer.bookSteps.step1.description",
-                    "Schedule a time and pick up location to bring you to your destination.",
-                  )}
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-8 w-8 text-yellow-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-                <h4 className="font-bold mb-2">
-                  {t(
-                    "airportTransfer.bookSteps.step2.title",
-                    "Vehicle options",
-                  )}
-                </h4>
-                <p className="text-sm">
-                  {t(
-                    "airportTransfer.bookSteps.step2.description",
-                    "Choose a car type and options to make your trip enjoyable.",
-                  )}
-                </p>
-              </div>
-
-              <div className="flex flex-col items-center">
-                <div className="bg-yellow-50 p-4 rounded-full mb-4">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-8 w-8 text-yellow-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <h4 className="font-bold mb-2">
-                  {t("airportTransfer.bookSteps.step3.title", "Pay and relax")}
-                </h4>
-                <p className="text-sm">
-                  {t(
-                    "airportTransfer.bookSteps.step3.description",
-                    "No hidden costs. Pay via trusted partners. No worries, we have a cancellation policy.",
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+              <Button
+                onClick={handleNextStep}
+                disabled={!isCurrentStepValid() || isLoading}
+                className="min-w-[100px]"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {currentStep === 4 ? "Booking..." : "Loading..."}
+                  </>
+                ) : (
+                  <>
+                    {currentStep === 4 ? "Confirm Booking" : "Next"}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
       </div>
     </div>
+  );
+}
+
+export default function AirportTransferPage() {
+  return (
+    <TooltipProvider>
+      <LoadScriptNext
+        googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
+        libraries={["places"]}
+      >
+        <AirportTransferPageContent />
+      </LoadScriptNext>
+    </TooltipProvider>
   );
 }
