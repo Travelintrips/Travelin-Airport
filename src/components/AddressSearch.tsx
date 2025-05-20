@@ -115,7 +115,7 @@ export default function AddressSearch({
   };
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 relative">
       <label className="block text-sm font-medium mb-1">{label}</label>
       <Input
         type="text"
@@ -131,11 +131,11 @@ export default function AddressSearch({
         className="w-full"
       />
       {results.length > 0 && (
-        <div className="bg-white shadow rounded-md mt-2 max-h-40 overflow-y-auto z-50 absolute w-full">
+        <div className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto z-50 absolute w-full left-0 right-0">
           {results.map((place, index) => (
             <div
               key={index}
-              className="cursor-pointer px-4 py-2 hover:bg-gray-100"
+              className="cursor-pointer px-4 py-3 hover:bg-gray-100 touch-auto"
               onClick={async () => {
                 try {
                   const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
