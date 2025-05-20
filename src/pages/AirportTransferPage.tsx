@@ -183,9 +183,9 @@ function AirportTransferPageContent() {
   const vehicleTypes = [
     // { name: "Sedan", basePrice: 100000, additionalRate: 4000 },
     { name: "SUV", basePrice: 120000, additionalRate: 5000 },
-    { name: "MPV", basePrice: 100000, additionalRate: 4500 },
+    { name: "MPV", basePrice: 85000, additionalRate: 4500 },
     { name: "MPV Premium", basePrice: 120000, additionalRate: 6000 },
-    { name: "Electric", basePrice: 100000, additionalRate: 5500 },
+    { name: "Electric", basePrice: 95000, additionalRate: 5500 },
   ];
 
   // Calculate route distance and duration
@@ -219,12 +219,13 @@ function AirportTransferPageContent() {
       case 2: // Map & Route
         return formData.distance > 0;
       case 3: // Driver Selection
-        return selectedDriver !== null;
+        return selectedDriver !== null && availableDrivers.length > 0;
       case 4: // Booking Confirmation
         return (
           formData.fullName.trim() !== "" &&
           formData.phoneNumber.trim() !== "" &&
-          formData.paymentMethod !== ""
+          formData.paymentMethod !== "" &&
+          formData.driverId !== null
         );
       default:
         return true;
@@ -239,17 +240,24 @@ function AirportTransferPageContent() {
   // Calculate price based on distance and vehicle type
   function calculatePrice(distanceKm: number, pricePerKm: number): number {
     const baseDistance = 10;
-    const basePrice = 100000;
     const parking = 10000;
 
-    // Tentukan surcharge berdasarkan jenis kendaraan
     const vehicleType = formData.vehicleType;
-    let surcharge = 30000; // default
 
-    if (vehicleType === "Electric") {
-      surcharge = 45000;
-    } else if (vehicleType === "MPV") {
+    // Default values
+    let basePrice = 100000;
+    let surcharge = 30000;
+
+    // Kondisi berdasarkan jenis kendaraan
+    if (vehicleType === "MPV") {
+      basePrice = 85000;
       surcharge = 30000;
+    } else if (vehicleType === "Electric") {
+      basePrice = 95000;
+      surcharge = 45000;
+    } else if (vehicleType === "MPV Premium") {
+      basePrice = 120000;
+      surcharge = 50000; // atau bisa diubah jika berbeda
     }
 
     let total = basePrice;
@@ -436,8 +444,6 @@ function AirportTransferPageContent() {
       vehiclePricePerKm: driver.price_km || 0,
       surcharge: dynamicSurcharge, // ✅ Tambahan penting
     }));
-
-    console.log("Driver selected:", driver);
   };
 
   // Handle next step
@@ -460,6 +466,21 @@ function AirportTransferPageContent() {
 
   // Handle previous step
   const handlePrevStep = () => {
+    // If going back from confirmation to driver selection, reset driver selection
+    if (currentStep === 4) {
+      setSelectedDriver(null);
+      setFormData((prev) => ({
+        ...prev,
+        driverId: null,
+        driverName: "",
+        driverPhone: "",
+        driverPhoto: "",
+        vehicleName: "",
+        vehicleModel: "",
+        vehiclePlate: "",
+        vehicleColor: "",
+      }));
+    }
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
