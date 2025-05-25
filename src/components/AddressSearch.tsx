@@ -85,6 +85,7 @@ export default function AddressSearch({
         onChange(data.formatted_address);
         onSelectPosition([lat, lng]);
         setResults([]);
+        setQuery(data.formatted_address); // Update query to match the formatted address
       } else {
         console.warn("Formatted address not found:", data);
       }

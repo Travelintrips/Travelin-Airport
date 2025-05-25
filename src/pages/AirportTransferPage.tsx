@@ -44,6 +44,8 @@ import {
 async function geocodeAddress(
   address: string,
 ): Promise<[number, number] | null> {
+  if (!address || address.trim() === "") return null;
+
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
@@ -85,6 +87,9 @@ interface BookingFormData {
   vehicleColor: string;
   vehicleType: string;
   vehicleMake: string;
+  vehiclePricePerKm: number;
+  surcharge: number;
+  parking: number;
 }
 
 interface Driver {
@@ -96,6 +101,10 @@ interface Driver {
   vehicle_name?: string;
   vehicle_model?: string;
   license_plate?: string;
+  vehicle_color?: string;
+  vehicle_make?: string;
+  vehicle_type?: string;
+  price_km?: number;
   distance?: number;
   eta?: number;
 }
@@ -135,6 +144,9 @@ function AirportTransferPageContent() {
     vehicleName: "",
     vehicleModel: "",
     vehiclePlate: "",
+    vehicleColor: "",
+    vehicleMake: "",
+    vehiclePricePerKm: 0,
     surcharge: 0,
     parking: 10000,
   });
@@ -208,6 +220,17 @@ function AirportTransferPageContent() {
 
   // Calculate route distance and duration
   useEffect(() => {
+    // Reset distance and duration when addresses change
+    if (formData.fromAddress === "" || formData.toAddress === "") {
+      setFormData((prev) => ({
+        ...prev,
+        distance: 0,
+        duration: 0,
+      }));
+      return;
+    }
+
+    // Only calculate if we have valid coordinates and addresses
     if (
       formData.fromLocation[0] !== 0 &&
       formData.toLocation[0] !== 0 &&
@@ -300,7 +323,16 @@ function AirportTransferPageContent() {
   }
 
   // Get route details using OSRM
-  async function getRouteDetails(from: [number, number], to: [number, number]) {
+  async function getRouteDetails(
+    from: [number, number] | null,
+    to: [number, number] | null,
+  ) {
+    // Handle null values
+    if (!from || !to) {
+      console.warn("Missing coordinates for route calculation");
+      return;
+    }
+
     const [fromLat, fromLng] = from;
     const [toLat, toLng] = to;
 
@@ -325,8 +357,9 @@ function AirportTransferPageContent() {
     }
 
     try {
+      // Use car driving profile explicitly
       const res = await fetch(
-        `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`,
+        `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full`,
       );
       const data = await res.json();
 
@@ -541,25 +574,49 @@ function AirportTransferPageContent() {
   // Handle next step
   const handleNextStep = async () => {
     if (currentStep === 1) {
-      // Cek dan lengkapi fromLocation jika kosong
-      if (!formData.fromLocation || formData.fromLocation[0] === 0) {
-        const coords = await geocodeAddress(formData.fromAddress);
-        if (coords) {
-          setFormData((prev) => ({ ...prev, fromLocation: coords }));
+      setIsLoading(true);
+      try {
+        // Cek dan lengkapi fromLocation jika kosong
+        if (!formData.fromLocation || formData.fromLocation[0] === 0) {
+          const coords = await geocodeAddress(formData.fromAddress);
+          if (coords) {
+            setFormData((prev) => ({ ...prev, fromLocation: coords }));
+          }
         }
-      }
 
-      // Cek dan lengkapi toLocation jika kosong
-      if (!formData.toLocation || formData.toLocation[0] === 0) {
-        const coords = await geocodeAddress(formData.toAddress);
-        if (coords) {
-          setFormData((prev) => ({ ...prev, toLocation: coords }));
+        // Cek dan lengkapi toLocation jika kosong
+        if (!formData.toLocation || formData.toLocation[0] === 0) {
+          const coords = await geocodeAddress(formData.toAddress);
+          if (coords) {
+            setFormData((prev) => ({ ...prev, toLocation: coords }));
+          }
         }
-      }
 
-      // Calculate route if both addresses are filled
-      if (formData.fromAddress && formData.toAddress) {
-        await getRouteDetails(formData.fromLocation, formData.toLocation);
+        // Calculate route if both addresses are filled
+        if (formData.fromAddress && formData.toAddress) {
+          const fromCoords =
+            formData.fromLocation[0] !== 0
+              ? formData.fromLocation
+              : await geocodeAddress(formData.fromAddress);
+
+          const toCoords =
+            formData.toLocation[0] !== 0
+              ? formData.toLocation
+              : await geocodeAddress(formData.toAddress);
+
+          if (fromCoords && toCoords) {
+            await getRouteDetails(fromCoords, toCoords);
+
+            // Update the form data with the geocoded coordinates
+            setFormData((prev) => ({
+              ...prev,
+              fromLocation: fromCoords,
+              toLocation: toCoords,
+            }));
+          }
+        }
+      } finally {
+        setIsLoading(false);
       }
     }
 
@@ -737,6 +794,24 @@ function AirportTransferPageContent() {
     }
   };
 
+  // Add custom CSS for the routing machine
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = `
+      .leaflet-routing-container {
+        display: none !important;
+      }
+      .leaflet-routing-alt {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   // Step 1: Location and Schedule
   const renderLocationAndScheduleStep = () => {
     return (
@@ -766,7 +841,12 @@ function AirportTransferPageContent() {
                 label=""
                 value={formData.fromAddress}
                 onChange={(value) =>
-                  setFormData((prev) => ({ ...prev, fromAddress: value }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    fromAddress: value,
+                    // Reset location if address is cleared
+                    fromLocation: value ? prev.fromLocation : [0, 0],
+                  }))
                 }
                 onSelectPosition={(pos) =>
                   setFormData((prev) => ({ ...prev, fromLocation: pos }))
@@ -797,7 +877,12 @@ function AirportTransferPageContent() {
                 label=""
                 value={formData.toAddress}
                 onChange={(value) =>
-                  setFormData((prev) => ({ ...prev, toAddress: value }))
+                  setFormData((prev) => ({
+                    ...prev,
+                    toAddress: value,
+                    // Reset location if address is cleared
+                    toLocation: value ? prev.toLocation : [0, 0],
+                  }))
                 }
                 onSelectPosition={(pos) =>
                   setFormData((prev) => ({ ...prev, toLocation: pos }))
