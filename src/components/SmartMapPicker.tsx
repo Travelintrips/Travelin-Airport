@@ -4,27 +4,29 @@ import { supabase } from "@/lib/supabase";
 type MapMode = "osm" | "google" | "static";
 
 interface SmartMapPickerProps {
-  position: [number, number];
-  onSelectPosition: (pos: [number, number]) => void;
-  forceMode?: MapMode; // Optional override
+  pickup: [number, number];
+  dropoff: [number, number];
+  forceMode?: MapMode;
 }
 
 export default function SmartMapPicker({
-  position,
-  onSelectPosition,
+  pickup,
+  dropoff,
   forceMode,
 }: SmartMapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const [mapMode, setMapMode] = useState<MapMode>("osm");
+  const mapInstanceRef = useRef<any>(null);
 
+  const [mapMode, setMapMode] = useState<MapMode>("osm");
   const [apiKey, setApiKey] = useState<string | null>(null);
 
+  // Ambil Google Maps API key dari Supabase
   useEffect(() => {
     const fetchKey = async () => {
       const { data, error } = await supabase
         .from("api_settings")
         .select("google_maps_key")
-        .eq("id", 1) // ganti sesuai ID kamu
+        .eq("id", 1)
         .single();
 
       if (error) {
@@ -37,30 +39,38 @@ export default function SmartMapPicker({
     fetchKey();
   }, []);
 
-  if (!apiKey) return <div>Loading map...</div>;
-
+  // Mode peta
   useEffect(() => {
-    // AUTO MODE: detect saveData preference
     if (forceMode) {
       setMapMode(forceMode);
     } else if (navigator.connection?.saveData) {
-      console.log("Low data mode detected. Using static map.");
       setMapMode("static");
     } else {
       setMapMode("osm");
     }
   }, [forceMode]);
 
+  // Load peta setelah posisi valid dan API key ada
   useEffect(() => {
+    if (
+      !pickup ||
+      !dropoff ||
+      pickup[0] === 0 ||
+      dropoff[0] === 0 ||
+      !mapRef.current
+    )
+      return;
+
     if (mapMode === "osm") {
       loadLeaflet();
     } else if (mapMode === "google") {
       loadGoogleMap();
     }
-  }, [mapMode, position]);
+  }, [mapMode, pickup, dropoff]);
 
   const loadLeaflet = () => {
     const L = (window as any).L;
+
     if (!L) {
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
@@ -79,21 +89,43 @@ export default function SmartMapPicker({
 
   const initLeafletMap = () => {
     const L = (window as any).L;
-    const map = L.map(mapRef.current).setView(position, 13);
+
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+    }
+
+    const centerLat = (pickup[0] + dropoff[0]) / 2;
+    const centerLng = (pickup[1] + dropoff[1]) / 2;
+
+    const map = L.map(mapRef.current).setView([centerLat, centerLng], 13);
+    mapInstanceRef.current = map;
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "&copy; OpenStreetMap contributors",
     }).addTo(map);
-    const marker = L.marker(position).addTo(map);
 
-    map.on("click", (e: any) => {
-      const pos = [e.latlng.lat, e.latlng.lng];
-      marker.setLatLng(pos);
-      onSelectPosition(pos);
-    });
+    // Marker Pickup (Hijau)
+    L.marker(pickup, {
+      icon: L.divIcon({
+        className: "pickup-marker",
+        html: `<div style="background-color: #4CAF50; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      }),
+    }).addTo(map);
+
+    // Marker Dropoff (Merah)
+    L.marker(dropoff, {
+      icon: L.divIcon({
+        className: "dropoff-marker",
+        html: `<div style="background-color: #F44336; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white;"></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      }),
+    }).addTo(map);
   };
 
   const loadGoogleMap = () => {
-    // Cegah duplikasi script
     if (document.getElementById("google-maps-script")) {
       initGoogleMap();
       return;
@@ -105,33 +137,52 @@ export default function SmartMapPicker({
     script.async = true;
     script.defer = true;
     script.onload = () => initGoogleMap();
-
     document.body.appendChild(script);
   };
 
   const initGoogleMap = () => {
     const map = new (window as any).google.maps.Map(mapRef.current, {
-      center: { lat: position[0], lng: position[1] },
-      zoom: 14,
+      center: {
+        lat: (pickup[0] + dropoff[0]) / 2,
+        lng: (pickup[1] + dropoff[1]) / 2,
+      },
+      zoom: 13,
     });
 
-    const marker = new (window as any).google.maps.Marker({
-      position: { lat: position[0], lng: position[1] },
+    new (window as any).google.maps.Marker({
+      position: { lat: pickup[0], lng: pickup[1] },
       map,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#4CAF50",
+        fillOpacity: 1,
+        strokeWeight: 2,
+        strokeColor: "#ffffff",
+      },
     });
 
-    map.addListener("click", (e: any) => {
-      const pos = [e.latLng.lat(), e.latLng.lng()];
-      marker.setPosition({ lat: pos[0], lng: pos[1] });
-      onSelectPosition(pos);
+    new (window as any).google.maps.Marker({
+      position: { lat: dropoff[0], lng: dropoff[1] },
+      map,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#F44336",
+        fillOpacity: 1,
+        strokeWeight: 2,
+        strokeColor: "#ffffff",
+      },
     });
   };
+
+  if (!apiKey) return <div>Loading map...</div>;
 
   if (mapMode === "static") {
     return (
       <img
-        src={`https://maps.googleapis.com/maps/api/staticmap?center=${position[0]},${position[1]}&zoom=14&size=600x300&maptype=roadmap&markers=color:red%7C${position[0]},${position[1]}&key=${apiKey}`}
-        alt="Static Map"
+        src={`https://maps.googleapis.com/maps/api/staticmap?size=600x300&markers=color:green%7C${pickup[0]},${pickup[1]}&markers=color:red%7C${dropoff[0]},${dropoff[1]}&key=${apiKey}`}
+        alt="Map preview"
         className="rounded-md border w-full h-[300px] object-cover"
       />
     );
@@ -141,6 +192,6 @@ export default function SmartMapPicker({
     <div
       ref={mapRef}
       className="w-full h-[300px] rounded-md overflow-hidden border"
-    ></div>
+    />
   );
 }
