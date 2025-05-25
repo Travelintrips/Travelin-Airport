@@ -131,11 +131,14 @@ export default function AddressSearch({
         className="w-full"
       />
       {results.length > 0 && (
-        <div className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto z-50 absolute w-full left-0 right-0">
+        <div
+          className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto fixed sm:absolute w-full left-0 right-0"
+          style={{ zIndex: 9999 }}
+        >
           {results.map((place, index) => (
             <div
               key={index}
-              className="cursor-pointer px-4 py-3 hover:bg-gray-100 touch-auto"
+              className="cursor-pointer px-4 py-3 hover:bg-gray-100 active:bg-gray-200 touch-auto"
               onClick={async () => {
                 try {
                   const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
