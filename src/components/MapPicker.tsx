@@ -12,7 +12,6 @@ export default function MapPicker({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const routeLayerRef = useRef<any>(null);
-  const markersRef = useRef<L.Marker[]>([]);
 
   useEffect(() => {
     // Load Leaflet and Leaflet Routing Machine if not already loaded
@@ -100,88 +99,98 @@ export default function MapPicker({
     updateRoute();
   };
 
-  const updateRoute = async () => {
+  const updateRoute = () => {
     if (!mapInstanceRef.current || !(window as any).L) return;
 
     const L = (window as any).L;
     const map = mapInstanceRef.current;
 
+    // Check if coordinates are valid
     const isValidFrom = fromLocation[0] !== 0 && fromLocation[1] !== 0;
     const isValidTo = toLocation[0] !== 0 && toLocation[1] !== 0;
+
     if (!isValidFrom || !isValidTo) return;
 
-    // Hapus route lama
+    // Remove previous routing control if exists
     if (routeLayerRef.current) {
-      map.removeLayer(routeLayerRef.current);
+      map.removeControl(routeLayerRef.current);
     }
 
-    // Hapus marker lama
-    markersRef.current?.forEach((marker) => map.removeLayer(marker));
-    markersRef.current = [];
-
-    const createCustomIcon = (color: string) =>
-      L.divIcon({
+    // Create custom markers
+    const createCustomIcon = (color: string) => {
+      return L.divIcon({
         className: "custom-div-icon",
         html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
+    };
 
-    const fromStr = `${fromLocation[1]},${fromLocation[0]}`;
-    const toStr = `${toLocation[1]},${toLocation[0]}`;
-
+    // Create routing control with car mode
     try {
-      const res = await fetch(`/api/route?from=${fromStr}&to=${toStr}`);
-      const data = await res.json();
+      const routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(fromLocation[0], fromLocation[1]),
+          L.latLng(toLocation[0], toLocation[1]),
+        ],
+        routeWhileDragging: false,
+        showAlternatives: false,
+        fitSelectedRoutes: true,
+        lineOptions: {
+          styles: [
+            { color: "#0066FF", opacity: 0.8, weight: 6 },
+            { color: "#0033FF", opacity: 0.5, weight: 4 },
+          ],
+        },
+        createMarker: function (i: number, waypoint: any) {
+          const icon =
+            i === 0
+              ? createCustomIcon("#4CAF50") // Green for start
+              : createCustomIcon("#F44336"); // Red for end
 
-      if (!data.routes?.[0]?.geometry?.coordinates) {
-        throw new Error("Invalid route format");
+          return L.marker(waypoint.latLng, {
+            icon: icon,
+            draggable: false,
+          });
+        },
+        router: L.Routing.osrmv1({
+          serviceUrl: "https://router.project-osrm.org/route/v1",
+          profile: "driving",
+        }),
+        collapsible: true,
+        show: false, // Don't show the instructions panel
+      }).addTo(map);
+
+      // Store reference to remove later
+      routeLayerRef.current = routingControl;
+
+      // Hide the control panel but keep the route
+      const container = routingControl.getContainer();
+      if (container) {
+        container.style.display = "none";
       }
-
-      const coords = data.routes[0].geometry.coordinates.map(
-        ([lng, lat]: [number, number]) => [lat, lng],
-      );
-
-      const polyline = L.polyline(coords, {
-        color: "#0066FF",
-        opacity: 0.8,
-        weight: 6,
-      }).addTo(map);
-      routeLayerRef.current = polyline;
-
-      // Marker
-      const fromMarker = L.marker(fromLocation, {
-        icon: createCustomIcon("#4CAF50"),
-      }).addTo(map);
-      const toMarker = L.marker(toLocation, {
-        icon: createCustomIcon("#F44336"),
-      }).addTo(map);
-
-      markersRef.current.push(fromMarker, toMarker);
-
-      map.fitBounds(polyline.getBounds(), { padding: [50, 50] });
     } catch (error) {
-      console.error("❌ Failed to fetch route:", error);
+      console.error("Error creating routing control:", error);
 
-      // Fallback garis lurus
+      // Fallback to simple polyline if routing fails
       const polyline = L.polyline([fromLocation, toLocation], {
         color: "blue",
         weight: 5,
         opacity: 0.7,
       }).addTo(map);
-      routeLayerRef.current = polyline;
 
-      const fromMarker = L.marker(fromLocation, {
+      // Add markers
+      L.marker(fromLocation, {
         icon: createCustomIcon("#4CAF50"),
       }).addTo(map);
-      const toMarker = L.marker(toLocation, {
+
+      L.marker(toLocation, {
         icon: createCustomIcon("#F44336"),
       }).addTo(map);
-      markersRef.current.push(fromMarker, toMarker);
 
-      map.fitBounds(L.latLngBounds(fromLocation, toLocation), {
-        padding: [50, 50],
-      });
+      // Fit bounds
+      const bounds = L.latLngBounds(fromLocation, toLocation);
+      map.fitBounds(bounds, { padding: [50, 50] });
     }
   };
 
