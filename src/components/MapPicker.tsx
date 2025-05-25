@@ -14,10 +14,9 @@ export default function MapPicker({
   const routeLayerRef = useRef<any>(null);
 
   useEffect(() => {
-    // Load Leaflet and Leaflet Routing Machine if not already loaded
     const loadDependencies = async () => {
       if (!(window as any).L) {
-        // Load Leaflet first
+        console.log("📦 Loading Leaflet...");
         const leafletScript = document.createElement("script");
         leafletScript.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
         leafletScript.async = true;
@@ -28,12 +27,14 @@ export default function MapPicker({
         leafletLink.href = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.css";
         document.head.appendChild(leafletLink);
 
-        // Wait for Leaflet to load
         await new Promise<void>((resolve) => {
-          leafletScript.onload = () => resolve();
+          leafletScript.onload = () => {
+            console.log("✅ Leaflet loaded");
+            resolve();
+          };
         });
 
-        // Then load Leaflet Routing Machine
+        console.log("📦 Loading Leaflet Routing Machine...");
         const routingScript = document.createElement("script");
         routingScript.src =
           "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js";
@@ -46,9 +47,11 @@ export default function MapPicker({
           "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css";
         document.head.appendChild(routingLink);
 
-        // Wait for Routing Machine to load
         await new Promise<void>((resolve) => {
-          routingScript.onload = () => resolve();
+          routingScript.onload = () => {
+            console.log("✅ Routing Machine loaded");
+            resolve();
+          };
         });
       }
 
@@ -57,7 +60,6 @@ export default function MapPicker({
 
     loadDependencies();
 
-    // Cleanup function to remove map when component unmounts
     return () => {
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
@@ -66,7 +68,6 @@ export default function MapPicker({
     };
   }, []);
 
-  // Update map when locations change
   useEffect(() => {
     if (mapInstanceRef.current && (window as any).L) {
       updateRoute();
@@ -76,7 +77,6 @@ export default function MapPicker({
   const initMap = () => {
     if (!mapRef.current || !(window as any).L) return;
 
-    // Clear previous map instance
     if (mapInstanceRef.current) {
       mapInstanceRef.current.remove();
     }
@@ -100,23 +100,29 @@ export default function MapPicker({
   };
 
   const updateRoute = () => {
-    if (!mapInstanceRef.current || !(window as any).L) return;
-
     const L = (window as any).L;
     const map = mapInstanceRef.current;
 
-    // Check if coordinates are valid
+    if (!L || !map || !L.Routing) {
+      console.warn("❗ Leaflet or Routing belum siap");
+      return;
+    }
+
+    console.log("📍 From:", fromLocation);
+    console.log("📍 To:", toLocation);
+
     const isValidFrom = fromLocation[0] !== 0 && fromLocation[1] !== 0;
     const isValidTo = toLocation[0] !== 0 && toLocation[1] !== 0;
 
-    if (!isValidFrom || !isValidTo) return;
+    if (!isValidFrom || !isValidTo) {
+      console.warn("⚠️ Koordinat tidak valid:", { fromLocation, toLocation });
+      return;
+    }
 
-    // Remove previous routing control if exists
     if (routeLayerRef.current) {
       map.removeControl(routeLayerRef.current);
     }
 
-    // Create custom markers
     const createCustomIcon = (color: string) => {
       return L.divIcon({
         className: "custom-div-icon",
@@ -126,7 +132,6 @@ export default function MapPicker({
       });
     };
 
-    // Create routing control with car mode
     try {
       const routingControl = L.Routing.control({
         waypoints: [
@@ -144,9 +149,7 @@ export default function MapPicker({
         },
         createMarker: function (i: number, waypoint: any) {
           const icon =
-            i === 0
-              ? createCustomIcon("#4CAF50") // Green for start
-              : createCustomIcon("#F44336"); // Red for end
+            i === 0 ? createCustomIcon("#4CAF50") : createCustomIcon("#F44336");
 
           return L.marker(waypoint.latLng, {
             icon: icon,
@@ -158,28 +161,34 @@ export default function MapPicker({
           profile: "driving",
         }),
         collapsible: true,
-        show: false, // Don't show the instructions panel
+        show: false,
       }).addTo(map);
 
-      // Store reference to remove later
+      routingControl.on("routesfound", function (e) {
+        const route = e.routes[0];
+        const distanceKm = route.summary.totalDistance / 1000;
+        const durationMin = route.summary.totalTime / 60;
+
+        console.log("✅ OSRM route found:");
+        console.log("  📏 Jarak :", distanceKm.toFixed(2), "km");
+        console.log("  ⏱️ Durasi:", durationMin.toFixed(1), "menit");
+      });
+
       routeLayerRef.current = routingControl;
 
-      // Hide the control panel but keep the route
       const container = routingControl.getContainer();
       if (container) {
         container.style.display = "none";
       }
     } catch (error) {
-      console.error("Error creating routing control:", error);
+      console.error("❌ Gagal membuat routing control:", error);
 
-      // Fallback to simple polyline if routing fails
       const polyline = L.polyline([fromLocation, toLocation], {
         color: "blue",
         weight: 5,
         opacity: 0.7,
       }).addTo(map);
 
-      // Add markers
       L.marker(fromLocation, {
         icon: createCustomIcon("#4CAF50"),
       }).addTo(map);
@@ -188,7 +197,6 @@ export default function MapPicker({
         icon: createCustomIcon("#F44336"),
       }).addTo(map);
 
-      // Fit bounds
       const bounds = L.latLngBounds(fromLocation, toLocation);
       map.fitBounds(bounds, { padding: [50, 50] });
     }
