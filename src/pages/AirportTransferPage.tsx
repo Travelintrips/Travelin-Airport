@@ -41,6 +41,23 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+async function geocodeAddress(
+  address: string,
+): Promise<[number, number] | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+    );
+    const data = await res.json();
+    if (data.length > 0) {
+      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    }
+  } catch (err) {
+    console.error("Geocoding failed:", err);
+  }
+  return null;
+}
+
 // Types
 interface BookingFormData {
   fromLocation: [number, number];
@@ -450,6 +467,24 @@ function AirportTransferPageContent() {
 
   // Handle next step
   const handleNextStep = async () => {
+    if (currentStep === 1) {
+      // Cek dan lengkapi fromLocation jika kosong
+      if (!formData.fromLocation || formData.fromLocation[0] === 0) {
+        const coords = await geocodeAddress(formData.fromAddress);
+        if (coords) {
+          setFormData((prev) => ({ ...prev, fromLocation: coords }));
+        }
+      }
+
+      // Cek dan lengkapi toLocation jika kosong
+      if (!formData.toLocation || formData.toLocation[0] === 0) {
+        const coords = await geocodeAddress(formData.toAddress);
+        if (coords) {
+          setFormData((prev) => ({ ...prev, toLocation: coords }));
+        }
+      }
+    }
+
     if (currentStep === 2) {
       // Before moving to driver selection, search for drivers
       setIsLoading(true);
