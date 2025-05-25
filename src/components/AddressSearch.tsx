@@ -34,8 +34,8 @@ export default function AddressSearch({
       return;
     }
 
-    // If the search matches exactly what's already selected, don't show results
-    if (search === value && search.length > 0) {
+    // Always clear results if the input exactly matches the current value
+    if (search === value) {
       setResults([]);
       return;
     }
@@ -130,6 +130,13 @@ export default function AddressSearch({
           const newValue = e.target.value;
           onChange(newValue);
           setQuery(newValue);
+
+          // Clear results if the field matches the selected value
+          if (newValue === value) {
+            setResults([]);
+            return;
+          }
+
           // Only search if there's text to search for
           if (newValue.trim() !== "") {
             searchAddress(newValue);
@@ -139,12 +146,26 @@ export default function AddressSearch({
         }}
         onFocus={(e) => {
           if (onFocus) onFocus();
-          // Show results only if there's text and it's not an exact match with the current value
-          if (e.target.value.trim() !== "" && e.target.value !== value) {
+
+          // Don't show results if the field already has a selected value
+          if (e.target.value === value && value.trim() !== "") {
+            setResults([]);
+            return;
+          }
+
+          // Only show results for new searches
+          if (e.target.value.trim() !== "") {
             searchAddress(e.target.value);
           }
         }}
-        onClick={onClick}
+        onClick={(e) => {
+          // Don't show dropdown when clicking on a field with a selected value
+          if (value.trim() !== "") {
+            setResults([]);
+          }
+
+          if (onClick) onClick();
+        }}
         placeholder={placeholder}
         className="w-full"
       />
@@ -163,11 +184,12 @@ export default function AddressSearch({
                   onChange(place.description);
                   setQuery(place.description);
 
+                  // Always clear results immediately after selection
+                  setResults([]);
+
                   // Then fetch the coordinates
                   const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
                   onSelectPosition([lat, lng]);
-                  // Clear results to hide the dropdown
-                  setResults([]);
                 } catch (err) {
                   console.error("❌ Gagal ambil lat/lng dari place_id:", err);
                 }
