@@ -13,6 +13,7 @@ export default function MapPicker({
   const mapInstanceRef = useRef<any>(null);
   const routeLayerRef = useRef<any>(null);
 
+  // Load Leaflet & Routing script once
   useEffect(() => {
     const loadDependencies = async () => {
       if (!(window as any).L) {
@@ -68,27 +69,45 @@ export default function MapPicker({
     };
   }, []);
 
+  // Update route on location change
   useEffect(() => {
-    if (mapInstanceRef.current && (window as any).L) {
-      updateRoute();
-    }
+    const isValidCoord = ([lat, lng]: [number, number]) =>
+      typeof lat === "number" &&
+      typeof lng === "number" &&
+      lat !== 0 &&
+      lng !== 0;
+
+    if (
+      !mapInstanceRef.current ||
+      !(window as any).L ||
+      !isValidCoord(fromLocation) ||
+      !isValidCoord(toLocation)
+    )
+      return;
+
+    updateRoute();
   }, [fromLocation, toLocation]);
 
   const initMap = () => {
-    if (!mapRef.current || !(window as any).L) return;
-
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
+    const L = (window as any).L;
+    if (!mapRef.current || !L) {
+      console.warn("❗ Map container atau Leaflet belum siap");
+      return;
     }
 
-    const L = (window as any).L;
-    const map = L.map(mapRef.current).setView(
-      [
-        (fromLocation[0] + toLocation[0]) / 2,
-        (fromLocation[1] + toLocation[1]) / 2,
-      ],
-      12,
+    // 💥 Hindari double init: jika Leaflet sudah terhubung ke elemen ini
+    if (mapRef.current._leaflet_id) {
+      console.log("⚠️ Map sudah diinisialisasi. Melewati initMap()");
+      return;
+    }
+
+    const bounds = L.latLngBounds(
+      L.latLng(fromLocation[0], fromLocation[1]),
+      L.latLng(toLocation[0], toLocation[1]),
     );
+
+    const map = L.map(mapRef.current);
+    map.fitBounds(bounds, { padding: [50, 50] });
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:
@@ -108,29 +127,47 @@ export default function MapPicker({
       return;
     }
 
-    console.log("📍 From:", fromLocation);
-    console.log("📍 To:", toLocation);
+    const isValid = ([lat, lng]: [number, number]) =>
+      typeof lat === "number" &&
+      typeof lng === "number" &&
+      lat !== 0 &&
+      lng !== 0;
 
-    const isValidFrom = fromLocation[0] !== 0 && fromLocation[1] !== 0;
-    const isValidTo = toLocation[0] !== 0 && toLocation[1] !== 0;
-
-    if (!isValidFrom || !isValidTo) {
+    if (!isValid(fromLocation) || !isValid(toLocation)) {
       console.warn("⚠️ Koordinat tidak valid:", { fromLocation, toLocation });
       return;
     }
 
-    if (routeLayerRef.current) {
-      map.removeControl(routeLayerRef.current);
+    if (
+      fromLocation[0] === toLocation[0] &&
+      fromLocation[1] === toLocation[1]
+    ) {
+      console.warn(
+        "⛔ Pickup dan Dropoff berada di titik yang sama. Routing dibatalkan.",
+      );
+      return;
     }
 
-    const createCustomIcon = (color: string) => {
-      return L.divIcon({
+    // ✅ Jika sudah ada routing, cukup update titiknya
+    try {
+      if (routeLayerRef.current) {
+        routeLayerRef.current.setWaypoints([
+          L.latLng(fromLocation[0], fromLocation[1]),
+          L.latLng(toLocation[0], toLocation[1]),
+        ]);
+        return;
+      }
+    } catch (err) {
+      console.warn("⚠️ setWaypoints gagal, akan buat ulang routing", err);
+    }
+
+    const createCustomIcon = (color: string) =>
+      L.divIcon({
         className: "custom-div-icon",
         html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
         iconSize: [20, 20],
         iconAnchor: [10, 10],
       });
-    };
 
     try {
       const routingControl = L.Routing.control({
@@ -147,14 +184,10 @@ export default function MapPicker({
             { color: "#0033FF", opacity: 0.5, weight: 4 },
           ],
         },
-        createMarker: function (i: number, waypoint: any) {
+        createMarker: (i: number, waypoint: any) => {
           const icon =
             i === 0 ? createCustomIcon("#4CAF50") : createCustomIcon("#F44336");
-
-          return L.marker(waypoint.latLng, {
-            icon: icon,
-            draggable: false,
-          });
+          return L.marker(waypoint.latLng, { icon, draggable: false });
         },
         router: L.Routing.osrmv1({
           serviceUrl: "https://router.project-osrm.org/route/v1",
@@ -164,41 +197,25 @@ export default function MapPicker({
         show: false,
       }).addTo(map);
 
-      routingControl.on("routesfound", function (e) {
+      routingControl.on("routesfound", (e) => {
         const route = e.routes[0];
         const distanceKm = route.summary.totalDistance / 1000;
         const durationMin = route.summary.totalTime / 60;
-
-        console.log("✅ OSRM route found:");
-        console.log("  📏 Jarak :", distanceKm.toFixed(2), "km");
-        console.log("  ⏱️ Durasi:", durationMin.toFixed(1), "menit");
+        console.log(
+          "✅ Rute ditemukan:",
+          distanceKm.toFixed(2),
+          "km,",
+          durationMin.toFixed(1),
+          "menit",
+        );
       });
 
-      routeLayerRef.current = routingControl;
-
       const container = routingControl.getContainer();
-      if (container) {
-        container.style.display = "none";
-      }
-    } catch (error) {
-      console.error("❌ Gagal membuat routing control:", error);
+      if (container) container.style.display = "none";
 
-      const polyline = L.polyline([fromLocation, toLocation], {
-        color: "blue",
-        weight: 5,
-        opacity: 0.7,
-      }).addTo(map);
-
-      L.marker(fromLocation, {
-        icon: createCustomIcon("#4CAF50"),
-      }).addTo(map);
-
-      L.marker(toLocation, {
-        icon: createCustomIcon("#F44336"),
-      }).addTo(map);
-
-      const bounds = L.latLngBounds(fromLocation, toLocation);
-      map.fitBounds(bounds, { padding: [50, 50] });
+      routeLayerRef.current = routingControl;
+    } catch (err) {
+      console.error("❌ Gagal membuat routing control:", err);
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { loadGoogleMapsScript } from "@/utils/loadGoogleMapsScript";
 
 type MapMode = "osm" | "google" | "static";
 
@@ -37,6 +38,30 @@ export default function SmartMapPicker({
     };
 
     fetchKey();
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const { data, error } = await supabase
+        .from("api_settings")
+        .select("google_maps_key")
+        .eq("id", 1)
+        .single();
+
+      if (error || !data?.google_maps_key) {
+        console.error("❌ Gagal ambil API key dari Supabase", error);
+        return;
+      }
+
+      try {
+        await loadGoogleMapsScript(data.google_maps_key);
+        console.log("🎉 Google Maps siap digunakan");
+      } catch (e) {
+        console.error("❌ Gagal memuat Google Maps", e);
+      }
+    };
+
+    init();
   }, []);
 
   // Mode peta
@@ -133,7 +158,8 @@ export default function SmartMapPicker({
 
     const script = document.createElement("script");
     script.id = "google-maps-script";
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+
     script.async = true;
     script.defer = true;
     script.onload = () => initGoogleMap();

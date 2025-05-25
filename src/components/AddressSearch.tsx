@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
+import { supabase } from "@/lib/supabase";
+import { loadGoogleMapsScript } from "@/utils/loadGoogleMapsScript";
 
 interface AddressSearchProps {
   label: string;
@@ -22,11 +24,36 @@ export default function AddressSearch({
 }: AddressSearchProps) {
   const [results, setResults] = useState<any[]>([]);
   const [query, setQuery] = useState("");
+  const [googleReady, setGoogleReady] = useState(false);
 
   const FUNCTION_URL =
     "https://wvqlwgmlijtcutvseyey.supabase.co/functions/v1/google-autocomplete";
 
-  const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  // ⏳ Load Google Maps Script once with API key from Supabase
+  useEffect(() => {
+    const loadGoogle = async () => {
+      const { data, error } = await supabase
+        .from("api_settings")
+        .select("google_maps_key")
+        .eq("id", 1)
+        .single();
+
+      if (error || !data?.google_maps_key) {
+        console.error("❌ Gagal ambil API key dari Supabase", error);
+        return;
+      }
+
+      try {
+        await loadGoogleMapsScript(data.google_maps_key);
+        setGoogleReady(true);
+        console.log("✅ Google Maps siap digunakan");
+      } catch (err) {
+        console.error("❌ Gagal memuat Google Maps API:", err);
+      }
+    };
+
+    loadGoogle();
+  }, []);
 
   const searchAddress = async (search: string) => {
     if (search.length < 3) {
@@ -34,7 +61,6 @@ export default function AddressSearch({
       return;
     }
 
-    // Always clear results if the input exactly matches the current value
     if (search === value) {
       setResults([]);
       return;
@@ -59,45 +85,10 @@ export default function AddressSearch({
     }
   };
 
-  const fetchPlaceDetails = async (lat: number, lng: number) => {
-    try {
-      const response = await fetch(
-        "https://wvqlwgmlijtcutvseyey.functions.supabase.co/google-place-details",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            location: { lat, lng }, // ✅ Cocok dengan Edge Function
-          }),
-        },
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        console.error("Fetch Place Details failed:", data);
-        return;
-      }
-
-      if (data.formatted_address) {
-        onChange(data.formatted_address);
-        onSelectPosition([lat, lng]);
-        setResults([]);
-        setQuery(data.formatted_address); // Update query to match the formatted address
-      } else {
-        console.warn("Formatted address not found:", data);
-      }
-    } catch (error) {
-      console.error("Fetch failed:", error);
-    }
-  };
-
   const getLatLngFromPlaceId = (placeId: string): Promise<[number, number]> => {
     return new Promise((resolve, reject) => {
       if (typeof window.google === "undefined" || !window.google.maps?.places) {
-        return reject("Google Maps API belum dimuat");
+        return reject("Google Maps API belum siap");
       }
 
       const service = new window.google.maps.places.PlacesService(
