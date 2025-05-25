@@ -171,8 +171,8 @@ export default function AddressSearch({
       />
       {results.length > 0 && (
         <div
-          className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto fixed sm:absolute w-full left-0 right-0"
-          style={{ zIndex: 9999 }}
+          className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto absolute w-full left-0 right-0"
+          style={{ zIndex: 9999, top: "100%" }}
         >
           {results.map((place, index) => (
             <div

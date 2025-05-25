@@ -208,10 +208,20 @@ function AirportTransferPageContent() {
 
   // Calculate route distance and duration
   useEffect(() => {
-    if (formData.fromLocation[0] !== 0 && formData.toLocation[0] !== 0) {
+    if (
+      formData.fromLocation[0] !== 0 &&
+      formData.toLocation[0] !== 0 &&
+      formData.fromAddress &&
+      formData.toAddress
+    ) {
       getRouteDetails(formData.fromLocation, formData.toLocation);
     }
-  }, [formData.fromLocation, formData.toLocation]);
+  }, [
+    formData.fromLocation,
+    formData.toLocation,
+    formData.fromAddress,
+    formData.toAddress,
+  ]);
 
   // Calculate price when distance or vehicle type changes
   useEffect(() => {
@@ -235,7 +245,8 @@ function AirportTransferPageContent() {
           formData.pickupTime !== ""
         );
       case 2: // Map & Route
-        return formData.distance > 0;
+        // Allow proceeding even if distance is 0 (for nearby locations)
+        return formData.fromAddress && formData.toAddress;
       case 3: // Driver Selection
         return selectedDriver !== null && availableDrivers.length > 0;
       case 4: // Booking Confirmation
@@ -293,6 +304,26 @@ function AirportTransferPageContent() {
     const [fromLat, fromLng] = from;
     const [toLat, toLng] = to;
 
+    // Check if coordinates are valid
+    if (fromLat === 0 || fromLng === 0 || toLat === 0 || toLng === 0) {
+      console.warn("Invalid coordinates for route calculation");
+      return;
+    }
+
+    // Check if coordinates are the same (very close locations)
+    const isSameLocation =
+      Math.abs(fromLat - toLat) < 0.0001 && Math.abs(fromLng - toLng) < 0.0001;
+
+    if (isSameLocation) {
+      // Set minimal values for same location
+      setFormData((prev) => ({
+        ...prev,
+        distance: 0.1, // 100 meters minimum
+        duration: 1, // 1 minute minimum
+      }));
+      return;
+    }
+
     try {
       const res = await fetch(
         `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`,
@@ -300,8 +331,11 @@ function AirportTransferPageContent() {
       const data = await res.json();
 
       if (data.routes && data.routes.length > 0) {
-        const distanceKm = data.routes[0].distance / 1000; // convert to km
-        const durationMin = Math.ceil(data.routes[0].duration / 60); // convert to minutes
+        const distanceKm = Math.max(0.1, data.routes[0].distance / 1000); // convert to km, minimum 0.1
+        const durationMin = Math.max(
+          1,
+          Math.ceil(data.routes[0].duration / 60),
+        ); // convert to minutes, minimum 1
 
         setFormData((prev) => ({
           ...prev,
@@ -310,20 +344,59 @@ function AirportTransferPageContent() {
         }));
       } else {
         console.warn("No route found from OSRM");
-        toast({
-          title: "Route Error",
-          description: "Could not calculate route between locations",
-          variant: "destructive",
-        });
+        // Set default values instead of showing error
+        const directDistance = calculateDirectDistance(
+          fromLat,
+          fromLng,
+          toLat,
+          toLng,
+        );
+        setFormData((prev) => ({
+          ...prev,
+          distance: directDistance,
+          duration: Math.ceil(directDistance * 2), // Rough estimate: 30km/h average speed
+        }));
       }
     } catch (err) {
       console.error("Error calling OSRM:", err);
-      toast({
-        title: "Service Error",
-        description: "Could not connect to routing service",
-        variant: "destructive",
-      });
+      // Calculate direct distance as fallback
+      const directDistance = calculateDirectDistance(
+        fromLat,
+        fromLng,
+        toLat,
+        toLng,
+      );
+      setFormData((prev) => ({
+        ...prev,
+        distance: directDistance,
+        duration: Math.ceil(directDistance * 2), // Rough estimate: 30km/h average speed
+      }));
     }
+  }
+
+  // Calculate direct distance between two points using Haversine formula
+  function calculateDirectDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number {
+    const R = 6371; // Radius of the earth in km
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(deg2rad(lat1)) *
+        Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = R * c; // Distance in km
+    return Math.max(0.1, distance); // Minimum 0.1 km
+  }
+
+  function deg2rad(deg: number): number {
+    return deg * (Math.PI / 180);
   }
 
   // Handle location swap
@@ -482,6 +555,11 @@ function AirportTransferPageContent() {
         if (coords) {
           setFormData((prev) => ({ ...prev, toLocation: coords }));
         }
+      }
+
+      // Calculate route if both addresses are filled
+      if (formData.fromAddress && formData.toAddress) {
+        await getRouteDetails(formData.fromLocation, formData.toLocation);
       }
     }
 
