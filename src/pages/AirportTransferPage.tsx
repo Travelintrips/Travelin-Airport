@@ -117,7 +117,7 @@ function AirportTransferPageContent() {
 
   // Step tracking
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const totalSteps = 5;
+  const totalSteps = 4;
   const progressPercentage = (currentStep / totalSteps) * 100;
 
   // Form data
@@ -267,12 +267,12 @@ function AirportTransferPageContent() {
           formData.pickupDate !== "" &&
           formData.pickupTime !== ""
         );
-      case 2: // Map & Route
+      case 2: // Map & Route + Driver Selection
         // Allow proceeding even if distance is 0 (for nearby locations)
-        return formData.fromAddress && formData.toAddress;
-      case 3: // Driver Selection
-        return selectedDriver !== null && availableDrivers.length > 0;
-      case 4: // Booking Confirmation
+        return (
+          formData.fromAddress && formData.toAddress && selectedDriver !== null
+        );
+      case 3: // Booking Confirmation
         return (
           formData.fullName.trim() !== "" &&
           formData.phoneNumber.trim() !== "" &&
@@ -615,19 +615,15 @@ function AirportTransferPageContent() {
             }));
           }
         }
+
+        // Search for drivers immediately after route calculation
+        await searchDrivers();
       } finally {
         setIsLoading(false);
       }
     }
 
-    if (currentStep === 2) {
-      // Before moving to driver selection, search for drivers
-      setIsLoading(true);
-      await searchDrivers();
-      setIsLoading(false);
-    }
-
-    if (currentStep === 4) {
+    if (currentStep === 3) {
       // Submit booking
       await handleSubmitBooking();
     } else {
@@ -638,8 +634,8 @@ function AirportTransferPageContent() {
 
   // Handle previous step
   const handlePrevStep = () => {
-    // If going back from confirmation to driver selection, reset driver selection
-    if (currentStep === 4) {
+    // If going back from confirmation to route & driver selection, reset driver selection
+    if (currentStep === 3) {
       setSelectedDriver(null);
       setFormData((prev) => ({
         ...prev,
@@ -693,7 +689,7 @@ function AirportTransferPageContent() {
       }
 
       // Move to success step
-      setCurrentStep(5);
+      setCurrentStep(4);
 
       // Send notification (simulated)
       console.log("Sending booking notification to customer and driver");
@@ -710,7 +706,7 @@ function AirportTransferPageContent() {
   };
 
   useEffect(() => {
-    if (currentStep === 3) {
+    if (currentStep === 2) {
       searchDrivers(); // Re-search when vehicle type changes
     }
   }, [formData.vehicleType]);
@@ -782,12 +778,10 @@ function AirportTransferPageContent() {
       case 1:
         return renderLocationAndScheduleStep();
       case 2:
-        return renderMapAndRouteStep();
+        return renderMapAndRouteWithDriverStep();
       case 3:
-        return renderDriverSelectionStep();
-      case 4:
         return renderBookingConfirmationStep();
-      case 5:
+      case 4:
         return renderBookingSuccessStep();
       default:
         return renderLocationAndScheduleStep();
@@ -964,8 +958,8 @@ function AirportTransferPageContent() {
     );
   };
 
-  // Step 2: Map and Route
-  const renderMapAndRouteStep = () => {
+  // Step 2: Map and Route with Driver Selection
+  const renderMapAndRouteWithDriverStep = () => {
     return (
       <div className="space-y-6">
         <div className="space-y-4">
@@ -1005,10 +999,23 @@ function AirportTransferPageContent() {
 
             <Card>
               <CardContent className="pt-6 text-center">
-                <div className="flex items-center justify-center">
-                  <div className="bg-blue-100 text-blue-600 rounded-full p-3">
-                    <Car className="h-6 w-6" />
-                  </div>
+                <div className="text-center">
+                  {selectedDriver ? (
+                    <>
+                      <h4 className="text-sm font-medium text-gray-500">
+                        Price
+                      </h4>
+                      <p className="text-2xl font-bold text-green-600">
+                        Rp {formData.price.toLocaleString()}
+                      </p>
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center">
+                      <div className="bg-blue-100 text-blue-600 rounded-full p-3">
+                        <Car className="h-6 w-6" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1038,6 +1045,130 @@ function AirportTransferPageContent() {
                   <p className="text-sm text-gray-600">{formData.toAddress}</p>
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* Driver Selection Section */}
+          <div className="space-y-4 mt-6">
+            {/* Vehicle Type */}
+            <div className="space-y-2">
+              <h3 className="text-lg font-medium">
+                Please Select Vehicle Type
+              </h3>
+              <select
+                value={formData.vehicleType}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    vehicleType: e.target.value,
+                  }))
+                }
+                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {vehicleTypes.map((type) => (
+                  <option key={type.name} value={type.name}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Available Drivers</h3>
+
+              {isSearchingDriver ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
+                  <p className="text-gray-500">
+                    Searching for available drivers...
+                  </p>
+                </div>
+              ) : availableDrivers.length > 0 ? (
+                <div className="space-y-4">
+                  {availableDrivers.map((driver) => (
+                    <div
+                      key={driver.id}
+                      className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedDriver?.id === driver.id ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                      onClick={() => handleSelectDriver(driver)}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-16 w-16 rounded-full bg-gray-200 overflow-hidden">
+                          {driver.photo_url ? (
+                            <img
+                              src={driver.photo_url}
+                              alt={driver.driver_name}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center bg-blue-100 text-blue-500">
+                              <Users className="h-8 w-8" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1">
+                          <h4 className="font-medium flex items-center gap-2">
+                            {driver.driver_name}
+                            {driver.vehicle_type && (
+                              <span className="text-xs font-medium text-white px-2 py-0.5 rounded bg-gray-700">
+                                {driver.vehicle_type}
+                              </span>
+                            )}
+                          </h4>
+
+                          <p className="text-sm text-gray-500">
+                            {driver.phone_number}
+                          </p>
+
+                          <div className="flex items-center gap-4 mt-1 flex-wrap">
+                            {/* Status */}
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                              {driver.status === "onride"
+                                ? "On Ride"
+                                : "Available"}
+                            </span>
+
+                            {/* Detail kendaraan */}
+                            <span className="text-xs text-gray-500">
+                              {driver.vehicle_name && driver.vehicle_model
+                                ? `${driver.vehicle_name} ${driver.vehicle_model}`
+                                : "Unknown Model"}{" "}
+                              • {driver.license_plate || "N/A"}{" "}
+                              {driver.vehicle_color && (
+                                <span className="ml-1 text-xs text-gray-700 font-semibold">
+                                  {driver.vehicle_color}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-sm font-medium">
+                            {driver.distance} km away
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            ETA: {driver.eta} min
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+                  <div className="flex flex-col items-center">
+                    <Car className="h-12 w-12 text-yellow-500 mb-4" />
+                    <h4 className="text-lg font-medium mb-2">
+                      No drivers found
+                    </h4>
+                    <p className="text-gray-600 mb-4">
+                      We couldn't find any available drivers at the moment.
+                    </p>
+                    <Button onClick={searchDrivers}>Try Again</Button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1493,7 +1624,7 @@ function AirportTransferPageContent() {
 
               {/* Step indicators */}
               <div className="flex justify-between">
-                {[1, 2, 3, 4, 5].map((step) => (
+                {[1, 2, 3, 4].map((step) => (
                   <div
                     key={step}
                     className={`flex flex-col items-center ${currentStep >= step ? "text-blue-600" : "text-gray-400"}`}
@@ -1505,10 +1636,9 @@ function AirportTransferPageContent() {
                     </div>
                     <span className="text-xs mt-1 hidden sm:block">
                       {step === 1 && "Location"}
-                      {step === 2 && "Route"}
-                      {step === 3 && "Driver"}
-                      {step === 4 && "Confirm"}
-                      {step === 5 && "Success"}
+                      {step === 2 && "Route & Driver"}
+                      {step === 3 && "Confirm"}
+                      {step === 4 && "Success"}
                     </span>
                   </div>
                 ))}
@@ -1518,7 +1648,7 @@ function AirportTransferPageContent() {
 
           <CardContent>{renderStepContent()}</CardContent>
 
-          {currentStep < 5 && (
+          {currentStep < 4 && (
             <CardFooter className="flex justify-between">
               {currentStep > 1 ? (
                 <Button
@@ -1544,7 +1674,7 @@ function AirportTransferPageContent() {
                   </>
                 ) : (
                   <>
-                    {currentStep === 4 ? "Confirm Booking" : "Next"}
+                    {currentStep === 3 ? "Confirmation Booking" : "Next"}
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </>
                 )}
