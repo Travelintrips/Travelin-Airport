@@ -141,8 +141,13 @@ export default function AddressSearch({
               className="cursor-pointer px-4 py-3 hover:bg-gray-100 active:bg-gray-200 touch-auto"
               onClick={async () => {
                 try {
+                  // Immediately update the input field with the selected address
+                  onChange(place.description);
+
+                  // Then fetch the coordinates
                   const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
-                  fetchPlaceDetails(lat, lng);
+                  onSelectPosition([lat, lng]);
+                  setResults([]);
                 } catch (err) {
                   console.error("❌ Gagal ambil lat/lng dari place_id:", err);
                 }
