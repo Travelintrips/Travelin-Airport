@@ -34,6 +34,12 @@ export default function AddressSearch({
       return;
     }
 
+    // If the search matches exactly what's already selected, don't show results
+    if (search === value && search.length > 0) {
+      setResults([]);
+      return;
+    }
+
     try {
       const response = await fetch(FUNCTION_URL, {
         method: "POST",
@@ -121,11 +127,23 @@ export default function AddressSearch({
         type="text"
         value={value}
         onChange={(e) => {
-          onChange(e.target.value);
-          setQuery(e.target.value);
-          searchAddress(e.target.value);
+          const newValue = e.target.value;
+          onChange(newValue);
+          setQuery(newValue);
+          // Only search if there's text to search for
+          if (newValue.trim() !== "") {
+            searchAddress(newValue);
+          } else {
+            setResults([]);
+          }
         }}
-        onFocus={onFocus}
+        onFocus={(e) => {
+          if (onFocus) onFocus();
+          // Show results only if there's text and it's not an exact match with the current value
+          if (e.target.value.trim() !== "" && e.target.value !== value) {
+            searchAddress(e.target.value);
+          }
+        }}
         onClick={onClick}
         placeholder={placeholder}
         className="w-full"
@@ -143,10 +161,12 @@ export default function AddressSearch({
                 try {
                   // Immediately update the input field with the selected address
                   onChange(place.description);
+                  setQuery(place.description);
 
                   // Then fetch the coordinates
                   const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
                   onSelectPosition([lat, lng]);
+                  // Clear results to hide the dropdown
                   setResults([]);
                 } catch (err) {
                   console.error("❌ Gagal ambil lat/lng dari place_id:", err);
