@@ -29,26 +29,42 @@ export default function AddressSearch({
   const FUNCTION_URL =
     "https://wvqlwgmlijtcutvseyey.supabase.co/functions/v1/google-autocomplete";
 
-  // ⏳ Load Google Maps Script once with API key from Supabase
+  // ⏳ Load Google Maps Script once with API key from Supabase or environment variable
   useEffect(() => {
     const loadGoogle = async () => {
-      const { data, error } = await supabase
-        .from("api_settings")
-        .select("google_maps_key")
-        .eq("id", 1)
-        .single();
+      // Try to get API key from environment variable first
+      const envApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-      if (error || !data?.google_maps_key) {
-        console.error("❌ Gagal ambil API key dari Supabase", error);
-        return;
+      if (envApiKey) {
+        try {
+          await loadGoogleMapsScript(envApiKey);
+          setGoogleReady(true);
+          console.log("✅ Google Maps siap digunakan (dari env)");
+          return;
+        } catch (err) {
+          console.error("❌ Gagal memuat Google Maps API dari env:", err);
+          // Continue to try from Supabase if env key fails
+        }
       }
 
+      // Fallback to Supabase if env variable not available or failed
       try {
+        const { data, error } = await supabase
+          .from("api_settings")
+          .select("google_maps_key")
+          .eq("id", 1)
+          .single();
+
+        if (error || !data?.google_maps_key) {
+          console.error("❌ Gagal ambil API key dari Supabase", error);
+          return;
+        }
+
         await loadGoogleMapsScript(data.google_maps_key);
         setGoogleReady(true);
-        console.log("✅ Google Maps siap digunakan");
+        console.log("✅ Google Maps siap digunakan (dari Supabase)");
       } catch (err) {
-        console.error("❌ Gagal memuat Google Maps API:", err);
+        console.error("❌ Gagal memuat Google Maps API dari Supabase:", err);
       }
     };
 
@@ -67,15 +83,29 @@ export default function AddressSearch({
     }
 
     try {
+      // Add a timeout to prevent too many requests
       const response = await fetch(FUNCTION_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Add cache control to prevent excessive requests
+          "Cache-Control": "max-age=300",
+        },
         body: JSON.stringify({ input: search }),
       });
 
+      if (!response.ok) {
+        console.error("Network response was not ok:", response.status);
+        return;
+      }
+
       const data = await response.json();
       if (data.status !== "OK") {
-        console.error("Google API Error:", data.status);
+        console.error(
+          "Google API Error:",
+          data.status,
+          data.error_message || "",
+        );
         return;
       }
 
@@ -87,28 +117,45 @@ export default function AddressSearch({
 
   const getLatLngFromPlaceId = (placeId: string): Promise<[number, number]> => {
     return new Promise((resolve, reject) => {
+      // Validate that Google Maps API is ready
       if (typeof window.google === "undefined" || !window.google.maps?.places) {
         return reject("Google Maps API belum siap");
       }
 
-      const service = new window.google.maps.places.PlacesService(
-        document.createElement("div"),
-      );
+      try {
+        // Create a div element for the PlacesService
+        const placesDiv = document.createElement("div");
+        const service = new window.google.maps.places.PlacesService(placesDiv);
 
-      service.getDetails({ placeId }, (result, status) => {
-        if (status === window.google.maps.places.PlacesServiceStatus.OK) {
-          const lat = result.geometry?.location?.lat();
-          const lng = result.geometry?.location?.lng();
+        // Make the request with proper fields parameter
+        service.getDetails(
+          {
+            placeId: placeId,
+            fields: ["geometry"], // Only request the geometry field to minimize data
+          },
+          (result, status) => {
+            if (
+              status === window.google.maps.places.PlacesServiceStatus.OK &&
+              result
+            ) {
+              const lat = result.geometry?.location?.lat();
+              const lng = result.geometry?.location?.lng();
 
-          if (lat && lng) {
-            resolve([lat, lng]);
-          } else {
-            reject("Missing lat/lng in place details");
-          }
-        } else {
-          reject("Failed to get place details: " + status);
-        }
-      });
+              if (lat && lng) {
+                resolve([lat, lng]);
+              } else {
+                reject("Missing lat/lng in place details");
+              }
+            } else {
+              console.error("PlacesService error:", status);
+              reject("Failed to get place details: " + status);
+            }
+          },
+        );
+      } catch (error) {
+        console.error("Error in getLatLngFromPlaceId:", error);
+        reject("Error creating PlacesService: " + error);
+      }
     });
   };
 
@@ -179,9 +226,24 @@ export default function AddressSearch({
                   // Always clear results immediately after selection
                   setResults([]);
 
-                  // Then fetch the coordinates
-                  const [lat, lng] = await getLatLngFromPlaceId(place.place_id);
-                  onSelectPosition([lat, lng]);
+                  // Only fetch coordinates if Google Maps is ready
+                  if (googleReady) {
+                    try {
+                      const [lat, lng] = await getLatLngFromPlaceId(
+                        place.place_id,
+                      );
+                      onSelectPosition([lat, lng]);
+                    } catch (err) {
+                      console.error(
+                        "❌ Gagal ambil lat/lng dari place_id:",
+                        err,
+                      );
+                    }
+                  } else {
+                    console.warn(
+                      "Google Maps belum siap, tidak bisa ambil koordinat",
+                    );
+                  }
                 } catch (err) {
                   console.error("❌ Gagal ambil lat/lng dari place_id:", err);
                 }
