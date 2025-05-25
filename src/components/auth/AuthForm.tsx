@@ -8,7 +8,7 @@ import RegistrationForm, { RegisterFormValues } from "./RegistrationForm";
 import { uploadDocumentImages } from "@/lib/edgeFunctions";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthModal from "./AuthModal";
-import useAuth from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 
 import {
   Card,
@@ -91,29 +91,70 @@ const AuthForm: React.FC<AuthFormProps> = ({
     },
   });
 
-  const handleLoginSuccess = (authData: Session) => {
+  const handleLoginSuccess = async (authData: Session) => {
     const userMeta = authData.user?.user_metadata || {};
-    const userFullName =
-      (userMeta.full_name && userMeta.full_name.trim()) ||
-      (userMeta.name && userMeta.name.trim()) ||
-      authData.user.email?.split("@")[0] ||
-      "Guest";
 
-    const userData = {
+    // Try to get name from users table first
+    const { data: userData, error: userError } = await supabase
+      .from("users")
+      .select("full_name")
+      .eq("id", authData.user.id)
+      .single();
+
+    let userFullName = "";
+
+    if (!userError && userData?.full_name) {
+      userFullName = userData.full_name.trim();
+      console.log("Found name in users table during login:", userFullName);
+    } else {
+      // Check if user is a customer, try customers table
+      const { data: customerData, error: customerError } = await supabase
+        .from("customers")
+        .select("full_name, name")
+        .eq("id", authData.user.id)
+        .single();
+
+      if (!customerError && (customerData?.full_name || customerData?.name)) {
+        userFullName = (customerData.full_name || customerData.name).trim();
+        console.log(
+          "Found name in customers table during login:",
+          userFullName,
+        );
+      } else {
+        // Fallback to metadata
+        userFullName =
+          (userMeta.full_name && userMeta.full_name.trim()) ||
+          (userMeta.name && userMeta.name.trim()) ||
+          authData.user.email?.split("@")[0] ||
+          "Guest";
+        console.log("Using fallback name during login:", userFullName);
+      }
+    }
+
+    // Make sure we never use "Customer" as the name
+    if (!userFullName || userFullName === "Customer") {
+      userFullName = authData.user.email?.split("@")[0] || "User";
+      console.log(
+        "Replaced empty/Customer name with email username:",
+        userFullName,
+      );
+    }
+
+    const userDataObj = {
       id: authData.user.id,
       role: userMeta.role || "", // Kalau ada userMeta.role
       email: authData.user.email || "",
       name: userFullName,
     };
 
-    localStorage.setItem("auth_user", JSON.stringify(userData));
+    localStorage.setItem("auth_user", JSON.stringify(userDataObj));
     localStorage.setItem("userName", userFullName);
     localStorage.setItem("userId", authData.user.id);
     if (authData.user.email) {
       localStorage.setItem("userEmail", authData.user.email);
     }
 
-    console.log("User logged in:", userData);
+    console.log("User logged in:", userDataObj);
 
     if (onAuthStateChange) {
       onAuthStateChange(true);
@@ -186,26 +227,76 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
       const userMeta = authData.user?.user_metadata || {};
 
+      // Try to get name from users table first
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("full_name")
+        .eq("id", authData.user.id)
+        .single();
+
       let userFullName = "";
-      if (userMeta.full_name) {
-        userFullName = userMeta.full_name.trim();
-      } else if (userMeta.name) {
-        userFullName = userMeta.name.trim();
-      } else if (authData.user?.email) {
-        userFullName = authData.user.email.split("@")[0];
+
+      if (!userError && userData?.full_name) {
+        userFullName = userData.full_name.trim();
+        console.log(
+          "Found name in users table during login process:",
+          userFullName,
+        );
       } else {
-        userFullName = "Guest"; // fallback kalau semuanya gagal
+        // Check if user is a customer, try customers table
+        const { data: customerData, error: customerError } = await supabase
+          .from("customers")
+          .select("full_name, name")
+          .eq("id", authData.user.id)
+          .single();
+
+        if (!customerError && (customerData?.full_name || customerData?.name)) {
+          userFullName = (customerData.full_name || customerData.name).trim();
+          console.log(
+            "Found name in customers table during login process:",
+            userFullName,
+          );
+        } else {
+          // Fallback to metadata
+          if (userMeta.full_name) {
+            userFullName = userMeta.full_name.trim();
+          } else if (userMeta.name) {
+            userFullName = userMeta.name.trim();
+          } else if (authData.user?.email) {
+            userFullName = authData.user.email.split("@")[0];
+          } else {
+            userFullName = "Guest"; // fallback kalau semuanya gagal
+          }
+          console.log(
+            "Using fallback name during login process:",
+            userFullName,
+          );
+        }
       }
 
-      const userData = {
+      // Make sure we never use "Customer" as the name
+      if (
+        !userFullName ||
+        userFullName.trim() === "" ||
+        userFullName === "Customer"
+      ) {
+        userFullName = authData.user.email?.split("@")[0] || "User";
+        console.log(
+          "Using email username instead of empty/Customer name:",
+          userFullName,
+        );
+      }
+
+      const userDataObj = {
         id: authData.user.id,
         role: userRole,
         email: authData.user.email || "",
         name: userFullName,
       };
 
-      localStorage.setItem("auth_user", JSON.stringify(userData));
+      localStorage.setItem("auth_user", JSON.stringify(userDataObj));
       localStorage.setItem("userName", userFullName);
+      console.log("Saved userName to localStorage during login:", userFullName);
 
       console.log("User logged in with role:", userRole);
       console.log("User logged in successfully with ID:", authData.user.id);
@@ -256,6 +347,70 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
   const handleRegisterSubmit = async (data: RegisterFormValues) => {
     setIsSubmitting(true);
+
+    let selfieUrl = "";
+
+    if (data.role === "Customer" && data.selfieImage) {
+      // ✅ Validasi format base64 image
+      if (!data.selfieImage.startsWith("data:image/")) {
+        alert("Format gambar selfie tidak valid.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // ✅ Ambil access token user yang login
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (!accessToken) {
+        alert("Anda belum login. Silakan login terlebih dahulu.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      try {
+        const fileName = `drivers/selfie/selfie_${Date.now()}.jpg`;
+        const base64Image = data.selfieImage.split(",")[1]; // hilangkan prefix
+        const byteCharacters = atob(base64Image);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: "image/jpeg" });
+
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from("drivers")
+          .upload(fileName, blob, {
+            contentType: "image/jpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error("❌ Upload error:", uploadError);
+          throw new Error(uploadError.message || "Upload gagal.");
+        }
+
+        // Dapatkan public URL
+        const { data: publicData } = supabase.storage
+          .from("drivers")
+          .getPublicUrl(fileName);
+
+        selfieUrl = publicData.publicUrl;
+        console.log("✅ Selfie uploaded successfully:", selfieUrl);
+      } catch (err) {
+        console.error("❌ Failed to upload selfie before sign up:", err);
+        alert("Gagal upload selfie. Silakan coba lagi.");
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
+    console.log("📸 Using selfie URL:", selfieUrl);
+
     try {
       console.log("✅ Registering with email and password...");
 
@@ -269,6 +424,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
               full_name: data.name || "",
               phone_number: data.phone || "",
               role: "Customer",
+              selfie_url: selfieUrl, // ✅ simpan hasil upload selfie
             },
           },
         },
@@ -287,36 +443,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
       }
 
       if (authData.user) {
-        let selfieUrl = "";
-        if (data.selfieImage) {
-          try {
-            const timestamp = new Date().getTime();
-            const selfieFileName = `selfie_${authData.user.id}_${timestamp}.jpg`;
-            const selfieFile = await fetch(data.selfieImage).then((res) =>
-              res.blob(),
-            );
-
-            const { data: uploadData, error: uploadError } =
-              await supabase.storage
-                .from("selfies")
-                .upload(selfieFileName, selfieFile);
-
-            if (uploadError) {
-              console.error("Error uploading selfie:", uploadError);
-            } else if (uploadData) {
-              const { data: urlData } = supabase.storage
-                .from("selfies")
-                .getPublicUrl(selfieFileName);
-
-              selfieUrl = urlData.publicUrl;
-            }
-          } catch (error) {
-            console.error("Error in selfie upload process:", error);
-          }
-        }
-
-        console.log("Using selfie URL:", selfieUrl);
-
         let documentUrls = {
           ktpUrl: "",
           licenseUrl: "",
@@ -387,7 +513,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
         const { data: roleData, error: roleError } = await supabase
           .from("roles")
           .select("id")
-          .ilike("name", data.role)
+          .ilike("role_name", data.role)
           .single();
 
         if (roleError) {
@@ -456,7 +582,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
             const { error: updateCustomerError } = await supabase
               .from("customers")
               .update({
-                name: data.name,
+                full_name: data.name,
                 email: data.email,
                 phone: data.phone,
                 selfie_url: selfieUrl,
@@ -643,20 +769,46 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
       await onRegister(data);
 
-      if (onAuthStateChange) {
-        console.log("Updating auth state to true after registration");
-        onAuthStateChange(true);
-      } else {
-        console.log("No onAuthStateChange handler provided for registration");
-      }
-
-      if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
+      // For Customer role, don't automatically log in after registration
+      if (data.role === "Customer") {
         console.log(
-          "Driver registered successfully, redirecting to driver profile",
+          "Customer registered successfully, redirecting to login page",
         );
-        navigate("/driver-profile");
+        // Sign out if automatically signed in
+        await supabase.auth.signOut();
+
+        // Clear any auth data that might have been set
+        localStorage.removeItem("auth_user");
+        localStorage.removeItem("userId");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("userEmail");
+        localStorage.removeItem("isAdmin");
+        localStorage.removeItem("userName");
+
+        // Show message to user
+        alert(
+          "Registration successful! Please log in to complete your profile with a selfie verification.",
+        );
+
+        // Redirect to login page
+        navigate("/login");
       } else {
-        console.log("User registered successfully");
+        // For other roles, keep the existing behavior
+        if (onAuthStateChange) {
+          console.log("Updating auth state to true after registration");
+          onAuthStateChange(true);
+        } else {
+          console.log("No onAuthStateChange handler provided for registration");
+        }
+
+        if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
+          console.log(
+            "Driver registered successfully, redirecting to driver profile",
+          );
+          navigate("/driver-profile");
+        } else {
+          console.log("User registered successfully");
+        }
       }
 
       if (onClose) {

@@ -1,4 +1,6 @@
 import React, { Suspense, lazy } from "react";
+import ProfilePage from "./pages/ProfilePage";
+import BookingsPage from "./pages/BookingsPage";
 import ApiSettings from "./components/admin/ApiSettings";
 import {
   useRoutes,
@@ -208,6 +210,8 @@ function App() {
                 element={<DriverPerusahaanPage />}
               />
               <Route path="/driver-profile" element={<DriverProfile />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/bookings" element={<BookingsPage />} />
 
               <Route
                 path="/new-booking"
@@ -313,6 +317,8 @@ function App() {
               element={<DriverPerusahaanPage />}
             />
             <Route path="/driver-profile" element={<DriverProfile />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/bookings" element={<BookingsPage />} />
             <Route
               path="/new-booking"
               element={

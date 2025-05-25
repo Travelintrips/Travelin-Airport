@@ -18,9 +18,59 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 
 const UserDropdown = () => {
-  const { role, signOut, isAdmin, isLoading } = useAuth();
+  const {
+    role,
+    signOut,
+    isAdmin,
+    isLoading,
+    userEmail,
+    userName: authUserName,
+  } = useAuth();
+  console.log("UserDropdown debug", {
+    isLoading,
+    authUserName,
+    local: localStorage.getItem("userName"),
+  });
+
   const navigate = useNavigate();
-  const userName = localStorage.getItem("userName") || "User";
+
+  // Prioritize userName from useAuth hook, then localStorage, then email
+  let userName: string | null = authUserName;
+
+  if (!userName || ["user", "customer"].includes(userName.toLowerCase())) {
+    const storedName = localStorage.getItem("userName");
+    if (
+      storedName &&
+      !["user", "customer"].includes(storedName.toLowerCase())
+    ) {
+      userName = storedName;
+    } else if (userEmail) {
+      userName = userEmail.split("@")[0];
+    } else {
+      userName = null; // jangan paksa "User"
+    }
+  }
+
+  if (!userName && !isLoading) {
+    return (
+      <Button
+        variant="ghost"
+        className="flex items-center gap-2 text-white opacity-70"
+      >
+        Not Logged In
+      </Button>
+    );
+  }
+  if (isLoading) {
+    return (
+      <Button
+        variant="ghost"
+        className="flex items-center gap-2 text-white opacity-70"
+      >
+        Loading...
+      </Button>
+    );
+  }
 
   // Get isAdmin from localStorage as a backup
   const isAdminFromStorage = localStorage.getItem("isAdmin") === "true";
@@ -34,6 +84,10 @@ const UserDropdown = () => {
     isAdmin,
     "isAdminFromStorage:",
     isAdminFromStorage,
+    "userName:",
+    userName,
+    "authUserName:",
+    authUserName,
   );
   const displayRole = effectiveIsAdmin ? "Admin" : role || "Customer";
 
@@ -55,8 +109,12 @@ const UserDropdown = () => {
           className="flex items-center gap-2 text-white hover:bg-transparent hover:text-white"
         >
           <span>
-            {userName} ({displayRole})
+            {userName && !["user", "customer"].includes(userName.toLowerCase())
+              ? userName
+              : userEmail?.split("@")[0] || "Guest"}{" "}
+            ({displayRole})
           </span>
+
           <ChevronDown className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>

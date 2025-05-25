@@ -67,6 +67,7 @@ interface BookingFormData {
   vehiclePlate: string;
   vehicleColor: string;
   vehicleType: string;
+  vehicleMake: string;
 }
 
 interface Driver {
@@ -441,6 +442,7 @@ function AirportTransferPageContent() {
       vehicleModel: driver.vehicle_model || "",
       vehiclePlate: driver.license_plate || "N/A",
       vehicleColor: driver.vehicle_color || "N/A",
+      vehicleMake: driver.vehicle_make || "N/A",
       vehiclePricePerKm: driver.price_km || 0,
       surcharge: dynamicSurcharge, // ✅ Tambahan penting
     }));
@@ -504,7 +506,12 @@ function AirportTransferPageContent() {
         payment_method: formData.paymentMethod,
         distance: formData.distance,
         duration: formData.duration,
-        status: "confirmed",
+        license_plate: formData.vehiclePlate || "N/A",
+        model: formData.vehicleModel || "N/A",
+        make: formData.vehicleMake || "N/A",
+        vehicle_name: formData.vehicleName || "N/A",
+        status: "pending",
+        customer_id: userId, // Add customer_id from auth
       };
 
       const { data, error } = await supabase
@@ -1191,7 +1198,7 @@ function AirportTransferPageContent() {
 
             <div className="flex justify-between">
               <span className="text-gray-500">Vehicle</span>
-              <span className="font-medium">{formData.vehicleType}</span>
+              <span className="font-medium">{formData.vehicleName}</span>
             </div>
 
             <div className="flex justify-between">

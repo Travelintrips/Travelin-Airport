@@ -380,33 +380,33 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
     setIsSubmitting(true);
 
     // Check if selfie is required and not provided
-    if (selfieRequired && !selfieImage) {
+    if (selfieRequired && !selfieImage && !existingImages.selfie) {
       setRegisterError("Silakan ambil foto selfie terlebih dahulu");
       setIsSubmitting(false);
       return;
     }
 
     // Add selfie image to form data
-    data.selfieImage = selfieImage;
+    data.selfieImage = selfieImage || existingImages.selfie;
 
     // Validate document uploads based on role
     if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
-      if (!data.ktpImage) {
+      if (!data.ktpImage && !existingImages.ktp) {
         setRegisterError("Please upload your KTP (ID card)");
         setIsSubmitting(false);
         return;
       }
-      if (!data.simImage) {
+      if (!data.simImage && !existingImages.sim) {
         setRegisterError("Please upload your SIM (Driver's License)");
         setIsSubmitting(false);
         return;
       }
-      if (!data.kkImage) {
+      if (!data.kkImage && !existingImages.kk) {
         setRegisterError("Please upload your KK (Family Card)");
         setIsSubmitting(false);
         return;
       }
-      if (!data.stnkImage) {
+      if (!data.stnkImage && !existingImages.stnk) {
         setRegisterError("Please upload your STNK (Vehicle Registration)");
         setIsSubmitting(false);
         return;
@@ -421,7 +421,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
       }
       // Additional validation for Driver Perusahaan
       if (data.role === "Driver Perusahaan") {
-        if (!data.skckImage) {
+        if (!data.skckImage && !existingImages.skck) {
           setRegisterError(
             "Please upload your SKCK (Police Clearance Certificate)",
           );
@@ -436,7 +436,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
       data.role === "Staff Trips" ||
       data.role === "Dispatcher"
     ) {
-      if (!data.idCardImage) {
+      if (!data.idCardImage && !existingImages.idCard) {
         setRegisterError("Please upload your ID Card");
         setIsSubmitting(false);
         return;
@@ -604,41 +604,45 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
           />
         )}
 
-        {/* Selfie Capture Component */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <FormLabel>
-              Selfie Verification {selfieRequired ? "(Required)" : "(Optional)"}
-            </FormLabel>
-          </div>
-          <SelfieCapture
-            onCapture={(image) => {
-              setSelfieImage(image);
-              registerForm.setValue("selfieImage", image);
-            }}
-            onBlinkDetected={() => setBlinkDetected(true)}
-            blinkDetected={blinkDetected}
-          />
-          {existingImages.selfie && (
-            <div className="mt-2">
-              <p className="text-xs text-muted-foreground mb-1">
-                Existing Selfie Image:
-              </p>
-              <img
-                src={existingImages.selfie}
-                alt="Selfie"
-                className="w-full max-h-32 object-contain mb-2 border rounded"
-              />
+        {/* Selfie Capture Component - Only shown for non-Customer roles */}
+        {registerForm.watch("role") !== "Customer" && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <FormLabel>
+                Selfie Verification{" "}
+                {selfieRequired ? "(Required)" : "(Optional)"}
+              </FormLabel>
             </div>
-          )}
-          {!selfieImage && !existingImages.selfie && (
-            <p className="text-xs text-muted-foreground">
-              {selfieRequired
-                ? "Silakan ambil atau upload foto selfie untuk verifikasi"
-                : "Selfie opsional untuk akun staff"}
+            {existingImages.selfie && (
+              <div className="mt-2">
+                <p className="text-xs text-muted-foreground mb-1">
+                  Existing Selfie Image:
+                </p>
+                <img
+                  src={existingImages.selfie}
+                  alt="Selfie"
+                  className="w-full max-h-32 object-contain mb-2 border rounded"
+                />
+              </div>
+            )}
+            {selfieRequired && !existingImages.selfie && (
+              <p className="text-xs text-muted-foreground">
+                {selfieRequired
+                  ? "Silakan upload foto selfie untuk verifikasi"
+                  : "Selfie opsional untuk akun staff"}
+              </p>
+            )}
+          </div>
+        )}
+        {/* Note for Customer role */}
+        {registerForm.watch("role") === "Customer" && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-md">
+            <p className="text-sm text-blue-700">
+              Selfie verification has been moved to your profile page. You can
+              add your selfie after registration.
             </p>
-          )}
-        </div>
+          </div>
+        )}
 
         {registerError && (
           <div className="text-sm text-destructive mb-2">{registerError}</div>
@@ -646,9 +650,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         <Button
           type="submit"
           className="w-full"
-          disabled={
-            isLoading || isSubmitting || (selfieRequired && !selfieImage)
-          }
+          disabled={isLoading || isSubmitting}
         >
           {isLoading || isSubmitting ? "Creating account..." : "Create Account"}
         </Button>

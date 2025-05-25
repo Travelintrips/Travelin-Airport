@@ -1,43 +1,79 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
-// Named export for useAuth
-export function useAuth() {
+// Main hook implementation
+function useAuthHook() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [showAuthForm, setShowAuthForm] = useState(false);
 
   // Function to fetch user role from database
   const fetchUserRole = async (userId: string) => {
     console.log("Fetching user role for ID:", userId);
     try {
-      // First check users table for admin, staff, customer roles
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("role_id, roles(name), email, full_name")
-        .eq("id", userId)
-        .single();
+      // First get user metadata from auth.users using edge function
+      const { data: authUserData, error: authUserError } =
+        await supabase.functions.invoke("update-user-metadata", {
+          body: {
+            userId: userId,
+            action: "get",
+          },
+        });
 
-      if (!userError && userData) {
-        console.log("User data found:", userData);
+      if (!authUserError && authUserData?.user) {
+        console.log("Auth user data found:", authUserData.user);
 
-        // Check if user has Admin role
-        if (userData.roles?.name === "Admin") {
-          console.log("ADMIN ROLE FOUND in users table");
-          setIsAdmin(true);
-          localStorage.setItem("isAdmin", "true");
+        // Get user metadata
+        const userMetadata = authUserData.user.user_metadata || {};
+
+        // Get display name from metadata
+        if (userMetadata.full_name) {
+          localStorage.setItem("userName", userMetadata.full_name);
+          setUserName(userMetadata.full_name);
+          console.log(
+            "Setting user name from auth metadata:",
+            userMetadata.full_name,
+          );
         }
 
-        // Store email if available
-        if (userData.email) {
-          localStorage.setItem("userEmail", userData.email);
-          setUserEmail(userData.email);
-        }
+        // Fallback to checking users table
+        const { data: userData, error: userError } = await supabase
+          .from("users")
+          .select("role_id, roles(name), email, full_name")
+          .eq("id", userId)
+          .single();
 
-        return userData.roles?.name || "Customer";
+        if (!userError && userData) {
+          console.log("User data found in users table:", userData);
+
+          // Only use users table name if we didn't get it from auth metadata
+          if (!userMetadata.full_name && userData.full_name) {
+            localStorage.setItem("userName", userData.full_name);
+            setUserName(userData.full_name);
+            console.log(
+              "Setting user name from users table:",
+              userData.full_name,
+            );
+          }
+
+          if (userData.email) {
+            localStorage.setItem("userEmail", userData.email);
+            setUserEmail(userData.email);
+          }
+
+          if (userData.roles?.name === "Admin") {
+            console.log("ADMIN ROLE FOUND in users table");
+            setIsAdmin(true);
+            localStorage.setItem("isAdmin", "true");
+          }
+
+          return userData.roles?.name || "Customer";
+        }
       }
 
       // If not found or no role, check drivers table
@@ -111,32 +147,33 @@ export function useAuth() {
       // Check if user exists in customers table
       const { data: customerData, error: customerError } = await supabase
         .from("customers")
-        .select("id, email")
+        .select("id, email, full_name")
         .eq("id", userId)
         .single();
 
       if (!customerError && customerData) {
         console.log("User found in customers table, assigning Customer role");
 
-        // Store email if available
         if (customerData.email) {
           localStorage.setItem("userEmail", customerData.email);
           setUserEmail(customerData.email);
         }
 
+        if (customerData.full_name) {
+          localStorage.setItem("userName", customerData.full_name);
+          setUserName(customerData.full_name);
+          console.log(
+            "Setting user name from customers table:",
+            customerData.full_name,
+          );
+        }
+
         return "Customer";
       }
 
-      // Default role if nothing found
-      console.log(
-        "No specific role found in any table (users, drivers, staff, customers), assigning Customer role",
-      );
-
-      // Log the issue but don't try to update the database here
       console.log(
         "User has no role assigned in database, using default Customer role",
       );
-
       return "Customer";
     } catch (error) {
       console.error("Error fetching user role:", error);
@@ -154,12 +191,14 @@ export function useAuth() {
       localStorage.removeItem("userRole");
       localStorage.removeItem("userEmail");
       localStorage.removeItem("isAdmin");
+      localStorage.removeItem("userName");
 
       // Update state
       setIsAuthenticated(false);
       setUserRole(null);
       setUserId(null);
       setUserEmail(null);
+      setUserName(null);
 
       return true;
     } catch (error) {
@@ -179,15 +218,61 @@ export function useAuth() {
     if (userData.email) {
       localStorage.setItem("userEmail", userData.email);
     }
-    if (userData.name) {
-      localStorage.setItem("userName", userData.name);
+
+    // Always prioritize a real name over "Customer" or "User"
+    if (userData.name && userData.name.trim() !== "") {
+      if (userData.name !== "Customer" && userData.name !== "User") {
+        localStorage.setItem("userName", userData.name);
+        console.log("Saved user name to localStorage:", userData.name);
+      } else if (userData.email) {
+        // If name is "Customer" or "User", use email username instead
+        const emailName = userData.email.split("@")[0];
+        localStorage.setItem("userName", emailName);
+        console.log(
+          "Saved email username to localStorage instead of 'Customer'/'User':",
+          emailName,
+        );
+
+        // Update the userData object as well
+        userData.name = emailName;
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+      }
+    } else if (userData.email) {
+      // If no name, use email username
+      const emailName = userData.email.split("@")[0];
+      localStorage.setItem("userName", emailName);
+      console.log(
+        "No name provided, saved email username to localStorage:",
+        emailName,
+      );
+
+      // Update the userData object as well
+      userData.name = emailName;
+      localStorage.setItem("auth_user", JSON.stringify(userData));
     }
   };
 
   useEffect(() => {
+    console.log("[Auth Hook] State:", {
+      isAuthenticated,
+      userName,
+      userRole,
+      userEmail,
+      isLoading,
+    });
+  }, [isAuthenticated, userName, userRole, isLoading]);
+
+  useEffect(() => {
+    // Flag to prevent concurrent executions of checkAuth
+    let isChecking = false;
+
     // Check if user is already authenticated
     const checkAuth = async () => {
+      if (isChecking) return;
+      isChecking = true;
+
       try {
+        console.log("Running checkAuth...");
         // Check if user is admin based on email
         const userEmail = localStorage.getItem("userEmail");
         if (
@@ -209,39 +294,63 @@ export function useAuth() {
               setIsAuthenticated(true);
               setUserId(authUser.id);
               setUserEmail(authUser.email || null);
-              setUserRole(authUser.role || null);
-              setUserName(authUser.name || null); // ✅ ambil name dari authUser
-              setShowAuthForm(false);
 
-              // If email contains 'admin' or matches specific admin email, force Admin role
-              const email = authUser.email || "";
-              if (email.includes("admin") || email === "suparman.r@gmail.com") {
-                setUserRole("Admin");
-                setIsAdmin(true);
-                localStorage.setItem("userRole", "Admin");
-                localStorage.setItem("isAdmin", "true");
-                console.log("Admin email detected, setting role to Admin");
-              } else {
-                const role = authUser.role || "Customer";
-                setUserRole(role);
-                // Explicitly check if role is exactly "Admin" (case-sensitive)
-                const isAdminRole = role === "Admin";
-                setIsAdmin(isAdminRole);
+              // Resolve Name
+              const storedUserName = localStorage.getItem("userName");
+              let resolvedUserName = "User";
+              if (
+                storedUserName &&
+                !["customer", "user"].includes(storedUserName.toLowerCase())
+              ) {
+                resolvedUserName = storedUserName;
+              } else if (
+                authUser.name &&
+                !["customer", "user"].includes(authUser.name.toLowerCase())
+              ) {
+                resolvedUserName = authUser.name;
+              } else if (authUser.email) {
+                resolvedUserName = authUser.email.split("@")[0];
               }
 
-              console.log(
-                "Auth from localStorage - Role:",
-                userRole,
-                "isAdmin:",
-                isAdmin,
-              );
-              setUserEmail(authUser.email || null);
-              setIsLoading(false);
-              return; // Exit early if we found auth data in localStorage
+              // Resolve Role
+              const storedRole = localStorage.getItem("userRole");
+              let resolvedUserRole = authUser.role || storedRole || "Customer";
+
+              // Admin override
+              const email = authUser.email || "";
+              if (email.includes("admin") || email === "suparman.r@gmail.com") {
+                resolvedUserRole = "Admin";
+                setIsAdmin(true);
+                localStorage.setItem("isAdmin", "true");
+              } else {
+                const isAdminRole = resolvedUserRole === "Admin";
+                setIsAdmin(isAdminRole);
+                localStorage.setItem("isAdmin", isAdminRole ? "true" : "false");
+              }
+
+              // Set all state
+              setUserName(resolvedUserName);
+              setUserRole(resolvedUserRole);
+
+              // Save back to storage
+              localStorage.setItem("userName", resolvedUserName);
+              localStorage.setItem("userRole", resolvedUserRole);
+
+              // Save combined
+              const userData = {
+                id: authUser.id,
+                role: resolvedUserRole,
+                email: authUser.email || "",
+                name: resolvedUserName,
+              };
+              localStorage.setItem("auth_user", JSON.stringify(userData));
+
+              console.log("✅ Loaded from localStorage:", userData);
+              setShowAuthForm(false);
+              return true;
             }
           } catch (e) {
             console.error("Error parsing auth_user from localStorage:", e);
-            // Continue with Supabase auth check
           }
         }
 
@@ -295,24 +404,76 @@ export function useAuth() {
             }
           }
 
-          // Store in auth_user for shared authentication
-          const currentStoredRole = localStorage.getItem("userRole");
+          // First try to get name from users table
+          const { data: userTableData, error: userTableError } = await supabase
+            .from("users")
+            .select("full_name")
+            .eq("id", data.session.user.id)
+            .single();
+
+          // Get the current role value to use for conditional checks
           const userRoleValue =
-            currentStoredRole ||
-            (await fetchUserRole(data.session.user.id)) ||
-            "Customer";
+            userRole || localStorage.getItem("userRole") || "Customer";
+
+          let userName = "";
+
+          if (!userTableError && userTableData?.full_name) {
+            userName = userTableData.full_name;
+            console.log("Found name in users table:", userName);
+          } else if (userRoleValue === "Customer") {
+            // If user is a customer, try customers table
+            const { data: customerData, error: customerError } = await supabase
+              .from("customers")
+              .select("full_name, name")
+              .eq("id", data.session.user.id)
+              .single();
+
+            if (
+              !customerError &&
+              (customerData?.full_name || customerData?.name)
+            ) {
+              userName = customerData.full_name || customerData.name;
+              console.log("Found name in customers table:", userName);
+            }
+          }
+
+          // Fallback to metadata or localStorage
+          if (!userName) {
+            userName =
+              data.session.user.user_metadata?.full_name ||
+              data.session.user.user_metadata?.name ||
+              localStorage.getItem("userName") ||
+              "";
+            console.log("Using fallback name:", userName);
+          }
+
+          // Don't use "Customer" as the name if we have no actual name
+          if (!userName || userName === "Customer" || userName === "User") {
+            userName = data.session.user.email?.split("@")[0] || "";
+            console.log(
+              "Using email username instead of 'Customer'/'User':",
+              userName,
+            );
+          }
+
           const userData = {
             id: data.session.user.id,
             role: userRoleValue,
             email: data.session.user.email || "",
-            name: data.session.user.user_metadata?.full_name || "", // ✅
+            name: userName,
           };
           saveUserDataToLocalStorage(userData);
+
+          // Make sure userName state is updated
+          setUserName(userName);
+          setUserRole(userRoleValue);
         }
       } catch (error) {
         console.error("Error checking auth:", error);
       } finally {
+        isChecking = false;
         setIsLoading(false);
+        console.log("checkAuth completed, isLoading set to false");
       }
     };
 
@@ -329,50 +490,8 @@ export function useAuth() {
           console.log("Auth state changed:", event);
 
           if (event === "SIGNED_IN" && session) {
-            // Clear old localStorage
-            localStorage.removeItem("auth_user");
-            localStorage.removeItem("userName");
-            localStorage.removeItem("userRole");
-            localStorage.removeItem("userEmail");
-            localStorage.removeItem("isAdmin");
-            localStorage.removeItem("userId");
-
-            setIsAuthenticated(true);
-            setUserId(session.user.id);
-            setUserEmail(session.user.email || null);
-
-            // ✅ Cek metadata (ambil dari session.user_metadata)
-            const userMetadata = session.user.user_metadata || {};
-            const serverRole = userMetadata.role || "Customer"; // fallback ke Customer kalau gak ada
-            const serverName = userMetadata.name || "User";
-
-            console.log("User logged in with server role:", serverRole);
-
-            // ✅ Langsung gunakan serverRole
-            const finalRole = serverRole;
-            const isAdminRole = finalRole === "Admin";
-
-            // Set state
-            setUserRole(finalRole);
-            setIsAdmin(isAdminRole);
-
-            // Save to localStorage
-            localStorage.setItem("userRole", finalRole);
-            localStorage.setItem("isAdmin", isAdminRole ? "true" : "false");
-            localStorage.setItem("userName", serverName);
-            localStorage.setItem("userId", session.user.id);
-            if (session.user.email) {
-              localStorage.setItem("userEmail", session.user.email);
-            }
-
-            // Save auth_user combined
-            const userData = {
-              id: session.user.id,
-              role: finalRole,
-              email: session.user.email || "",
-              name: serverName,
-            };
-            localStorage.setItem("auth_user", JSON.stringify(userData));
+            // Call checkAuth instead of duplicating the logic
+            checkAuth();
           } else if (event === "SIGNED_OUT") {
             // SIGNED_OUT: clear everything
             setIsAuthenticated(false);
@@ -380,6 +499,7 @@ export function useAuth() {
             setUserId(null);
             setUserEmail(null);
             setIsAdmin(false);
+            setIsLoading(false);
 
             localStorage.removeItem("auth_user");
             localStorage.removeItem("userName");
@@ -404,8 +524,6 @@ export function useAuth() {
     };
   }, []);
 
-  const [userName, setUserName] = useState<string | null>(null);
-
   return {
     isAuthenticated,
     userRole,
@@ -416,10 +534,11 @@ export function useAuth() {
     isLoading,
     signOut,
     isAdmin,
+    setShowAuthForm,
   };
 }
 
-// Default export that returns the hook result
-export default function useAuthHook() {
-  return useAuth();
-}
+// Export the hook directly as a named export to be compatible with Fast Refresh
+export const useAuth = () => {
+  return useAuthHook();
+};

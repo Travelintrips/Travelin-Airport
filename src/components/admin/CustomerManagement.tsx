@@ -72,6 +72,7 @@ const CustomerManagement = () => {
   );
   const [formData, setFormData] = useState({
     name: "",
+    full_name: "",
     email: "",
     phone: "",
     address: "",
@@ -111,6 +112,7 @@ const CustomerManagement = () => {
     setFormData({
       ...formData,
       [name]: value,
+      ...(name === "name" ? { full_name: value } : {}),
     });
   };
 
@@ -156,9 +158,15 @@ const CustomerManagement = () => {
 
   const handleAddCustomer = async () => {
     try {
+      // Ensure full_name is set to name if not provided
+      const customerData = {
+        ...formData,
+        full_name: formData.full_name || formData.name,
+      };
+
       const { data, error } = await supabase
         .from("customers")
-        .insert([formData])
+        .insert([customerData])
         .select();
 
       if (error) throw error;
@@ -177,6 +185,7 @@ const CustomerManagement = () => {
   const resetFormData = () => {
     setFormData({
       name: "",
+      full_name: "",
       email: "",
       phone: "",
       address: "",
@@ -247,6 +256,7 @@ const CustomerManagement = () => {
     setSelectedCustomer(customer);
     setFormData({
       name: customer.name,
+      full_name: customer.name, // Set full_name to match name initially
       email: customer.email || "",
       phone: customer.phone || "",
       address: customer.address || "",

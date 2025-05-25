@@ -2,6 +2,7 @@ import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Camera, RefreshCw, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useEffect } from "react";
 
 interface SelfieCaptureProps {
   onCapture: (image: string) => void;
@@ -18,8 +19,49 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [browserSupported, setBrowserSupported] = useState(true);
+
+  useEffect(() => {
+    if (!videoRef.current || !stream) return;
+
+    const video = videoRef.current;
+    video.srcObject = stream;
+
+    video.onloadedmetadata = () => {
+      video
+        .play()
+        .then(() => {
+          console.log("✅ Video started");
+          setIsCapturing(true);
+        })
+        .catch((err) => {
+          console.error("❌ Error starting video:", err);
+        });
+    };
+  }, [stream]);
+
+  useEffect(() => {
+    if (!videoRef.current || !stream) return;
+
+    console.log("🎥 Setting srcObject to video element");
+
+    videoRef.current.srcObject = stream;
+    videoRef.current.onloadedmetadata = () => {
+      videoRef.current
+        ?.play()
+        .then(() => {
+          console.log("✅ Video playback started");
+          setIsCapturing(true);
+        })
+        .catch((err) => {
+          console.error("❌ Failed to play video:", err);
+        });
+    };
+  }, [stream]);
 
   const startCamera = async () => {
+    setError(null);
     setCapturedImage(null);
     if (stream) {
       stopCamera();
@@ -33,15 +75,13 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
 
       console.log("Requesting camera access");
 
-      // Try with mobile-friendly constraints
+      // Use simple constraints without any specific requirements
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: true,
         audio: false,
       });
+      console.log("🎥 stream object:", mediaStream);
+      setStream(mediaStream);
 
       console.log("Camera access granted");
 
@@ -52,23 +92,6 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
       onBlinkDetected();
 
       // Set video source
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        videoRef.current.onloadedmetadata = () => {
-          console.log("Video metadata loaded");
-          if (videoRef.current) {
-            videoRef.current
-              .play()
-              .then(() => {
-                console.log("Video playback started");
-                setIsCapturing(true);
-              })
-              .catch((err) => {
-                console.error("Error playing video:", err);
-              });
-          }
-        };
-      }
     } catch (error) {
       console.error("Error accessing camera:", error);
       alert("Gagal mengakses kamera. Pastikan Anda memberikan izin kamera.");
@@ -95,13 +118,15 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
           console.log("Image uploaded successfully");
           setCapturedImage(imageData);
           onCapture(imageData);
-          onBlinkDetected(); // Auto-verify uploaded images
+          if (onBlinkDetected) {
+            onBlinkDetected(); // Auto-verify uploaded images
+          }
         }
       };
       reader.readAsDataURL(file);
-    } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Gagal mengupload gambar. Silakan coba lagi.");
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      setError("Gagal mengupload gambar. Silakan coba lagi.");
     }
   };
 
@@ -143,27 +168,42 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
         setCapturedImage(imageData);
         onCapture(imageData);
         stopCamera();
-      } catch (error) {
-        console.error("Error capturing image:", error);
-        alert("Gagal mengambil gambar. Silakan coba lagi.");
+      } catch (err) {
+        console.error("Error capturing image:", err);
+        setError("Gagal mengambil gambar. Silakan coba lagi.");
       }
     } else {
       console.error("Video or canvas reference not available");
-      alert("Kamera tidak siap. Silakan coba lagi.");
+      setError("Kamera tidak siap. Silakan coba lagi.");
     }
   };
 
   return (
     <div className="flex flex-col items-center space-y-4 p-4 border rounded-lg bg-card">
-      <div className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden">
-        {isCapturing ? (
+      {error && (
+        <div className="w-full p-2 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-red-600 text-sm">
+          <AlertCircle className="h-4 w-4" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div
+        className="relative w-full max-w-sm aspect-video bg-black rounded-lg overflow-hidden"
+        style={{ minHeight: "200px" }}
+      >
+        {stream ? (
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
             className="w-full h-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
+            style={{
+              transform: "scaleX(-1)",
+              backgroundColor: "#000",
+              width: "100%",
+              height: "100%",
+            }}
           />
         ) : capturedImage ? (
           <img
@@ -176,6 +216,7 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
             <Camera className="h-12 w-12 text-muted-foreground" />
           </div>
         )}
+
         <canvas
           ref={canvasRef}
           className="hidden"
@@ -188,7 +229,15 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
       <div className="flex flex-col space-y-2 w-full">
         {!isCapturing && !capturedImage && (
           <div className="flex flex-col space-y-2 w-full">
-            <Button onClick={startCamera} type="button" className="w-full">
+            <Button
+              onClick={() => {
+                console.log("Mulai Kamera button clicked");
+                startCamera();
+              }}
+              type="button"
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+              disabled={!browserSupported}
+            >
               <Camera className="mr-2 h-4 w-4" /> Mulai Kamera
             </Button>
             <div className="relative w-full">
@@ -212,7 +261,11 @@ const SelfieCapture: React.FC<SelfieCaptureProps> = ({
         )}
 
         {isCapturing && (
-          <Button onClick={captureImage} type="button" className="w-full">
+          <Button
+            onClick={captureImage}
+            type="button"
+            className="w-full bg-green-500 hover:bg-green-600 text-white"
+          >
             Ambil Foto
           </Button>
         )}
