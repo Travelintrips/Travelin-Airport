@@ -83,6 +83,7 @@ export default function SmartMapPicker({
       pickup[0] === 0 ||
       dropoff[0] === 0 ||
       !mapRef.current
+      !apiKey
     )
       return;
 
@@ -151,20 +152,25 @@ export default function SmartMapPicker({
   };
 
   const loadGoogleMap = () => {
-    if (document.getElementById("google-maps-script")) {
-      initGoogleMap();
-      return;
-    }
+  if (!apiKey) {
+    console.warn("❌ API key tidak tersedia saat loadGoogleMap");
+    return;
+  }
 
-    const script = document.createElement("script");
-    script.id = "google-maps-script";
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+  if (document.getElementById("google-maps-script")) {
+    initGoogleMap();
+    return;
+  }
 
-    script.async = true;
-    script.defer = true;
-    script.onload = () => initGoogleMap();
-    document.body.appendChild(script);
-  };
+  const script = document.createElement("script");
+  script.id = "google-maps-script";
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+  script.async = true;
+  script.defer = true;
+  script.onload = () => initGoogleMap();
+  document.body.appendChild(script);
+};
+
 
   const initGoogleMap = () => {
     const map = new (window as any).google.maps.Map(mapRef.current, {
