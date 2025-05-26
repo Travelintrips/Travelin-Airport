@@ -318,7 +318,10 @@ function useAuthHook() {
 
               // Admin override
               const email = authUser.email || "";
-              if (email.includes("admin") || email === "suparman.r@gmail.com") {
+              if (
+                email.includes("admin") ||
+                email === "divatranssoetta@gmail.com"
+              ) {
                 resolvedUserRole = "Admin";
                 setIsAdmin(true);
                 localStorage.setItem("isAdmin", "true");
@@ -364,7 +367,7 @@ function useAuthHook() {
           // Check if user email indicates admin status
           const email = data.session.user.email || "";
           const isAdminEmail =
-            email.includes("admin") || email === "suparman.r@gmail.com";
+            email.includes("admin") || email === "divatranssoetta@gmail.com";
 
           if (isAdminEmail) {
             console.log("Admin email detected in session:", email);
