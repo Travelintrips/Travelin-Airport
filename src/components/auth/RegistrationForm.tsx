@@ -41,7 +41,7 @@ const registerSchema = z
     phone: z
       .string()
       .min(10, { message: "Phone number must be at least 10 digits" }),
-    role: z.string().min(1, { message: "Please select a role" }),
+    role: z.string().min(1, { message: "Please select a role1" }),
     selfieImage: z.string().optional(),
     // Common fields for all roles
     firstName: z.string().optional(),
