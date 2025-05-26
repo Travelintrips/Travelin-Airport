@@ -152,25 +152,20 @@ export default function SmartMapPicker({
   };
 
   const loadGoogleMap = () => {
-  if (!apiKey) {
-    console.warn("❌ API key tidak tersedia saat loadGoogleMap");
-    return;
-  }
+    if (document.getElementById("google-maps-script")) {
+      initGoogleMap();
+      return;
+    }
 
-  if (document.getElementById("google-maps-script")) {
-    initGoogleMap();
-    return;
-  }
+    const script = document.createElement("script");
+    script.id = "google-maps-script";
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
 
-  const script = document.createElement("script");
-  script.id = "google-maps-script";
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
-  script.async = true;
-  script.defer = true;
-  script.onload = () => initGoogleMap();
-  document.body.appendChild(script);
-};
-
+    script.async = true;
+    script.defer = true;
+    script.onload = () => initGoogleMap();
+    document.body.appendChild(script);
+  };
 
   const initGoogleMap = () => {
     const map = new (window as any).google.maps.Map(mapRef.current, {
