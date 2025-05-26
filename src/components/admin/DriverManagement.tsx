@@ -95,6 +95,7 @@ const DriverManagement = () => {
     kk_url: "",
     stnk_expiry: "",
     reference_phone: "",
+    role_id: null,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadLoading, setUploadLoading] = useState({
@@ -305,6 +306,7 @@ const DriverManagement = () => {
         kk_url: "",
         stnk_expiry: "",
         reference_phone: "",
+        role_id: cleanedFormData.role_id || null,
       });
 
       // Refresh the drivers list to ensure we have the latest data
@@ -628,6 +630,28 @@ const DriverManagement = () => {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="role_id" className="text-right">
+                Select Driver Role
+              </Label>
+              <select
+                id="role_id"
+                name="role_id"
+                value={formData.role_id?.toString() || ""}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    role_id: parseInt(e.target.value),
+                  })
+                }
+                className="col-span-3 border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">Pilih Role</option>
+                <option value="2">Driver Mitra</option>
+                <option value="3">Driver Perusahaan</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="name" className="text-right">
                 Name
               </Label>
@@ -758,6 +782,28 @@ const DriverManagement = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="edit-role" className="text-right">
+                Driver Role
+              </Label>
+              <select
+                id="edit-role"
+                name="role_id"
+                value={formData.role_id?.toString() || ""}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    role_id: parseInt(e.target.value),
+                  })
+                }
+                className="col-span-3 border border-gray-300 rounded px-3 py-2"
+              >
+                <option value="">Pilih Role</option>
+                <option value="2">Driver Mitra</option>
+                <option value="3">Driver Perusahaan</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-name" className="text-right">
                 Name
