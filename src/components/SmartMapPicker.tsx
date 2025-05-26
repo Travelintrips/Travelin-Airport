@@ -82,8 +82,8 @@ export default function SmartMapPicker({
       !dropoff ||
       pickup[0] === 0 ||
       dropoff[0] === 0 ||
-      !mapRef.current
-      !apiKey
+      !mapRef.current ||
+      !apiKey // ← tambahkan ini!
     )
       return;
 
@@ -92,7 +92,7 @@ export default function SmartMapPicker({
     } else if (mapMode === "google") {
       loadGoogleMap();
     }
-  }, [mapMode, pickup, dropoff]);
+  }, [mapMode, pickup, dropoff, apiKey]); // ← tambahkan apiKey ke dependencies
 
   const loadLeaflet = () => {
     const L = (window as any).L;
