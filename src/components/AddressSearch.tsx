@@ -115,48 +115,34 @@ export default function AddressSearch({
     }
   };
 
-  const getLatLngFromPlaceId = (placeId: string): Promise<[number, number]> => {
-    return new Promise((resolve, reject) => {
-      // Validate that Google Maps API is ready
-      if (typeof window.google === "undefined" || !window.google.maps?.places) {
-        return reject("Google Maps API belum siap");
+  const getLatLngFromPlaceId = async (
+    placeId: string,
+  ): Promise<[number, number]> => {
+    try {
+      const response = await fetch(
+        "https://wvqlwgmlijtcutvseyey.supabase.co/functions/v1/google-place-details",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ place_id: placeId }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!data?.result?.geometry?.location) {
+        throw new Error("Invalid response from place-details");
       }
 
-      try {
-        // Create a div element for the PlacesService
-        const placesDiv = document.createElement("div");
-        const service = new window.google.maps.places.PlacesService(placesDiv);
-
-        // Make the request with proper fields parameter
-        service.getDetails(
-          {
-            placeId: placeId,
-            fields: ["geometry"], // Only request the geometry field to minimize data
-          },
-          (result, status) => {
-            if (
-              status === window.google.maps.places.PlacesServiceStatus.OK &&
-              result
-            ) {
-              const lat = result.geometry?.location?.lat();
-              const lng = result.geometry?.location?.lng();
-
-              if (lat && lng) {
-                resolve([lat, lng]);
-              } else {
-                reject("Missing lat/lng in place details");
-              }
-            } else {
-              console.error("PlacesService error:", status);
-              reject("Failed to get place details: " + status);
-            }
-          },
-        );
-      } catch (error) {
-        console.error("Error in getLatLngFromPlaceId:", error);
-        reject("Error creating PlacesService: " + error);
-      }
-    });
+      const { lat, lng } = data.result.geometry.location;
+      return [lat, lng];
+    } catch (error) {
+      console.error(
+        "❌ Gagal ambil lat/lng dari place_id (via Edge Function):",
+        error,
+      );
+      throw error;
+    }
   };
 
   return (
