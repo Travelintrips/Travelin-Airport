@@ -10,216 +10,219 @@ export default function MapPicker({
   toLocation,
 }: MapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const routeLayerRef = useRef<any>(null);
+  const leafletMapRef = useRef<any>(null);
 
-  // Load Leaflet & Routing script once
-  useEffect(() => {
-    const loadDependencies = async () => {
-      if (!(window as any).L) {
-        console.log("📦 Loading Leaflet...");
-        const leafletScript = document.createElement("script");
-        leafletScript.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
-        leafletScript.async = true;
-        document.body.appendChild(leafletScript);
-
-        const leafletLink = document.createElement("link");
-        leafletLink.rel = "stylesheet";
-        leafletLink.href = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.css";
-        document.head.appendChild(leafletLink);
-
-        await new Promise<void>((resolve) => {
-          leafletScript.onload = () => {
-            console.log("✅ Leaflet loaded");
-            resolve();
-          };
-        });
-
-        console.log("📦 Loading Leaflet Routing Machine...");
-        const routingScript = document.createElement("script");
-        routingScript.src =
-          "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js";
-        routingScript.async = true;
-        document.body.appendChild(routingScript);
-
-        const routingLink = document.createElement("link");
-        routingLink.rel = "stylesheet";
-        routingLink.href =
-          "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css";
-        document.head.appendChild(routingLink);
-
-        await new Promise<void>((resolve) => {
-          routingScript.onload = () => {
-            console.log("✅ Routing Machine loaded");
-            resolve();
-          };
-        });
-      }
-
-      initMap();
-    };
-
-    loadDependencies();
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
-
-  // Update route on location change
-  useEffect(() => {
-    const isValidCoord = ([lat, lng]: [number, number]) =>
-      typeof lat === "number" &&
-      typeof lng === "number" &&
-      lat !== 0 &&
-      lng !== 0;
-
-    if (
-      !mapInstanceRef.current ||
-      !(window as any).L ||
-      !isValidCoord(fromLocation) ||
-      !isValidCoord(toLocation)
-    )
-      return;
-
-    updateRoute();
-  }, [fromLocation, toLocation]);
-
-  const initMap = () => {
+  const initializeMap = () => {
+    if (!mapRef.current) return;
     const L = (window as any).L;
-    if (!mapRef.current || !L) {
-      console.warn("❗ Map container atau Leaflet belum siap");
-      return;
+    if (!L) return;
+
+    // Hapus peta lama jika ada
+    if (leafletMapRef.current) {
+      try {
+        leafletMapRef.current.remove();
+      } catch (e) {
+        console.warn("Error removing existing map", e);
+      }
+      leafletMapRef.current = null;
     }
 
-    // 💥 Hindari double init: jika Leaflet sudah terhubung ke elemen ini
-    if (mapRef.current._leaflet_id) {
-      console.log("⚠️ Map sudah diinisialisasi. Melewati initMap()");
-      return;
+    // Ensure the container has dimensions
+    if (mapRef.current.offsetWidth === 0 || mapRef.current.offsetHeight === 0) {
+      mapRef.current.style.height = "300px";
+      mapRef.current.style.width = "100%";
     }
 
-    const bounds = L.latLngBounds(
-      L.latLng(fromLocation[0], fromLocation[1]),
-      L.latLng(toLocation[0], toLocation[1]),
-    );
-
-    const map = L.map(mapRef.current);
-    map.fitBounds(bounds, { padding: [50, 50] });
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    }).addTo(map);
-
-    mapInstanceRef.current = map;
-    updateRoute();
-  };
-
-  const updateRoute = () => {
-    const L = (window as any).L;
-    const map = mapInstanceRef.current;
-
-    if (!L || !map || !L.Routing) {
-      console.warn("❗ Leaflet or Routing belum siap");
-      return;
-    }
-
-    const isValid = ([lat, lng]: [number, number]) =>
-      typeof lat === "number" &&
-      typeof lng === "number" &&
-      lat !== 0 &&
-      lng !== 0;
-
-    if (!isValid(fromLocation) || !isValid(toLocation)) {
-      console.warn("⚠️ Koordinat tidak valid:", { fromLocation, toLocation });
-      return;
-    }
-
-    if (
-      fromLocation[0] === toLocation[0] &&
-      fromLocation[1] === toLocation[1]
-    ) {
-      console.warn(
-        "⛔ Pickup dan Dropoff berada di titik yang sama. Routing dibatalkan.",
-      );
-      return;
-    }
-
-    // ✅ Jika sudah ada routing, cukup update titiknya
     try {
-      if (routeLayerRef.current) {
-        routeLayerRef.current.setWaypoints([
-          L.latLng(fromLocation[0], fromLocation[1]),
-          L.latLng(toLocation[0], toLocation[1]),
-        ]);
-        return;
-      }
-    } catch (err) {
-      console.warn("⚠️ setWaypoints gagal, akan buat ulang routing", err);
-    }
-
-    const createCustomIcon = (color: string) =>
-      L.divIcon({
-        className: "custom-div-icon",
-        html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
+      // ✅ Inisialisasi peta baru dengan opsi yang lebih aman
+      const map = L.map(mapRef.current, {
+        center: fromLocation,
+        zoom: 13,
+        zoomControl: true,
+        fadeAnimation: false,
+        markerZoomAnimation: false,
+        zoomAnimation: false,
       });
 
-    try {
-      const routingControl = L.Routing.control({
-        waypoints: [
-          L.latLng(fromLocation[0], fromLocation[1]),
-          L.latLng(toLocation[0], toLocation[1]),
-        ],
-        routeWhileDragging: false,
-        showAlternatives: false,
-        fitSelectedRoutes: true,
-        lineOptions: {
-          styles: [
-            { color: "#0066FF", opacity: 0.8, weight: 6 },
-            { color: "#0033FF", opacity: 0.5, weight: 4 },
-          ],
-        },
-        createMarker: (i: number, waypoint: any) => {
-          const icon =
-            i === 0 ? createCustomIcon("#4CAF50") : createCustomIcon("#F44336");
-          return L.marker(waypoint.latLng, { icon, draggable: false });
-        },
-        router: L.Routing.osrmv1({
-          serviceUrl: "https://router.project-osrm.org/route/v1",
-          profile: "driving",
-        }),
-        collapsible: true,
-        show: false,
+      leafletMapRef.current = map;
+
+      // Force a resize to ensure the map has the correct dimensions
+      setTimeout(() => {
+        try {
+          if (map && typeof map.invalidateSize === "function") {
+            map.invalidateSize(true);
+          }
+        } catch (err) {
+          console.warn("Error invalidating map size:", err);
+        }
+      }, 200);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
       }).addTo(map);
 
-      routingControl.on("routesfound", (e) => {
-        const route = e.routes[0];
-        const distanceKm = route.summary.totalDistance / 1000;
-        const durationMin = route.summary.totalTime / 60;
-        console.log(
-          "✅ Rute ditemukan:",
-          distanceKm.toFixed(2),
-          "km,",
-          durationMin.toFixed(1),
-          "menit",
-        );
-      });
+      // Add markers after map is fully initialized
+      setTimeout(() => {
+        try {
+          // Use simple circle markers instead of custom icons to avoid DOM issues
+          const pickupMarker = L.circleMarker(fromLocation, {
+            radius: 8,
+            fillColor: "#4CAF50",
+            color: "#ffffff",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 1,
+          }).addTo(map);
 
-      const container = routingControl.getContainer();
-      if (container) container.style.display = "none";
+          const dropoffMarker = L.circleMarker(toLocation, {
+            radius: 8,
+            fillColor: "#F44336",
+            color: "#ffffff",
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 1,
+          }).addTo(map);
 
-      routeLayerRef.current = routingControl;
+          // Fetch route from OSRM to follow roads
+          const url = `https://router.project-osrm.org/route/v1/driving/${fromLocation[1]},${fromLocation[0]};${toLocation[1]},${toLocation[0]}?overview=full&geometries=geojson`;
+
+          fetch(url)
+            .then((response) => response.json())
+            .then((data) => {
+              if (data.routes && data.routes.length > 0) {
+                // Extract route coordinates and convert [lng, lat] to [lat, lng] for Leaflet
+                const routeCoords = data.routes[0].geometry.coordinates.map(
+                  (coord: [number, number]) => [coord[1], coord[0]],
+                );
+
+                // Draw the route following roads
+                const routeLine = L.polyline(routeCoords, {
+                  color: "#0066FF",
+                  weight: 4,
+                  opacity: 0.7,
+                  noClip: true,
+                  interactive: false,
+                }).addTo(map);
+
+                // Fit bounds to the route
+                try {
+                  const bounds = L.latLngBounds(routeCoords);
+                  if (bounds.isValid()) {
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                  }
+                } catch (err) {
+                  console.warn("Could not fit to route bounds", err);
+                }
+              } else {
+                // Fallback to direct line if no route found
+                console.warn("No route found, using direct line");
+                const simpleLine = L.polyline([fromLocation, toLocation], {
+                  color: "#0066FF",
+                  weight: 4,
+                  opacity: 0.7,
+                  dashArray: "5, 5", // Dashed line to indicate it's not a real route
+                  noClip: true,
+                  interactive: false,
+                }).addTo(map);
+              }
+            })
+            .catch((err) => {
+              console.error("Error fetching route:", err);
+              // Fallback to direct line on error
+              const simpleLine = L.polyline([fromLocation, toLocation], {
+                color: "#0066FF",
+                weight: 4,
+                opacity: 0.7,
+                dashArray: "5, 5", // Dashed line to indicate it's not a real route
+                noClip: true,
+                interactive: false,
+              }).addTo(map);
+            });
+
+          // Calculate bounds and fit map to show both markers
+          const bounds = L.latLngBounds([fromLocation, toLocation]);
+          if (bounds.isValid()) {
+            map.fitBounds(bounds, { padding: [50, 50] });
+          } else {
+            // Fallback to center view if bounds are invalid
+            const centerLat = (fromLocation[0] + toLocation[0]) / 2;
+            const centerLng = (fromLocation[1] + toLocation[1]) / 2;
+            map.setView([centerLat, centerLng], 12);
+          }
+        } catch (err) {
+          console.error("Error adding markers or line:", err);
+          // Fallback to simple view
+          map.setView(fromLocation, 12);
+        }
+      }, 300);
+
+      // Skip OSRM route fetching to avoid errors
     } catch (err) {
-      console.error("❌ Gagal membuat routing control:", err);
+      console.error("Failed to initialize map:", err);
     }
   };
 
+  useEffect(() => {
+    // Check if Leaflet is already loaded
+    if (typeof window !== "undefined" && (window as any).L) {
+      initializeMap();
+      return;
+    }
+
+    // Load CSS if not already loaded
+    if (!document.getElementById("leaflet-css") && document.head) {
+      try {
+        const link = document.createElement("link");
+        link.id = "leaflet-css";
+        link.rel = "stylesheet";
+        link.href = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.css";
+        document.head.appendChild(link);
+      } catch (err) {
+        console.error("Error loading Leaflet CSS:", err);
+      }
+    }
+
+    // Load JS if not already loaded
+    if (!document.getElementById("leaflet-js") && document.body) {
+      try {
+        const script = document.createElement("script");
+        script.id = "leaflet-js";
+        script.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
+        script.async = true;
+        script.onload = () => {
+          // Wait a bit after script loads to ensure Leaflet is fully initialized
+          setTimeout(initializeMap, 100);
+        };
+        document.body.appendChild(script);
+      } catch (err) {
+        console.error("Error loading Leaflet JS:", err);
+      }
+    } else {
+      // If script already exists but Leaflet isn't loaded yet
+      const checkLeaflet = setInterval(() => {
+        if (typeof window !== "undefined" && (window as any).L) {
+          clearInterval(checkLeaflet);
+          initializeMap();
+        }
+      }, 100);
+
+      // Clear interval after 5 seconds to prevent infinite checking
+      setTimeout(() => clearInterval(checkLeaflet), 5000);
+    }
+
+    return () => {
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+      }
+    };
+  }, [fromLocation, toLocation]);
+
   return (
-    <div ref={mapRef} className="w-full h-[300px] rounded-md overflow-hidden" />
+    <div
+      className="w-full h-[300px] rounded-md overflow-hidden border"
+      ref={mapRef}
+      style={{ height: "300px", width: "100%", display: "block" }}
+    ></div>
   );
 }
