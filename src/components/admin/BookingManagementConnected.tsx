@@ -653,7 +653,7 @@ export default function BookingManagement() {
               <TableHead>Dates</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Payment</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Driver Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>

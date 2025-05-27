@@ -493,7 +493,8 @@ const DriverManagement = () => {
                   <TableHead>STNK Expiry</TableHead>
                   <TableHead>Reference Phone</TableHead>
                   <TableHead>Documents</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>Account Status</TableHead>
+                  <TableHead>Driver Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -575,6 +576,13 @@ const DriverManagement = () => {
                             </a>
                           )}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs ${driver.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                        >
+                          {driver.status}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span
@@ -744,7 +752,7 @@ const DriverManagement = () => {
             <FileUploadField label="Kartu Keluarga" id="kk" fileType="kk" />
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="status" className="text-right">
-                Status
+                Account Status
               </Label>
               <Select
                 name="status"
@@ -905,7 +913,7 @@ const DriverManagement = () => {
             />
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="edit-status" className="text-right">
-                Status
+                Account Status
               </Label>
               <Select
                 name="status"

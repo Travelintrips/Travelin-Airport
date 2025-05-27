@@ -126,6 +126,7 @@ const CarsManagement = () => {
     tax_expiry: "",
     is_active: true,
     vehicle_type_id: "",
+    type: "",
   });
 
   const [uploadLoading, setUploadLoading] = useState({
@@ -225,10 +226,20 @@ const CarsManagement = () => {
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value,
-    });
+
+    if (name === "vehicle_type_id") {
+      const selected = vehicleTypes.find((v) => v.id === Number(value));
+      setFormData({
+        ...formData,
+        [name]: value,
+        category: selected?.name || "", // ✅ simpan ke category/type
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value,
+      });
+    }
   };
 
   const handleAddCar = async () => {
@@ -390,6 +401,8 @@ const CarsManagement = () => {
   };
 
   const openEditDialog = (car: CarData) => {
+    const matchedType = vehicleTypes.find((v) => v.id === car.vehicle_type_id);
+
     setSelectedCar(car);
     setFormData({
       model: car.model,
@@ -403,6 +416,7 @@ const CarsManagement = () => {
       fuel_type: car.fuel_type || "",
       transmission: car.transmission || "",
       category: car.category || "",
+      type: matchedType?.name || car.type || "",
       seats: car.seats?.toString() || "",
       image_url: car.image_url || "",
       stnk_url: car.stnk_url || "",
@@ -411,6 +425,7 @@ const CarsManagement = () => {
       is_active: car.is_active !== false,
       vehicle_type_id: car.vehicle_type_id?.toString() || "",
     });
+
     setIsEditDialogOpen(true);
   };
 

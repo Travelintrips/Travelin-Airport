@@ -19,6 +19,7 @@ import {
   Package,
   Plane,
   Key,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -158,6 +159,13 @@ const AdminLayout = () => {
             >
               <Package className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">Vehicle Inventory</span>}
+            </Link>
+            <Link
+              to="price-km"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/price-km") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
+            >
+              <Tag className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Price KM</span>}
             </Link>
             <Link
               to="api-settings"

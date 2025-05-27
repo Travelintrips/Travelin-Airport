@@ -2,6 +2,7 @@ import React, { Suspense, lazy } from "react";
 import ProfilePage from "./pages/ProfilePage";
 import BookingsPage from "./pages/BookingsPage";
 import ApiSettings from "./components/admin/ApiSettings";
+import PriceKMManagement from "./components/admin/PriceKMManagement";
 import {
   useRoutes,
   Routes,
@@ -244,6 +245,7 @@ function App() {
                 }
               >
                 <Route path="api-settings" element={<ApiSettings />} />
+                <Route path="price-km" element={<PriceKMManagement />} />
                 <Route index element={<AdminDashboard />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="customers" element={<CustomerManagement />} />
@@ -367,6 +369,7 @@ function App() {
                 element={<AirportTransferManagement />}
               />
               <Route path="api-settings" element={<ApiSettings />} />
+              <Route path="price-km" element={<PriceKMManagement />} />
               <Route
                 path="damage-payment/:bookingId"
                 element={<DamagePaymentForm />}
