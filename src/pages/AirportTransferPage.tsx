@@ -233,6 +233,7 @@ function AirportTransferPageContent() {
             { name: "Sedan" },
             { name: "SUV" },
             { name: "MPV" },
+            { name: "MPV Premium" },
             { name: "Electric" },
           ];
           setVehicleTypes(defaultTypes);
@@ -264,6 +265,7 @@ function AirportTransferPageContent() {
             { name: "Sedan" },
             { name: "SUV" },
             { name: "MPV" },
+            { name: "MPV Premium" },
             { name: "Electric" },
           ];
           setVehicleTypes(defaultTypes);
@@ -283,6 +285,7 @@ function AirportTransferPageContent() {
           { name: "Sedan" },
           { name: "SUV" },
           { name: "MPV" },
+          { name: "MPV Premium" },
           { name: "Electric" },
         ];
         setVehicleTypes(defaultTypes);
