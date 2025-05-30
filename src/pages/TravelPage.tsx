@@ -12,6 +12,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Luggage } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -1781,15 +1782,14 @@ const TravelPage = () => {
             <div className="flex flex-wrap gap-4 justify-center mb-20 md:mb-0">
               <Button
                 size="lg"
-                className="bg-green-500 hover:bg-green-600 text-white px-8 py-6 text-lg"
+                className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
                 onClick={() => handleTravelOptionClick("Car Rental")}
               >
                 {t("hero.bookNow", "Book Now")}
               </Button>
               <Button
-                variant="outline"
                 size="lg"
-                className="border-white text-white hover:bg-white hover:text-green-800 px-8 py-6 text-lg"
+                className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
                 onClick={() => handleTravelOptionClick("Car Rental")}
               >
                 {t("hero.browseCars", "Browse Cars")}
@@ -1847,6 +1847,20 @@ const TravelPage = () => {
                 >
                   <MapPin className="h-5 w-5 mr-2" />
                   <span>Airport</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="baggage"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => {
+                    setActiveTab("airport");
+                    window.open(
+                      "https://wonderful-shannon3-cnk3s.view-3.tempo-dev.app/",
+                      "_blank",
+                    );
+                  }}
+                >
+                  <Luggage className="h-5 w-5 mr-2" />
+                  <span>Baggage</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="car"
@@ -1925,6 +1939,22 @@ const TravelPage = () => {
             <MapPin className="h-6 w-6 mb-1" />
             <span className="text-xs font-medium">Airport</span>
           </button>
+          <button
+            onClick={() => {
+              setActiveTab("airport");
+              window.open(
+                "https://wonderful-shannon3-cnk3s.view-3.tempo-dev.app/",
+                "_blank",
+              );
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${
+              activeTab === "airport" ? "text-green-500" : "text-gray-700"
+            }`}
+          >
+            <Luggage className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Baggage</span>
+          </button>
+
           <button
             onClick={() => {
               setActiveTab("car");
