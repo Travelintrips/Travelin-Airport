@@ -1,5 +1,5 @@
 {
-  "brand": "Car Rental",
+  "brand": "Travelintrips",
   "common": {
     "back": "Back",
     "search": "Search",
@@ -127,5 +127,19 @@
     "nl": "Dutch",
     "ru": "Russian",
     "zh": "Chinese"
+  },
+  "currency": {
+    "code": "USD",
+    "symbol": "$"
+  },
+  "airportTransfer": {
+    "oneWay": "One-way",
+    "multiCity": "Multi-city",
+    "swap": "SWAP",
+    "departure": "Departure",
+    "return": "Return",
+    "passengers": "Passengers",
+    "class": "Class",
+    "searchFlights": "Search Flights"
   }
 }

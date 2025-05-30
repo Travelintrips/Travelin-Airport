@@ -71,5 +71,9 @@
     "nl": "Néerlandais",
     "ru": "Russe",
     "zh": "Chinois"
+  },
+  "currency": {
+    "code": "EUR",
+    "symbol": "€"
   }
 }

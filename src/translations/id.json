@@ -109,5 +109,9 @@
     "nl": "Belanda",
     "ru": "Rusia",
     "zh": "Mandarin"
+  },
+  "currency": {
+    "code": "IDR",
+    "symbol": "Rp"
   }
 }
