@@ -109,6 +109,9 @@ interface Driver {
   surcharge?: number;
   distance?: number;
   eta?: number;
+  has_bid?: boolean;
+  bid_price?: number | null;
+  bid_id?: string | null;
 }
 
 function AirportTransferPageContent() {
@@ -152,6 +155,11 @@ function AirportTransferPageContent() {
     basicPrice: 0,
     surcharge: 0,
   });
+
+  // Booking type state (instant or scheduled)
+  const [bookingType, setBookingType] = useState<"instant" | "scheduled">(
+    "instant",
+  );
 
   // UI states
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -617,12 +625,19 @@ function AirportTransferPageContent() {
   const isCurrentStepValid = () => {
     switch (currentStep) {
       case 1: // Location & Schedule
-        return (
-          formData.fromAddress.trim() !== "" &&
-          formData.toAddress.trim() !== "" &&
-          formData.pickupDate !== "" &&
-          formData.pickupTime !== ""
-        );
+        if (bookingType === "instant") {
+          return (
+            formData.fromAddress.trim() !== "" &&
+            formData.toAddress.trim() !== ""
+          );
+        } else {
+          return (
+            formData.fromAddress.trim() !== "" &&
+            formData.toAddress.trim() !== "" &&
+            formData.pickupDate !== "" &&
+            formData.pickupTime !== ""
+          );
+        }
       case 2: // Map & Route + Driver Selection
         // Require driver selection to proceed
         return (
@@ -820,9 +835,25 @@ function AirportTransferPageContent() {
   const searchDrivers = async () => {
     setIsSearchingDriver(true);
     try {
-      const { data: drivers, error: driverError } = await supabase.from(
-        "drivers",
-      ).select(`
+      // Check for any bids from drivers in the airport_transfer_notification table
+      const { data: bids, error: initialBidsError } = await supabase
+        .from("airport_transfer_notification")
+        .select("*")
+        .eq("vehicle_type", formData.vehicleType)
+        .eq("status", "bidding")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (initialBidsError) {
+        console.error("Error fetching driver bids:", initialBidsError);
+      } else if (bids && bids.length > 0) {
+        console.log("Found driver bids:", bids);
+        // We'll process these bids later in the driver display section
+      }
+      const { data: drivers, error: driverError } = await supabase
+        .from("drivers")
+        .select(
+          `
         id,
         id_driver,
         name,
@@ -830,7 +861,9 @@ function AirportTransferPageContent() {
         selfie_url
         
         
-      `);
+      `,
+        )
+        .eq("is_online", true);
 
       if (driverError) {
         console.error("❌ Error fetching drivers:", driverError);
@@ -934,6 +967,7 @@ function AirportTransferPageContent() {
           .from("drivers")
           .select("id, name, phone, selfie_url, id_driver")
           .eq("status", "active")
+          .eq("is_online", true)
           .limit();
 
       if (availableError) {
@@ -943,6 +977,28 @@ function AirportTransferPageContent() {
 
       // Format available drivers
       const availableDriversFormatted = [];
+
+      // Check for any bids from drivers in the airport_transfer_notification table
+      const { data: driverBids, error: driverBidsError } = await supabase
+        .from("airport_transfer_notification")
+        .select("*")
+        .eq("vehicle_type", formData.vehicleType)
+        .eq("status", "bidding")
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      // Create a map of driver IDs who have placed bids
+      const driverBidsMap = new Map();
+      if (!driverBidsError && driverBids && driverBids.length > 0) {
+        driverBids.forEach((bid) => {
+          if (bid.driver_id) {
+            driverBidsMap.set(bid.driver_id, {
+              bid_price: bid.bid_price,
+              bid_id: bid.id,
+            });
+          }
+        });
+      }
 
       // Fetch vehicle pricing data once for the selected vehicle type
       const { data: vehiclePricing, error: vehiclePricingError } =
@@ -966,21 +1022,30 @@ function AirportTransferPageContent() {
 
         // For each available driver, use default pricing data
         for (const driver of availableDriversData || []) {
+          // Check if this driver has placed a bid
+          const hasBid = driverBids.has(driver.id);
+          const bidInfo = hasBid ? driverBids.get(driver.id) : null;
+
           availableDriversFormatted.push({
             id: driver.id,
             id_driver: driver.id_driver,
             driver_name: driver.name,
             phone_number: driver.phone,
-            //  status: driver.status,
+            status: driver.status,
             photo_url: driver.selfie_url,
             // Simulate distance and ETA for demo purposes
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
             // Add default pricing data
-            price_km: defaultValues.price_km,
+            price_km: bidInfo
+              ? bidInfo.bid_price / formData.distance
+              : defaultValues.price_km,
             basic_price: defaultValues.basic_price,
             surcharge: defaultValues.surcharge,
             vehicle_type: formData.vehicleType,
+            has_bid: hasBid,
+            bid_price: bidInfo ? bidInfo.bid_price : null,
+            bid_id: bidInfo ? bidInfo.bid_id : null,
           });
         }
 
@@ -1044,21 +1109,30 @@ function AirportTransferPageContent() {
 
         // For each available driver, use default pricing data
         for (const driver of availableDriversData || []) {
+          // Check if this driver has placed a bid
+          const hasBid = driverBids.has(driver.id);
+          const bidInfo = hasBid ? driverBids.get(driver.id) : null;
+
           availableDriversFormatted.push({
             id: driver.id,
             id_driver: driver.id_driver,
             driver_name: driver.name,
             phone_number: driver.phone,
-            //   status: driver.status,
+            status: driver.status,
             photo_url: driver.selfie_url,
             // Simulate distance and ETA for demo purposes
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
             // Add default pricing data
-            price_km: defaultValues.price_km,
+            price_km: bidInfo
+              ? bidInfo.bid_price / formData.distance
+              : defaultValues.price_km,
             basic_price: defaultValues.basic_price,
             surcharge: defaultValues.surcharge,
             vehicle_type: formData.vehicleType,
+            has_bid: hasBid,
+            bid_price: bidInfo ? bidInfo.bid_price : null,
+            bid_id: bidInfo ? bidInfo.bid_id : null,
           });
         }
 
@@ -1074,7 +1148,7 @@ function AirportTransferPageContent() {
             id_driver: driver.id_driver,
             driver_name: driver.name,
             phone_number: driver.phone,
-            //  status: driver.status,
+            status: driver.status,
             photo_url: driver.selfie_url,
             // Simulate distance and ETA for demo purposes
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
@@ -1192,6 +1266,74 @@ function AirportTransferPageContent() {
     if (currentStep === 1) {
       setIsLoading(true);
       try {
+        // If we're moving from step 1 to step 2, send notification to airport_transfer_notification table
+        try {
+          console.log(
+            "Step 1 to 2: Preparing to send notification to airport_transfer_notification table",
+          );
+
+          // Validate required fields
+          if (!formData.fromAddress || !formData.toAddress) {
+            console.warn("Missing required address fields for notification");
+            toast({
+              title: "Missing Information",
+              description: "Please provide both pickup and dropoff locations.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          const notificationData = {
+            from_address: formData.fromAddress,
+            to_address: formData.toAddress,
+            pickup_date:
+              formData.pickupDate || new Date().toISOString().split("T")[0],
+            pickup_time: formData.pickupTime,
+            vehicle_type: formData.vehicleType,
+            distance: formData.distance,
+            duration: formData.duration,
+            estimated_price: formData.price,
+            status: "pending",
+            created_at: new Date().toISOString(),
+            customer_id: userId || null,
+            customer_name: formData.fullName,
+            customer_phone: formData.phoneNumber,
+            is_bidding_open: true,
+          };
+
+          console.log("Step notification data to be sent:", notificationData);
+
+          const { data, error } = await supabase
+            .from("airport_transfer_notification")
+            .insert([notificationData]);
+
+          if (error) {
+            console.error("Error sending step notification:", error);
+            console.error("Error details:", JSON.stringify(error));
+            // Don't show toast here as it might disrupt the flow
+          } else {
+            console.log("Step notification sent successfully:", data);
+          }
+        } catch (err) {
+          console.error("Error in step notification process:", err);
+          console.error(
+            "Error stack:",
+            err instanceof Error ? err.stack : "No stack trace",
+          );
+        }
+        // Set current date and time for instant booking
+        if (bookingType === "instant") {
+          const now = new Date();
+          const today = now.toISOString().split("T")[0];
+          const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+
+          setFormData((prev) => ({
+            ...prev,
+            pickupDate: today,
+            pickupTime: currentTime,
+          }));
+        }
+
         // Cek dan lengkapi fromLocation jika kosong
         if (!formData.fromLocation || formData.fromLocation[0] === 0) {
           const coords = await geocodeAddress(formData.fromAddress);
@@ -1230,6 +1372,9 @@ function AirportTransferPageContent() {
               fromLocation: fromCoords,
               toLocation: toCoords,
             }));
+
+            // Set locations as selected to show the map and vehicle types
+            setLocationsSelected(true);
 
             // Note: We don't need to manually calculate price here anymore
             // as the useEffect will handle it when formData.distance changes
@@ -1289,6 +1434,22 @@ function AirportTransferPageContent() {
   const handleSubmitBooking = async () => {
     setIsLoading(true);
     try {
+      // Update the airport_transfer_notification status to 'confirmed'
+      if (selectedDriver && selectedDriver.bid_id) {
+        try {
+          const { error } = await supabase
+            .from("airport_transfer_notification")
+            .update({ status: "confirmed" })
+            .eq("id", selectedDriver.bid_id);
+
+          if (error) {
+            console.error("Error updating notification status:", error);
+          }
+        } catch (err) {
+          console.error("Error updating notification status:", err);
+        }
+      }
+
       const bookingData = {
         booking_code: formData.bookingCode,
         customer_name: formData.fullName,
@@ -1453,6 +1614,30 @@ function AirportTransferPageContent() {
     };
   }, []);
 
+  // State to track if both pickup and dropoff locations are selected
+  const [locationsSelected, setLocationsSelected] = useState<boolean>(false);
+
+  // Check if both locations are selected
+  useEffect(() => {
+    if (
+      formData.fromAddress.trim() !== "" &&
+      formData.toAddress.trim() !== ""
+    ) {
+      setLocationsSelected(true);
+      // Trigger route calculation
+      if (formData.fromLocation[0] !== 0 && formData.toLocation[0] !== 0) {
+        getRouteDetails(formData.fromLocation, formData.toLocation);
+      }
+    } else {
+      setLocationsSelected(false);
+    }
+  }, [
+    formData.fromAddress,
+    formData.toAddress,
+    formData.fromLocation,
+    formData.toLocation,
+  ]);
+
   // Step 1: Location and Schedule
   const renderLocationAndScheduleStep = () => {
     return (
@@ -1534,49 +1719,347 @@ function AirportTransferPageContent() {
           </div>
         </div>
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium">Schedule & Passengers</h3>
+        {/* Show map and vehicle types when both locations are selected */}
+        {locationsSelected && (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Route Preview</h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Pickup Date */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Pickup Date</label>
-              <div className="relative">
-                <Input
-                  type="date"
-                  value={formData.pickupDate}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      pickupDate: e.target.value,
-                    }))
-                  }
-                  min={new Date().toISOString().split("T")[0]}
-                  className="pl-10"
+              <div className="bg-white rounded-md overflow-hidden border">
+                <MapPicker
+                  fromLocation={formData.fromLocation}
+                  toLocation={formData.toLocation}
                 />
-                <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
               </div>
-            </div>
 
-            {/* Pickup Time */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Pickup Time</label>
-              <div className="relative">
-                <Input
-                  type="time"
-                  value={formData.pickupTime}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      pickupTime: e.target.value,
-                    }))
-                  }
-                  className="pl-10"
-                />
-                <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <h4 className="text-sm font-medium text-gray-500">
+                        Distance
+                      </h4>
+                      <p className="text-2xl font-bold">
+                        {formData.distance.toFixed(1)} km
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center">
+                      <h4 className="text-sm font-medium text-gray-500">
+                        Duration
+                      </h4>
+                      <p className="text-2xl font-bold">
+                        {formData.duration} min
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <h3 className="text-lg font-medium mt-6">Booking Type</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                <div
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${bookingType === "instant" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                  onClick={() => setBookingType("instant")}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`h-4 w-4 rounded-full border ${bookingType === "instant" ? "border-4 border-blue-500" : "border border-gray-300"}`}
+                    ></div>
+                    <div>
+                      <span className="font-medium">Instant Booking</span>
+                      <p className="text-sm text-gray-500">
+                        Book for right now
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${bookingType === "scheduled" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                  onClick={() => setBookingType("scheduled")}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`h-4 w-4 rounded-full border ${bookingType === "scheduled" ? "border-4 border-blue-500" : "border border-gray-300"}`}
+                    ></div>
+                    <div>
+                      <span className="font-medium">Schedule Booking</span>
+                      <p className="text-sm text-gray-500">Book for later</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="text-lg font-medium">Available Vehicle Types</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {vehicleTypes.map((type) => {
+                  // Calculate estimated price for this vehicle type
+                  const calculateEstimatedPrice = () => {
+                    if (formData.distance <= 0) return 0;
+
+                    // Default pricing values
+                    let priceKm = 3250;
+                    let basicPrice = 75000;
+                    let surcharge = 40000;
+
+                    // Try to get pricing from database for this vehicle type
+                    const getPricing = async () => {
+                      try {
+                        const { data, error } = await supabase
+                          .from("vehicles")
+                          .select("price_km, basic_price, surcharge")
+                          .eq("type", type.name)
+                          .limit(1);
+
+                        if (!error && data && data.length > 0) {
+                          priceKm = Number(data[0].price_km) || priceKm;
+                          basicPrice =
+                            Number(data[0].basic_price) || basicPrice;
+                          surcharge = Number(data[0].surcharge) || surcharge;
+                        }
+                      } catch (err) {
+                        console.error(
+                          `Error fetching pricing for ${type.name}:`,
+                          err,
+                        );
+                      }
+                    };
+
+                    // Calculate price using the same formula as in the component
+                    const baseDistance = 8; // First 8 km use basic_price
+                    const roundedDistance =
+                      Math.round(formData.distance * 10) / 10;
+
+                    let total = 0;
+                    if (roundedDistance <= baseDistance) {
+                      total = basicPrice + surcharge;
+                    } else {
+                      const extraDistance = roundedDistance - baseDistance;
+                      total = basicPrice + extraDistance * priceKm + surcharge;
+                    }
+
+                    return total;
+                  };
+
+                  // Get icon based on vehicle type
+                  const getVehicleIcon = () => {
+                    switch (type.name.toLowerCase()) {
+                      case "sedan":
+                        return <CarFront className="h-8 w-8" />;
+                      case "suv":
+                        return <Car className="h-8 w-8" />;
+                      case "mpv":
+                      case "mpv premium":
+                        return <Car className="h-8 w-8" />;
+                      case "electric":
+                        return <Car className="h-8 w-8" />;
+                      default:
+                        return <Car className="h-8 w-8" />;
+                    }
+                  };
+
+                  return (
+                    <Card
+                      key={type.name}
+                      className="cursor-pointer hover:border-blue-500 transition-colors"
+                      onClick={async () => {
+                        // Set the selected vehicle type
+                        setFormData((prev) => ({
+                          ...prev,
+                          vehicleType: type.name,
+                        }));
+
+                        // Send notification to airport_transfer_notification table
+                        try {
+                          console.log(
+                            "Preparing to send notification to airport_transfer_notification table",
+                          );
+
+                          // Log Supabase connection status
+                          console.log(
+                            "Supabase URL being used:",
+                            import.meta.env.VITE_SUPABASE_URL,
+                          );
+                          console.log(
+                            "Supabase connection check:",
+                            supabase
+                              ? "Client initialized"
+                              : "Client not initialized",
+                          );
+
+                          const notificationData = {
+                            from_address: formData.fromAddress,
+                            to_address: formData.toAddress,
+                            pickup_date:
+                              formData.pickupDate ||
+                              new Date().toISOString().split("T")[0],
+                            pickup_time: formData.pickupTime,
+                            vehicle_type: type.name,
+                            distance: formData.distance,
+                            duration: formData.duration,
+                            estimated_price: calculateEstimatedPrice(),
+                            status: "pending",
+                            created_at: new Date().toISOString(),
+                            customer_id: userId || null,
+                            customer_name: formData.fullName,
+                            customer_phone: formData.phoneNumber,
+                            is_bidding_open: true,
+                          };
+
+                          console.log(
+                            "Notification data to be sent:",
+                            notificationData,
+                          );
+
+                          // Check if the table exists
+                          const { data: tableCheck, error: tableError } =
+                            await supabase
+                              .from("airport_transfer_notification")
+                              .select("id")
+                              .limit(1);
+
+                          if (tableError) {
+                            console.error(
+                              "Error checking airport_transfer_notification table:",
+                              tableError,
+                            );
+                            toast({
+                              title: "Database Error",
+                              description:
+                                "Could not access the notifications table. Please contact support.",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+
+                          console.log("Table check result:", tableCheck);
+
+                          // Proceed with insert
+                          const { data, error } = await supabase
+                            .from("airport_transfer_notification")
+                            .insert([notificationData]);
+
+                          if (error) {
+                            console.error("Error sending notification:", error);
+                            console.error(
+                              "Error details:",
+                              JSON.stringify(error),
+                            );
+                            toast({
+                              title: "Notification Error",
+                              description: `Could not notify drivers: ${error.message || error.code || "Unknown error"}`,
+                              variant: "destructive",
+                            });
+                          } else {
+                            console.log(
+                              "Notification sent successfully:",
+                              data,
+                            );
+                            toast({
+                              title: "Notification Sent",
+                              description:
+                                "Drivers have been notified about your booking request.",
+                            });
+                          }
+                        } catch (err) {
+                          console.error("Error in notification process:", err);
+                          console.error(
+                            "Error stack:",
+                            err instanceof Error ? err.stack : "No stack trace",
+                          );
+                          toast({
+                            title: "System Error",
+                            description:
+                              "An unexpected error occurred. Please try again.",
+                            variant: "destructive",
+                          });
+                        }
+
+                        // Navigate to step 2
+                        setCurrentStep(2);
+                        // Search for drivers immediately
+                        searchDrivers();
+                      }}
+                    >
+                      <CardContent className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
+                              {getVehicleIcon()}
+                            </div>
+                            <div>
+                              <h4 className="font-medium">{type.name}</h4>
+                              <p className="text-sm text-gray-500">
+                                {formData.distance.toFixed(1)} km •{" "}
+                                {formData.duration} min
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-green-600">
+                              Rp {calculateEstimatedPrice().toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           </div>
+        )}
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Passengers</h3>
+
+          {bookingType === "scheduled" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Pickup Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pickup Date</label>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={formData.pickupDate}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        pickupDate: e.target.value,
+                      }))
+                    }
+                    min={new Date().toISOString().split("T")[0]}
+                    className="pl-10"
+                  />
+                  <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Pickup Time */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pickup Time</label>
+                <div className="relative">
+                  <Input
+                    type="time"
+                    value={formData.pickupTime}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        pickupTime: e.target.value,
+                      }))
+                    }
+                    className="pl-10"
+                  />
+                  <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
             {/* Passengers */}
@@ -1600,6 +2083,49 @@ function AirportTransferPageContent() {
               </div>
             </div>
           </div>
+
+          {bookingType === "scheduled" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Pickup Date */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pickup Date</label>
+                <div className="relative">
+                  <Input
+                    type="date"
+                    value={formData.pickupDate}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        pickupDate: e.target.value,
+                      }))
+                    }
+                    min={new Date().toISOString().split("T")[0]}
+                    className="pl-10"
+                  />
+                  <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Pickup Time */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Pickup Time</label>
+                <div className="relative">
+                  <Input
+                    type="time"
+                    value={formData.pickupTime}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        pickupTime: e.target.value,
+                      }))
+                    }
+                    className="pl-10"
+                  />
+                  <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1746,6 +2272,12 @@ function AirportTransferPageContent() {
                       className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedDriver?.id === driver.id ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
                       onClick={() => handleSelectDriver(driver)}
                     >
+                      {/* Show bidding badge if driver has placed a bid */}
+                      {driver.has_bid && (
+                        <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-800 text-xs font-bold px-2 py-1 rounded-full">
+                          Bidding
+                        </div>
+                      )}
                       <div className="flex items-center gap-4">
                         <div className="h-16 w-16 rounded-full bg-gray-200 overflow-hidden">
                           {driver.photo_url ? (
@@ -1814,6 +2346,11 @@ function AirportTransferPageContent() {
                           <div className="text-xs text-gray-500">
                             ETA: {driver.eta} min
                           </div>
+                          {driver.has_bid && driver.bid_price && (
+                            <div className="text-sm font-bold text-yellow-600 mt-1">
+                              Bid: Rp {driver.bid_price.toLocaleString()}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2048,8 +2585,9 @@ function AirportTransferPageContent() {
                 <div className="flex justify-between">
                   <span className="text-gray-500">Date & Time</span>
                   <span className="font-medium">
-                    {new Date(formData.pickupDate).toLocaleDateString()} at{" "}
-                    {formData.pickupTime}
+                    {bookingType === "instant"
+                      ? "Now"
+                      : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
                   </span>
                 </div>
 
@@ -2190,8 +2728,9 @@ function AirportTransferPageContent() {
             <div className="flex justify-between">
               <span className="text-gray-500">Date & Time</span>
               <span className="font-medium">
-                {new Date(formData.pickupDate).toLocaleDateString()} at{" "}
-                {formData.pickupTime}
+                {bookingType === "instant"
+                  ? "Now"
+                  : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
               </span>
             </div>
 
