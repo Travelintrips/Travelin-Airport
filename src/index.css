@@ -103,3 +103,8 @@
 .react-select__menu {
   z-index: 9999 !important;
 }
+
+.container-luggage {
+  padding-left: 0;
+  padding-right: 0;
+}

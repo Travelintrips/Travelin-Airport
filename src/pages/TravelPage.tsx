@@ -1708,6 +1708,9 @@ const TravelPage = () => {
       case "Airport Transfer":
         navigate("/airport-transfer");
         break;
+      case "Baggage":
+        navigate("/baggage");
+        break;
       case "Car Rental":
         navigate("/rentcar");
         break;
@@ -1851,13 +1854,7 @@ const TravelPage = () => {
                 <TabsTrigger
                   value="baggage"
                   className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                  onClick={() => {
-                    setActiveTab("airport");
-                    window.open(
-                      "https://wonderful-shannon3-cnk3s.view-3.tempo-dev.app/",
-                      "_blank",
-                    );
-                  }}
+                  onClick={() => handleTravelOptionClick("Baggage")}
                 >
                   <Luggage className="h-5 w-5 mr-2" />
                   <span>Baggage</span>
@@ -1941,11 +1938,8 @@ const TravelPage = () => {
           </button>
           <button
             onClick={() => {
-              setActiveTab("airport");
-              window.open(
-                "https://wonderful-shannon3-cnk3s.view-3.tempo-dev.app/",
-                "_blank",
-              );
+              setActiveTab("baggage");
+              handleTravelOptionClick("Baggage");
             }}
             className={`flex flex-col items-center justify-center p-2 ${
               activeTab === "airport" ? "text-green-500" : "text-gray-700"

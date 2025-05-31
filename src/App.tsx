@@ -36,6 +36,7 @@ import DamageManagement from "./components/admin/DamageManagement";
 import VehicleInventory from "./components/admin/VehicleInventory";
 import AirportTransferManagement from "./components/admin/AirportTransferManagement";
 import AirportTransferPage from "./pages/AirportTransferPage";
+import BaggageSizeSelector from "./pages/BaggageSizeSelector";
 import DriverMitraPage from "./pages/DriverMitraPage";
 import DriverPerusahaanPage from "./pages/DriverPerusahaanPage";
 import DriverProfile from "./components/DriverProfile";
@@ -205,6 +206,7 @@ function App() {
                 element={<AirportTransferPreview />}
               />
 
+              <Route path="/baggage" element={<BaggageSizeSelector />} />
               <Route path="/driver-mitra" element={<DriverMitraPage />} />
               <Route
                 path="/driver-perusahaan"
@@ -313,6 +315,7 @@ function App() {
               element={<BookingPage />}
             />
             <Route path="/airport-transfer" element={<AirportTransferPage />} />
+            <Route path="/baggage" element={<BaggageSizeSelector />} />
             <Route path="/driver-mitra" element={<DriverMitraPage />} />
             <Route
               path="/driver-perusahaan"

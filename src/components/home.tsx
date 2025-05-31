@@ -100,7 +100,6 @@ const Home = () => {
           </div>
         </div>
       </nav>
-
       {/* Hero Section */}
       <section className="py-16 md:py-24 bg-gradient-to-b from-muted to-background">
         <div className="container mx-auto px-4">
@@ -147,7 +146,6 @@ const Home = () => {
           </motion.div>
         </div>
       </section>
-
       {/* Features Section */}
       <section className="py-16 md:py-24 bg-gradient-to-b from-background to-muted/50">
         <div className="container mx-auto px-4">
@@ -204,7 +202,6 @@ const Home = () => {
           </div>
         </div>
       </section>
-
       {/* Footer */}
       <footer className="bg-muted/30 border-t border-border py-12">
         <div className="container mx-auto px-4">
