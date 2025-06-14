@@ -168,6 +168,14 @@ function AppContent() {
     return children;
   };
 
+  React.useEffect(() => {
+    if (!isAuthenticated && !isLoading && sessionStorage.getItem("loggedOut")) {
+      console.log("[App.tsx] Detected logout flag, clearing and reloading");
+      sessionStorage.removeItem("loggedOut");
+      window.location.replace("/"); // ⬅️ lebih baik daripada reload untuk reset state + cache
+    }
+  }, [isAuthenticated, isLoading]);
+
   return (
     <ShoppingCartProvider>
       <div className="min-h-screen w-full">

@@ -113,14 +113,14 @@ function useAuthCheck() {
   };
 
   // Function to sign out
-  const signOut = async () => {
+  /*  const signOut = async () => {
     try {
       await supabase.auth.signOut();
       handleAuthStateChange(false);
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
+  };*/
 
   return {
     isAuthenticated,
@@ -129,7 +129,7 @@ function useAuthCheck() {
     userEmail,
     isLoading,
     handleAuthStateChange,
-    signOut,
+    //  signOut,
   };
 }
 

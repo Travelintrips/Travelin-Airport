@@ -269,14 +269,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signOut = async () => {
     console.log("[AuthProvider] Starting comprehensive sign out process");
 
-    // Clear state immediately to prevent UI issues
-    setIsAuthenticated(false);
-    setUserRole(null);
-    setUserId(null);
-    setUserEmail(null);
-    setUserName(null);
-    setIsAdmin(false);
-
     try {
       // Sign out from Supabase
       await supabase.auth.signOut({ scope: "global" });
@@ -284,12 +276,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn("[AuthProvider] Error signing out from Supabase:", error);
     }
 
-    // Clear all storage immediately
-    console.log("[AuthProvider] Clearing all storage");
+    // Clear all React state
+    setIsAuthenticated(false);
+    setUserRole(null);
+    setUserId(null);
+    setUserEmail(null);
+    setUserName(null);
+    setIsAdmin(false);
+
+    // Clear storages
     localStorage.clear();
     sessionStorage.clear();
 
-    // Clear IndexedDB databases
+    // IndexedDB
     if (typeof indexedDB !== "undefined") {
       const databases = ["supabase", "supabase-js", "keyval-store"];
       databases.forEach((dbName) => {
@@ -301,7 +300,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     }
 
-    // Clear browser caches
+    // Clear caches
     if ("caches" in window) {
       try {
         const cacheNames = await caches.keys();
@@ -320,17 +319,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
       document.cookie =
         name +
-        "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" +
-        window.location.hostname;
+        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
       document.cookie =
         name +
-        "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=." +
-        window.location.hostname;
+        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.${window.location.hostname}`;
     });
 
     console.log(
-      "[AuthProvider] Logout cleanup completed, ready for page refresh",
+      "[AuthProvider] Logout cleanup completed. Forcing full reload...",
     );
+
+    // ✅ Tambahkan tanda logout agar tidak ada looping di useEffect App
+    sessionStorage.setItem("loggedOut", "true");
+
+    // ⛔️ Jangan hanya pakai reload — pakai replace untuk mencegah back navigation
+    window.location.replace(window.location.origin);
 
     return true;
   };

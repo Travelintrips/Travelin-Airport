@@ -80,28 +80,20 @@ const UserDropdown = () => {
   const displayRole = effectiveIsAdmin ? "Admin" : role || "Customer";
 
   const handleLogout = async () => {
-    console.log("[UserDropdown] Starting logout process");
-
     try {
-      // Call the signOut function from AuthContext
-      // This will handle all cleanup and page refresh
-      await signOut();
+      const result = await signOut();
 
-      // Additional fallback to ensure page refresh
+      // ✅ Tambahan fallback manual reload jika signOut tidak memicu reload
       setTimeout(() => {
-        window.location.replace("/");
-      }, 500);
+        console.log("[UserDropdown] Fallback reload triggered.");
+        window.location.href = window.location.origin;
+      }, 100);
     } catch (error) {
       console.error("[UserDropdown] Error during logout:", error);
 
-      // Fallback: force complete page refresh even if signOut fails
-      window.location.replace("/");
+      // ⛑️ Fallback jika signOut gagal total
+      window.location.href = window.location.origin;
     }
-  };
-
-  const handleNavigate = (path: string) => {
-    console.log("Navigating to:", path);
-    navigate(path); // Use React Router navigate instead of direct location change
   };
 
   return (

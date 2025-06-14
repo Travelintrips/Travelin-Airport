@@ -3291,6 +3291,42 @@ export type Database = {
           },
         ]
       }
+      price_km: {
+        Row: {
+          basic_price: number
+          created_at: string | null
+          id: number
+          is_active: boolean | null
+          minimum_distance: number | null
+          price_per_km: number
+          surcharge: number
+          updated_at: string | null
+          vehicle_type: string
+        }
+        Insert: {
+          basic_price?: number
+          created_at?: string | null
+          id?: number
+          is_active?: boolean | null
+          minimum_distance?: number | null
+          price_per_km?: number
+          surcharge?: number
+          updated_at?: string | null
+          vehicle_type: string
+        }
+        Update: {
+          basic_price?: number
+          created_at?: string | null
+          id?: number
+          is_active?: boolean | null
+          minimum_distance?: number | null
+          price_per_km?: number
+          surcharge?: number
+          updated_at?: string | null
+          vehicle_type?: string
+        }
+        Relationships: []
+      }
       remaining_payments: {
         Row: {
           booking_id: string | null
