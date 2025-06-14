@@ -8,27 +8,28 @@ import {
 import BookingForm from "../components/booking/BookingForm";
 import { Card } from "../components/ui/card";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/contexts/AuthContext";
+import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
 
 export default function BookingPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams();
   const { selectedVehicle } = location.state || {};
+  const { isAuthenticated, userId } = useAuth();
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [vehicle, setVehicle] = useState(selectedVehicle || null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Check if user is authenticated
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setIsAuthenticated(!!data.session);
-      setIsLoading(false);
-    };
-    checkAuth();
-  }, []);
+    if (!isAuthenticated || !userId) {
+      setShowAuthModal(true);
+    }
+    setIsLoading(false);
+  }, [isAuthenticated, userId]);
 
   // Fetch vehicle data if not provided in location state
   useEffect(() => {
@@ -65,21 +66,26 @@ export default function BookingPage() {
     fetchVehicle();
   }, [params.vehicle_id, params.model_name, selectedVehicle]);
 
-  // Redirect to login if not authenticated
-  if (isAuthenticated === false) {
+  // Show auth modal if not authenticated
+  if (!isAuthenticated || !userId) {
     return (
-      <Navigate
-        to="/"
-        state={{
-          returnPath: location.pathname,
-          returnState: { selectedVehicle: vehicle },
-        }}
-      />
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
+          </div>
+        </div>
+        <AuthRequiredModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+        />
+      </div>
     );
   }
 
   // Show loading state
-  if (isLoading || isAuthenticated === null) {
+  if (isLoading) {
     return (
       <div className="container mx-auto py-8 px-4 text-center">
         <h1 className="text-3xl font-bold mb-6">Book a Car</h1>

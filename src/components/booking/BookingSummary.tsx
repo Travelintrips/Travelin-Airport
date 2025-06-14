@@ -11,6 +11,8 @@ interface BookingSummaryProps {
   totalAmount: number;
   depositAmount: number;
   isPartialPayment: boolean;
+  itemName?: string;
+  baggageSize?: string;
 }
 
 const BookingSummary: React.FC<BookingSummaryProps> = ({
@@ -23,6 +25,8 @@ const BookingSummary: React.FC<BookingSummaryProps> = ({
   totalAmount,
   depositAmount,
   isPartialPayment,
+  itemName,
+  baggageSize,
 }) => {
   // Format currency to IDR
   const formatCurrency = (amount: number) => {
@@ -47,6 +51,12 @@ const BookingSummary: React.FC<BookingSummaryProps> = ({
           <span>Duration:</span>
           <span className="font-medium">{totalDays} day(s)</span>
         </div>
+        {baggageSize === "electronic" && itemName && (
+          <div className="flex justify-between">
+            <span>Item Name:</span>
+            <span className="font-medium">{itemName}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span>Base Price:</span>
           <span className="font-medium">{formatCurrency(basePrice)}</span>

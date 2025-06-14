@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { processPayment } from "@/lib/paymentService";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,16 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -42,75 +30,82 @@ import {
   CheckCircle,
   AlertCircle,
   DollarSign,
-  Clipboard,
+  ExternalLink,
 } from "lucide-react";
-import PaymentDetails from "./PaymentDetails";
-import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
-interface PaymentFormProps {
-  bookingId: number;
-  totalAmount: number;
-  damageAmount?: number;
-  onPaymentComplete?: (data: any) => void;
+interface PaymentMethod {
+  id: string;
+  name: string;
+  type: string;
+  bank_name?: string;
+  account_number?: number;
+  account_holder?: string;
+  provider?: string;
+  api_key?: string;
+  is_active: boolean;
 }
 
-interface DamageItem {
-  id: number;
-  description: string;
-  amount: number;
-  status: string;
-  booking_id: number;
-  payment_status: string;
-  payment_id?: string | null;
-  created_at?: string;
+interface BookingSummary {
+  id: string;
+  customer_name?: string;
+  total_amount: number;
+  booking_type: string;
+  details: any;
+}
+
+interface PaymentFormProps {
+  bookingId?: string;
+  totalAmount?: number;
+  damageAmount?: number;
+  onPaymentComplete?: () => void;
 }
 
 const paymentSchema = z.object({
-  paymentMethod: z.enum(["cash", "bank", "card"], {
-    required_error: "Please select a payment method",
-  }),
+  payment_method_id: z.string().min(1, "Please select a payment method"),
   amount: z.coerce
     .number()
     .min(1, { message: "Amount must be greater than 0" }),
-  transactionId: z.string().optional(),
-  bankName: z.string().optional(),
-  isPartialPayment: z.boolean().default(false),
-  isDamagePayment: z.boolean().default(false),
-  selectedDamages: z.array(z.number()).optional(),
+  transfer_reference: z.string().optional(),
 });
 
 const PaymentForm: React.FC<PaymentFormProps> = ({
-  bookingId,
-  totalAmount,
-  damageAmount = 0,
+  bookingId: propBookingId,
+  totalAmount: propTotalAmount,
+  damageAmount: propDamageAmount = 0,
   onPaymentComplete,
 }) => {
-  const { toast } = useToast();
+  const { bookingId: paramBookingId } = useParams<{ bookingId: string }>();
+  const bookingId = propBookingId || paramBookingId;
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(
+    null,
+  );
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<PaymentMethod | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [damageDetails, setDamageDetails] = useState<DamageItem[]>([]);
-  const [isLoadingDamages, setIsLoadingDamages] = useState(false);
-  const [selectedDamages, setSelectedDamages] = useState<number[]>([]);
-  const [isDamagePaymentMode, setIsDamagePaymentMode] = useState(false);
 
   const form = useForm<z.infer<typeof paymentSchema>>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      paymentMethod: "cash",
-      amount: totalAmount,
-      transactionId: "",
-      bankName: "",
-      isPartialPayment: false,
-      isDamagePayment: false,
-      selectedDamages: [],
+      payment_method_id: "",
+      amount: 0,
+      transfer_reference: "",
     },
   });
-
-  const selectedPaymentMethod = form.watch("paymentMethod");
 
   useEffect(() => {
     const getUserId = async () => {
@@ -120,379 +115,502 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       }
     };
 
-    const fetchDamageDetails = async () => {
-      if (!bookingId) return;
-
-      try {
-        setIsLoadingDamages(true);
-        const { data, error } = await supabase
-          .from("damages")
-          .select("*")
-          .eq("booking_id", bookingId)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setDamageDetails(data || []);
-      } catch (err) {
-        console.error("Error fetching damage details:", err);
-      } finally {
-        setIsLoadingDamages(false);
-      }
-    };
-
     getUserId();
-    fetchDamageDetails();
+    fetchPaymentMethods();
+    if (bookingId) {
+      fetchBookingSummary();
+    }
   }, [bookingId]);
 
-  const onSubmit = async (values: z.infer<typeof paymentSchema>) => {
-    // Prevent duplicate submissions
-    if (isSubmitting) return;
-    if (!userId) {
+  const fetchPaymentMethods = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("payment_methods")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      setPaymentMethods(data || []);
+    } catch (err) {
+      console.error("Error fetching payment methods:", err);
       toast({
-        title: "Authentication Error",
-        description: "You must be logged in to make a payment",
+        title: "Error",
+        description: "Failed to load payment methods",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const fetchBookingSummary = async () => {
+    if (!bookingId) return;
+
+    try {
+      setLoading(true);
+
+      // Try different booking tables based on common patterns
+      const bookingTables = [
+        {
+          table: "bookings",
+          nameField: "customer_name" || "user_name",
+          amountField: "total_amount",
+        },
+        {
+          table: "airport_transfer",
+          nameField: "customer_name",
+          amountField: "price",
+        },
+        {
+          table: "baggage_booking",
+          nameField: "customer_name",
+          amountField: "price",
+        },
+        {
+          table: "booking_cars",
+          nameField: "customer_name",
+          amountField: "sell_price",
+        },
+      ];
+
+      let bookingData = null;
+      let bookingType = "unknown";
+
+      for (const { table, nameField, amountField } of bookingTables) {
+        try {
+          const { data, error } = await supabase
+            .from(table)
+            .select("*")
+            .eq("id", bookingId)
+            .single();
+
+          if (!error && data) {
+            bookingData = data;
+            bookingType = table;
+            break;
+          }
+        } catch (err) {
+          // Continue to next table
+          continue;
+        }
+      }
+
+      if (!bookingData) {
+        throw new Error("Booking not found");
+      }
+
+      // Try to get customer name from various sources
+      let customerName = "Customer"; // default fallback
+
+      // First try booking data fields
+      if (bookingData.customer_name) {
+        customerName = bookingData.customer_name;
+      } else if (bookingData.user_name) {
+        customerName = bookingData.user_name;
+      } else if (bookingData.name) {
+        customerName = bookingData.name;
+      } else if (bookingData.full_name) {
+        customerName = bookingData.full_name;
+      } else {
+        // Try to get from user data if available
+        try {
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData?.user?.user_metadata?.name) {
+            customerName = userData.user.user_metadata.name;
+          } else if (userData?.user?.user_metadata?.full_name) {
+            customerName = userData.user.user_metadata.full_name;
+          } else if (userData?.user?.email) {
+            // Use email as last resort, extract name part
+            customerName = userData.user.email.split("@")[0];
+          }
+        } catch (err) {
+          console.log("Could not fetch user data for customer name");
+        }
+      }
+
+      const summary: BookingSummary = {
+        id: bookingId,
+        customer_name: customerName,
+        total_amount:
+          bookingData.total_amount ||
+          bookingData.price ||
+          bookingData.sell_price ||
+          0,
+        booking_type: bookingType,
+        details: bookingData,
+      };
+
+      setBookingSummary(summary);
+      const finalAmount = propTotalAmount || summary.total_amount;
+      form.setValue("amount", finalAmount + propDamageAmount);
+    } catch (err) {
+      console.error("Error fetching booking summary:", err);
+      toast({
+        title: "Error",
+        description: "Failed to load booking details",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePaymentMethodChange = (methodId: string) => {
+    const method = paymentMethods.find((m) => m.id === methodId);
+    setSelectedPaymentMethod(method || null);
+    form.setValue("payment_method_id", methodId);
+  };
+
+  const onSubmit = async (values: z.infer<typeof paymentSchema>) => {
+    if (isSubmitting || !bookingSummary || !selectedPaymentMethod) return;
+
+    // Handle cases where userId might be null or empty
+    let finalUserId = userId;
+    if (!userId || userId.trim() === "") {
+      // Generate a proper UUID for guest users
+      finalUserId = crypto.randomUUID();
+    }
+
+    // Validate that we have a proper booking ID
+    if (!bookingId || bookingId.trim() === "") {
+      toast({
+        title: "Error",
+        description: "Invalid booking ID. Please try again.",
         variant: "destructive",
       });
       return;
     }
 
-    setLoading(true);
     setIsSubmitting(true);
+    setLoading(true);
 
     try {
-      const paymentData: any = {
-        userId,
-        bookingId,
-        amount: values.amount,
-        paymentMethod: values.paymentMethod,
-        transactionId: values.transactionId || undefined,
-        bankName: values.bankName || undefined,
-        isPartialPayment: values.isPartialPayment,
-      };
+      // Determine payment status based on method type
+      const status =
+        selectedPaymentMethod.type === "manual" ? "pending" : "processing";
 
-      // If this is a damage payment, add the damage IDs
-      if (isDamagePaymentMode && selectedDamages.length > 0) {
-        paymentData.isDamagePayment = true;
-        paymentData.damageIds = selectedDamages;
-      }
+      let paymentRecord;
+      let paymentError;
 
-      const result = await processPayment(paymentData);
+      // Insert payment record into the appropriate table based on booking type
+      if (bookingSummary.booking_type === "airport_transfer") {
+        // For airport transfers, use the airport_transfer_payments table
+        // Convert bookingId to integer for airport_transfer_id
+        const airportTransferId = parseInt(bookingId);
 
-      if (result.success) {
-        setPaymentSuccess(true);
-        toast({
-          title: "Payment Successful",
-          description: `Your payment of Rp ${values.amount.toLocaleString()} has been processed successfully.`,
-          variant: "default",
-        });
-
-        // Refresh payment details and damage list
-        setRefreshKey((prev) => prev + 1);
-        fetchDamageDetails();
-
-        // Call the callback if provided
-        if (onPaymentComplete) {
-          onPaymentComplete(result.data);
+        if (isNaN(airportTransferId)) {
+          throw new Error(`Invalid airport transfer ID: ${bookingId}`);
         }
 
-        // Reset form and selection
-        form.reset();
-        setSelectedDamages([]);
-        setIsDamagePaymentMode(false);
+        const airportPaymentData = {
+          airport_transfer_id: airportTransferId,
+          user_id: finalUserId,
+          amount: values.amount,
+          payment_method: selectedPaymentMethod.name,
+          bank_name:
+            selectedPaymentMethod.type === "manual"
+              ? selectedPaymentMethod.bank_name
+              : null,
+          transaction_id:
+            selectedPaymentMethod.type === "manual"
+              ? values.transfer_reference
+              : null,
+          status: status,
+          status_payment: status,
+          created_at: new Date().toISOString(),
+        };
+
+        const result = await supabase
+          .from("airport_transfer_payments")
+          .insert(airportPaymentData)
+          .select()
+          .single();
+
+        paymentRecord = result.data;
+        paymentError = result.error;
       } else {
-        toast({
-          title: "Payment Failed",
-          description: `Error: ${result.error?.message || "Unknown error"}`,
-          variant: "destructive",
-        });
+        // For other booking types (bookings, booking_cars, etc.), use the payments table
+        // Only use booking_id for bookings table, use appropriate field for other tables
+        const paymentData = {
+          booking_id: bookingId, // This should be a UUID string for bookings table
+          amount: values.amount,
+          payment_method: selectedPaymentMethod.name,
+          bank_name:
+            selectedPaymentMethod.type === "manual"
+              ? selectedPaymentMethod.bank_name
+              : null,
+          transaction_id:
+            selectedPaymentMethod.type === "manual"
+              ? values.transfer_reference || null
+              : null,
+          status: status,
+          user_id: finalUserId,
+          created_at: new Date().toISOString(),
+        };
+
+        const result = await supabase
+          .from("payments")
+          .insert(paymentData)
+          .select()
+          .single();
+
+        paymentRecord = result.data;
+        paymentError = result.error;
       }
+
+      if (paymentError) throw paymentError;
+
+      // Handle gateway payments
+      if (selectedPaymentMethod.type === "gateway") {
+        // For gateway payments, redirect to payment provider
+        if (selectedPaymentMethod.provider && selectedPaymentMethod.api_key) {
+          // Here you would typically redirect to the payment gateway
+          // For now, we'll show a success message
+          toast({
+            title: "Redirecting to Payment Gateway",
+            description: `You will be redirected to ${selectedPaymentMethod.provider} to complete your payment.`,
+          });
+
+          // Simulate redirect delay
+          setTimeout(() => {
+            window.open(
+              `https://${selectedPaymentMethod.provider?.toLowerCase()}.com/payment`,
+              "_blank",
+            );
+          }, 2000);
+        }
+      }
+
+      setPaymentSuccess(true);
+      toast({
+        title: "Payment Initiated",
+        description:
+          selectedPaymentMethod.type === "manual"
+            ? "Your payment is being processed. Please wait for confirmation."
+            : "You will be redirected to complete the payment.",
+        variant: "default",
+      });
+
+      // Reset form
+      form.reset();
+
+      // Redirect after success
+      setTimeout(() => {
+        if (onPaymentComplete) {
+          onPaymentComplete();
+        } else {
+          navigate("/bookings");
+        }
+      }, 3000);
     } catch (error) {
       console.error("Payment submission error:", error);
       toast({
-        title: "Payment Error",
-        description: `An unexpected error occurred: ${error.message}`,
+        title: "Payment Failed",
+        description: `An error occurred: ${error.message}`,
         variant: "destructive",
       });
     } finally {
       setLoading(false);
-      // Add a small delay before allowing resubmission to prevent accidental double-clicks
       setTimeout(() => {
         setIsSubmitting(false);
       }, 1000);
     }
   };
 
-  // Function to fetch damage details
-  const fetchDamageDetails = async () => {
-    if (!bookingId) return;
+  if (loading && !bookingSummary) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p>Loading booking details...</p>
+        </div>
+      </div>
+    );
+  }
 
-    try {
-      setIsLoadingDamages(true);
-      // Ensure bookingId is a valid number before querying
-      const bookingIdNum = Number(bookingId);
-      if (isNaN(bookingIdNum)) {
-        console.error("Invalid booking ID for damage details:", bookingId);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("damages")
-        .select("*")
-        .eq("booking_id", bookingIdNum)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setDamageDetails(data || []);
-    } catch (err) {
-      console.error("Error fetching damage details:", err);
-    } finally {
-      setIsLoadingDamages(false);
-    }
-  };
-
-  // Handle damage selection
-  const handleDamageSelection = (damageId: number, checked: boolean) => {
-    if (checked) {
-      setSelectedDamages((prev) => [...prev, damageId]);
-    } else {
-      setSelectedDamages((prev) => prev.filter((id) => id !== damageId));
-    }
-  };
-
-  // Calculate total amount for selected damages
-  const calculateSelectedDamagesTotal = () => {
-    return damageDetails
-      .filter((damage) => selectedDamages.includes(damage.id))
-      .reduce((sum, damage) => sum + (damage.amount || 0), 0);
-  };
-
-  // Toggle between regular payment and damage payment modes
-  const toggleDamagePaymentMode = () => {
-    const newMode = !isDamagePaymentMode;
-    setIsDamagePaymentMode(newMode);
-
-    if (newMode) {
-      // If switching to damage payment mode, update the amount to the total of selected damages
-      const damageTotal = calculateSelectedDamagesTotal();
-      form.setValue("amount", damageTotal > 0 ? damageTotal : 0);
-      form.setValue("isDamagePayment", true);
-    } else {
-      // If switching back to regular payment mode, reset to booking amount
-      form.setValue("amount", totalAmount);
-      form.setValue("isDamagePayment", false);
-      setSelectedDamages([]);
-    }
-  };
-
-  return (
-    <div className="space-y-8">
-      <PaymentDetails bookingId={bookingId} key={refreshKey} />
-
-      {damageDetails.length > 0 && (
-        <Card className="w-full max-w-3xl mx-auto bg-background border shadow-md mb-6">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-xl font-bold">Damage Fees</CardTitle>
-              <CardDescription>
-                Damage fees associated with this booking
-              </CardDescription>
+  if (!bookingSummary) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+              <h2 className="text-lg font-semibold mb-2">Booking Not Found</h2>
+              <p className="text-muted-foreground mb-4">
+                The booking you're looking for could not be found.
+              </p>
+              <Button onClick={() => navigate("/")} variant="outline">
+                Go Home
+              </Button>
             </div>
-            <Button
-              variant={isDamagePaymentMode ? "default" : "outline"}
-              onClick={toggleDamagePaymentMode}
-              className="flex items-center gap-2"
-            >
-              <DollarSign className="h-4 w-4" />
-              {isDamagePaymentMode
-                ? "Cancel Damage Payment"
-                : "Pay Damage Fees"}
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="border rounded-md overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-muted">
-                  <tr>
-                    {isDamagePaymentMode && (
-                      <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Select
-                      </th>
-                    )}
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Description
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Amount
-                    </th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-background divide-y divide-gray-200">
-                  {isLoadingDamages ? (
-                    <tr>
-                      <td
-                        colSpan={isDamagePaymentMode ? 4 : 3}
-                        className="px-4 py-4 text-center"
-                      >
-                        Loading damage details...
-                      </td>
-                    </tr>
-                  ) : damageDetails.length > 0 ? (
-                    damageDetails.map((damage, index) => (
-                      <tr
-                        key={damage.id || index}
-                        className={
-                          damage.payment_status === "paid" ? "bg-green-50" : ""
-                        }
-                      >
-                        {isDamagePaymentMode && (
-                          <td className="px-4 py-2 whitespace-nowrap text-sm">
-                            <Checkbox
-                              id={`damage-${damage.id}`}
-                              disabled={damage.payment_status === "paid"}
-                              checked={selectedDamages.includes(damage.id)}
-                              onCheckedChange={(checked) =>
-                                handleDamageSelection(
-                                  damage.id,
-                                  checked === true,
-                                )
-                              }
-                            />
-                          </td>
-                        )}
-                        <td className="px-4 py-2 whitespace-nowrap text-sm">
-                          {damage.description || "Damage fee"}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">
-                          Rp {damage.amount?.toLocaleString() || "0"}
-                        </td>
-                        <td className="px-4 py-2 whitespace-nowrap text-sm">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              damage.payment_status === "paid"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {damage.payment_status?.toUpperCase() || "PENDING"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={isDamagePaymentMode ? 4 : 3}
-                        className="px-4 py-4 text-center text-muted-foreground"
-                      >
-                        No damage fees found for this booking.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {isDamagePaymentMode && selectedDamages.length > 0 && (
-              <div className="mt-4 p-3 bg-muted rounded-md">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Selected Damages Total:</span>
-                  <span className="font-bold">
-                    Rp {calculateSelectedDamagesTotal().toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
-      )}
+      </div>
+    );
+  }
 
-      <Card className="w-full max-w-3xl mx-auto bg-background border shadow-md">
-        <CardHeader>
-          <CardTitle className="text-2xl font-bold">
-            {isDamagePaymentMode ? "Pay Damage Fees" : "Make a Payment"}
-          </CardTitle>
-          <CardDescription>
-            {isDamagePaymentMode
-              ? "Complete payment for selected damage fees"
-              : "Complete your booking by making a payment"}
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="paymentMethod"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Payment Method</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        className="flex flex-col space-y-1"
-                      >
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="cash" />
-                          </FormControl>
-                          <FormLabel className="font-normal flex items-center">
-                            <Banknote className="mr-2 h-4 w-4" />
-                            Cash
-                          </FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="bank" />
-                          </FormControl>
-                          <FormLabel className="font-normal flex items-center">
-                            <Landmark className="mr-2 h-4 w-4" />
-                            Bank Transfer
-                          </FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="card" />
-                          </FormControl>
-                          <FormLabel className="font-normal flex items-center">
-                            <CreditCard className="mr-2 h-4 w-4" />
-                            Credit/Debit Card
-                          </FormLabel>
-                        </FormItem>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+  return (
+    <div className="min-h-screen bg-background p-4">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Booking Summary */}
+        <Card className="bg-background border shadow-md">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">
+              Booking Summary
+            </CardTitle>
+            <CardDescription>
+              Review your booking details before making payment
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Customer Name</p>
+                <p className="font-medium">{bookingSummary.customer_name}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Booking ID</p>
+                <p className="font-medium">{bookingSummary.id}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Booking Type</p>
+                <p className="font-medium capitalize">
+                  {bookingSummary.booking_type.replace("_", " ")}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Amount</p>
+                <p className="font-bold text-lg text-primary">
+                  Rp{" "}
+                  {(
+                    (propTotalAmount || bookingSummary.total_amount) +
+                    propDamageAmount
+                  ).toLocaleString()}
+                </p>
+                {propDamageAmount > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    (Including damage fees: Rp{" "}
+                    {propDamageAmount.toLocaleString()})
+                  </p>
                 )}
-              />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-              <div className="space-y-4">
-                {!isDamagePaymentMode && (
-                  <FormField
-                    control={form.control}
-                    name="isPartialPayment"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                        <div className="space-y-0.5">
-                          <FormLabel>Partial Payment</FormLabel>
-                          <FormDescription>
-                            Pay a down payment now and the rest later
-                          </FormDescription>
+        {/* Payment Form */}
+        <Card className="bg-background border shadow-md">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">
+              Complete Payment
+            </CardTitle>
+            <CardDescription>
+              Choose your preferred payment method and complete the transaction
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent>
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-6"
+              >
+                {/* Payment Method Selection */}
+                <FormField
+                  control={form.control}
+                  name="payment_method_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Method</FormLabel>
+                      <FormControl>
+                        <Select
+                          onValueChange={handlePaymentMethodChange}
+                          defaultValue={field.value}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select payment method" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.id} value={method.id}>
+                                <div className="flex items-center gap-2">
+                                  {method.type === "manual" ? (
+                                    <Landmark className="h-4 w-4" />
+                                  ) : (
+                                    <CreditCard className="h-4 w-4" />
+                                  )}
+                                  {method.name}
+                                  {method.bank_name && (
+                                    <span className="text-muted-foreground">
+                                      ({method.bank_name})
+                                    </span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Payment Method Details */}
+                {selectedPaymentMethod && (
+                  <div className="p-4 bg-muted rounded-lg">
+                    <h3 className="font-medium mb-2">
+                      {selectedPaymentMethod.name} Details
+                    </h3>
+
+                    {selectedPaymentMethod.type === "manual" && (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <p className="text-muted-foreground">Bank Name</p>
+                            <p className="font-medium">
+                              {selectedPaymentMethod.bank_name}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">
+                              Account Number
+                            </p>
+                            <p className="font-medium">
+                              {selectedPaymentMethod.account_number}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">
+                              Account Holder
+                            </p>
+                            <p className="font-medium">
+                              {selectedPaymentMethod.account_holder}
+                            </p>
+                          </div>
                         </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Please transfer the exact amount to the account above
+                          and enter the transfer reference below.
+                        </p>
+                      </div>
                     )}
-                  />
+
+                    {selectedPaymentMethod.type === "gateway" && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <ExternalLink className="h-4 w-4" />
+                          <p className="text-sm">
+                            You will be redirected to{" "}
+                            {selectedPaymentMethod.provider} to complete your
+                            payment securely.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
 
+                {/* Amount Field */}
                 <FormField
                   control={form.control}
                   name="amount"
@@ -504,140 +622,85 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
                           type="number"
                           placeholder="Enter amount"
                           {...field}
+                          readOnly
                         />
                       </FormControl>
                       <FormDescription>
-                        <div>
-                          {!isDamagePaymentMode ? (
-                            <div className="space-y-1">
-                              <div>
-                                Booking amount: Rp{" "}
-                                {totalAmount.toLocaleString()}
-                              </div>
-                              {damageAmount > 0 && (
-                                <div>
-                                  Damage fees: Rp{" "}
-                                  {damageAmount.toLocaleString()}
-                                </div>
-                              )}
-                              <div className="font-semibold">
-                                Total amount: Rp{" "}
-                                {(totalAmount + damageAmount).toLocaleString()}
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <div className="font-semibold">
-                                Selected damage fees: Rp{" "}
-                                {calculateSelectedDamagesTotal().toLocaleString()}
-                              </div>
-                              <div className="text-sm text-muted-foreground">
-                                {selectedDamages.length} item(s) selected
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        Total amount to be paid: Rp{" "}
+                        {(
+                          (propTotalAmount || bookingSummary.total_amount) +
+                          propDamageAmount
+                        ).toLocaleString()}
+                        {propDamageAmount > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            (Base: Rp{" "}
+                            {(
+                              propTotalAmount || bookingSummary.total_amount
+                            ).toLocaleString()}{" "}
+                            + Damage: Rp {propDamageAmount.toLocaleString()})
+                          </span>
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              </div>
 
-              {(selectedPaymentMethod === "bank" ||
-                selectedPaymentMethod === "card") && (
-                <>
-                  {selectedPaymentMethod === "bank" && (
-                    <FormField
-                      control={form.control}
-                      name="bankName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Bank Name</FormLabel>
-                          <FormControl>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select bank" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="BCA">
-                                  Bank BCA (1111)
-                                </SelectItem>
-                                <SelectItem value="Mandiri">
-                                  Bank Mandiri (2222)
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </FormControl>
-                          <FormDescription>
-                            Select the bank you used for the transfer
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
+                {/* Transfer Reference (for manual payments) */}
+                {selectedPaymentMethod?.type === "manual" && (
                   <FormField
                     control={form.control}
-                    name="transactionId"
+                    name="transfer_reference"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>
-                          {selectedPaymentMethod === "bank"
-                            ? "Transfer Reference"
-                            : "Card Transaction ID"}
-                        </FormLabel>
+                        <FormLabel>Transfer Reference Number</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder={
-                              selectedPaymentMethod === "bank"
-                                ? "Enter transfer reference"
-                                : "Enter transaction ID"
-                            }
+                            placeholder="Enter transfer reference number"
                             {...field}
                           />
                         </FormControl>
                         <FormDescription>
-                          {selectedPaymentMethod === "bank"
-                            ? "Reference number from your bank transfer"
-                            : "Transaction ID from your card payment"}
+                          Enter the reference number from your bank transfer
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </>
-              )}
+                )}
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={
-                  loading ||
-                  isSubmitting ||
-                  (isDamagePaymentMode && selectedDamages.length === 0)
-                }
-              >
-                {loading
-                  ? "Processing..."
-                  : isDamagePaymentMode
-                    ? "Pay Selected Damage Fees"
-                    : "Complete Payment"}
-              </Button>
-            </form>
-          </Form>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading || isSubmitting || !selectedPaymentMethod}
+                >
+                  {loading
+                    ? "Processing..."
+                    : selectedPaymentMethod?.type === "gateway"
+                      ? "Proceed to Payment Gateway"
+                      : "Complete Payment"}
+                </Button>
+              </form>
+            </Form>
 
-          {paymentSuccess && (
-            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-md flex items-center">
-              <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
-              <p className="text-green-700">Payment processed successfully!</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {paymentSuccess && (
+              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-md flex items-center">
+                <CheckCircle className="h-5 w-5 text-green-500 mr-2" />
+                <div>
+                  <p className="text-green-700 font-medium">
+                    Payment Initiated Successfully!
+                  </p>
+                  <p className="text-green-600 text-sm">
+                    {selectedPaymentMethod?.type === "manual"
+                      ? "Your payment is being processed. You will receive a confirmation once verified."
+                      : "You will be redirected to complete the payment."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

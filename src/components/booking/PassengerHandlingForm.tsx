@@ -208,9 +208,62 @@ const PassengerHandlingForm = () => {
           )}
         />
 
-        <Button type="submit" className="w-full">
-          Tambahkan ke Keranjang
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={async () => {
+              const formData = form.getValues();
+              const profit =
+                formData.sellingPrice -
+                formData.basicPrice -
+                (formData.feeSales || 0);
+
+              try {
+                await addToCart({
+                  item_type: "airport_transfer",
+                  service_name: `${formData.serviceName} - ${formData.location}`,
+                  price: formData.sellingPrice,
+                  details: {
+                    serviceName: formData.serviceName,
+                    location: formData.location,
+                    passengerCount: formData.passengerCount,
+                    date: formData.date,
+                    basicPrice: formData.basicPrice,
+                    feeSales: formData.feeSales || 0,
+                    profit: profit,
+                    notes: formData.notes,
+                  },
+                });
+
+                // Reset form after adding to cart
+                form.reset({
+                  serviceName: "",
+                  location: "",
+                  passengerCount: 1,
+                  date: new Date().toISOString().split("T")[0],
+                  basicPrice: 0,
+                  sellingPrice: 0,
+                  feeSales: 0,
+                  notes: "",
+                });
+
+                alert(
+                  "Layanan passenger handling berhasil ditambahkan ke keranjang!",
+                );
+              } catch (error) {
+                console.error("Error adding to cart:", error);
+                alert("Gagal menambahkan ke keranjang");
+              }
+            }}
+          >
+            Add to Cart
+          </Button>
+          <Button type="submit" className="w-full">
+            Book Now
+          </Button>
+        </div>
       </form>
     </Form>
   );

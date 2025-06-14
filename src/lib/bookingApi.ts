@@ -19,28 +19,38 @@ export async function sendNewBooking(bookingData: any) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          pickup_datetime: bookingData.pickup_datetime || "2025-05-27 15:00:00",
-          pickup_address:
-            bookingData.pickup_address || "soekarno hatta airport",
-          pickup_long: bookingData.pickup_long || "106.6571842",
-          pickup_lat: bookingData.pickup_lat || "-6.1286371",
-          dropoff_address:
-            bookingData.dropoff_address || "soekarno hatta airport1",
-          dropoff_long: bookingData.dropoff_long || "106.6571842",
-          dropoff_lat: bookingData.dropoff_lat || "-6.1286371",
-          estimated_cost: String(bookingData.estimated_cost || "100000"),
-          ride_id: String(bookingData.ride_id || "1"),
-          customer_name: bookingData.customer_name || "customer_name",
-          customer_phone: bookingData.customer_phone || "08912345678",
-          driver_id: String(bookingData.id_driver || "2"),
+          pickup_datetime: bookingData.pickup_datetime,
+          pickup_address: bookingData.pickup_address,
+          pickup_long: bookingData.pickup_long,
+          pickup_lat: bookingData.pickup_lat,
+          dropoff_address: bookingData.dropoff_address,
+          dropoff_long: bookingData.dropoff_long,
+          dropoff_lat: bookingData.dropoff_lat,
+          estimated_cost: String(bookingData.estimated_cost),
+          ride_id: String(bookingData.ride_id),
+          customer_name: bookingData.customer_name,
+          customer_phone: bookingData.customer_phone,
+          driver_id: String(bookingData.driver_id),
         }),
       },
     );
 
-    const result = await response.json();
-    return { data: result, error: null };
+    const text = await response.text(); // ⬅️ baca sebagai teks dulu
+
+    if (!response.ok) {
+      console.error("❌ External API returned error:", response.status, text);
+      return { data: null, error: `HTTP ${response.status}: ${text}` };
+    }
+
+    try {
+      const json = JSON.parse(text);
+      return { data: json, error: null };
+    } catch (parseError) {
+      console.warn("⚠️ Response not valid JSON:", text);
+      return { data: text, error: "Invalid JSON response" };
+    }
   } catch (error) {
-    console.error("Error sending booking to external API:", error);
+    console.error("❌ Network/Fetch error:", error);
     return { data: null, error };
   }
 }
@@ -49,21 +59,24 @@ export async function sendNewBooking(bookingData: any) {
  * Create a new booking
  */
 export async function createBooking(bookingData: BookingInsert) {
-  // Insert booking ke tabel airport_transfer
-  const { data, error } = await supabase
-    .from("airport_transfer")
-    .insert([bookingData])
-    .select(); // atau .single() jika hanya 1 data
+  // Step 1: Insert booking to Supabase
+  const { data, error } = await supabase.from("airport_transfer").select(); // fetch inserted row(s)
 
   if (error) {
-    console.error("Error creating booking:", error.message);
+    console.error("❌ Error creating booking:", error.message);
     return { error };
   }
 
-  // Jika berhasil, kirim ke API eksternal
-  if (data && data.length > 0) {
+  const inserted = data?.[0]; // Get the inserted booking row
+  if (!inserted) {
+    console.warn("⚠️ Booking inserted but no data returned");
+    return { error: "Booking inserted, but no data returned" };
+  }
+
+  // Step 2: Send to external API
+  try {
     const externalData = {
-      pickup_datetime: `${bookingData.pickup_date} ${bookingData.pickup_time}:00`,
+      pickup_datetime: `${bookingData.pickup_date} ${bookingData.pickup_time}`,
       pickup_address: bookingData.pickup_location,
       pickup_long: String(bookingData.fromLocation?.[1] || "106.6571842"),
       pickup_lat: String(bookingData.fromLocation?.[0] || "-6.1286371"),
@@ -71,20 +84,26 @@ export async function createBooking(bookingData: BookingInsert) {
       dropoff_long: String(bookingData.toLocation?.[1] || "106.6571842"),
       dropoff_lat: String(bookingData.toLocation?.[0] || "-6.1286371"),
       estimated_cost: String(bookingData.price || "100000"),
-      ride_id: "1",
+      ride_id: 1,
       customer_name: bookingData.customer_name,
       customer_phone: bookingData.phone,
-      driver_id: bookingData.driver_id ? String(bookingData.driver_id) : "0",
+      driver_id: String(bookingData.id_driver || inserted.id_driver || "0"),
     };
 
-    try {
-      await sendNewBooking(externalData); // kirim ke API eksternal
-    } catch (err) {
-      console.error("Failed to send to external API:", err);
-    }
-  }
+    const { data: apiResponse, error: apiError } =
+      await sendNewBooking(externalData);
 
-  return { data };
+    if (apiError) {
+      console.error("❌ Failed to send to external API:", apiError);
+      return { data: inserted, apiError };
+    }
+
+    console.log("✅ Booking sent to external API:", apiResponse);
+    return { data: inserted };
+  } catch (err) {
+    console.error("❌ Exception during API call:", err);
+    return { data: inserted, error: err };
+  }
 }
 
 /**

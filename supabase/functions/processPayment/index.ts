@@ -19,6 +19,7 @@ interface ProcessPaymentRequest {
   paymentMethod: string; // "Cash", "Bank Transfer", "Credit/Debit Card"
   bankName?: string;
   isPartialPayment?: boolean;
+  isGuestBooking?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -47,12 +48,34 @@ Deno.serve(async (req) => {
       paymentMethod,
       bankName,
       isPartialPayment,
+      isGuestBooking,
     } = await req.json();
 
-    if (!userId || !bookingId || !amount || !paymentMethod) {
+    // Check if this is a guest booking to bypass journal entries
+    const isGuest = isGuestBooking === true;
+
+    if (isGuest) {
+      console.log("[Journal Skipped] Booking by guest, jurnal tidak disimpan.");
+    }
+
+    // Validate required fields - for guest bookings, userId might be null
+    if (!bookingId || !amount || !paymentMethod) {
       throw new Error(
-        "Missing required fields: userId, bookingId, amount, and paymentMethod are required",
+        "Missing required fields: bookingId, amount, and paymentMethod are required",
       );
+    }
+
+    // For guest bookings, allow null userId but validate other required fields
+    if (!isGuest && !userId) {
+      throw new Error(
+        "Missing required field: userId is required for non-guest bookings",
+      );
+    }
+
+    // Handle guest users with a special guest ID format
+    let finalUserId = userId;
+    if (!finalUserId || finalUserId === "guest-user" || isGuest) {
+      finalUserId = `guest-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
     }
 
     // Check if booking exists
@@ -70,7 +93,7 @@ Deno.serve(async (req) => {
     const { data: paymentData, error: paymentError } = await supabase
       .from("payments")
       .insert({
-        user_id: userId,
+        user_id: finalUserId,
         booking_id: bookingId,
         amount: amount,
         payment_method: paymentMethod,
@@ -122,11 +145,72 @@ Deno.serve(async (req) => {
       .eq("id", bookingId)
       .select();
 
-    // Note: Damage status updates should now be handled separately
-
     if (updateError) {
       throw new Error(
         `Failed to update booking status: ${updateError.message}`,
+      );
+    }
+
+    // Handle journal entries - BYPASS for guest bookings
+    if (!isGuest) {
+      console.log(
+        "[ProcessPayment] Processing journal entries for authenticated user",
+      );
+
+      // Check for null values before inserting journal entries
+      if (!finalUserId || !bookingId) {
+        console.warn(
+          "[ProcessPayment] Missing required data for journal entries, skipping",
+        );
+      } else {
+        try {
+          // Insert journal entries here (placeholder for actual journal logic)
+          console.log(
+            "[ProcessPayment] Journal entries would be inserted here for non-guest booking",
+          );
+
+          // Example journal entry logic (commented out as tables may not exist):
+          /*
+          const { error: journalError } = await supabase
+            .from("journal_entries")
+            .insert({
+              booking_id: bookingId,
+              user_id: finalUserId,
+              amount: amount,
+              type: "payment",
+              created_at: new Date().toISOString(),
+            });
+
+          if (journalError) {
+            console.error("[ProcessPayment] Error creating journal entry:", journalError);
+          }
+
+          const { error: ledgerError } = await supabase
+            .from("general_ledger")
+            .insert({
+              account_id: "some_account_id", // This would need to be provided
+              booking_id: bookingId,
+              user_id: finalUserId,
+              amount: amount,
+              type: "credit",
+              created_at: new Date().toISOString(),
+            });
+
+          if (ledgerError) {
+            console.error("[ProcessPayment] Error creating ledger entry:", ledgerError);
+          }
+          */
+        } catch (journalErr) {
+          console.error(
+            "[ProcessPayment] Error processing journal entries:",
+            journalErr,
+          );
+          // Don't fail the payment if journal entries fail
+        }
+      }
+    } else {
+      console.log(
+        "[Journal Skipped] Guest booking detected, skipping journal entries",
       );
     }
 
@@ -138,6 +222,7 @@ Deno.serve(async (req) => {
           payment: paymentData,
           booking: updatedBooking,
           totalPaid: totalPaid,
+          isGuestBooking: isGuest,
         },
       }),
       {
@@ -146,6 +231,7 @@ Deno.serve(async (req) => {
       },
     );
   } catch (error) {
+    console.error("[ProcessPayment] Error:", error);
     return new Response(
       JSON.stringify({
         success: false,

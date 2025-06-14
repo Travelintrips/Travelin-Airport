@@ -17,7 +17,9 @@ import {
   Plane,
   Download,
   Share2,
+  ShoppingCart,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface ReceiptModalProps {
   isOpen?: boolean;
@@ -28,7 +30,7 @@ interface ReceiptModalProps {
     email?: string;
     contact?: string;
     flightNumber: string;
-    baggageSize: "Small" | "Medium" | "Large";
+    baggageSize: "Small" | "Medium" | "Large" | "Electronics";
     price: number;
     duration: number;
     storageLocation: string;
@@ -37,6 +39,7 @@ interface ReceiptModalProps {
     endTime: Date;
     airport?: string;
     terminal?: string;
+    itemName?: string;
   };
   onViewMap?: () => void;
 }
@@ -54,10 +57,11 @@ const ReceiptModal = ({
     storageLocation: "Terminal 3, Level 2, Area B",
     bookingId: "BG-" + Math.floor(100000 + Math.random() * 900000),
     startTime: new Date(),
-    endTime: new Date(Date.now() + 4 * 60 * 60 * 1000),
+    endTime: new Date(Date.now() + 4 * 60 * 1000),
   },
   onViewMap = () => {},
 }: ReceiptModalProps) => {
+  const navigate = useNavigate();
   const formatDate = (date: Date) => {
     return date.toLocaleString("id-ID", {
       day: "numeric",
@@ -114,6 +118,18 @@ const ReceiptModal = ({
                   {bookingDetails.baggageSize}
                 </span>
               </div>
+
+              {bookingDetails.baggageSize === "Electronics" && (
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Luggage className="h-5 w-5 mr-2 text-blue-600" />
+                    <span className="font-medium">Item Name</span>
+                  </div>
+                  <span className="font-semibold">
+                    {bookingDetails.itemName || "Electronic Device"}
+                  </span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center">
                 <div className="flex items-center">
@@ -228,11 +244,14 @@ const ReceiptModal = ({
             Share
           </Button>
           <Button
-            className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700"
-            onClick={onViewMap}
+            className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
+            onClick={() => {
+              onClose();
+              navigate("/cart");
+            }}
           >
-            <MapPin size={18} />
-            View on Map
+            <ShoppingCart size={18} />
+            View Cart
           </Button>
         </div>
       </DialogContent>

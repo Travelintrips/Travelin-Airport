@@ -8,6 +8,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { useNavigate, Link } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
+import { useShoppingCart } from "@/hooks/useShoppingCart";
 import {
   CalendarIcon,
   CreditCard,
@@ -73,7 +74,7 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 interface Vehicle {
-  id: string;
+  id: string | number; // Allow both string and number for compatibility
   make: string;
   model: string;
   year?: number;
@@ -104,6 +105,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
   onBookingComplete = () => {},
 }) => {
   const navigate = useNavigate();
+  const { addToCart } = useShoppingCart();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingId, setBookingId] = useState<string>("");
@@ -118,7 +120,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
 
   // Default vehicle if none is selected
   const defaultVehicle = {
-    id: "1",
+    id: 1, // Changed from string "1" to number 1
     make: "Toyota",
     model: "Avanza",
     year: 2022,
@@ -169,7 +171,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
         const sampleVehicles = [
           defaultVehicle,
           {
-            id: "2",
+            id: 2, // Changed from string "2" to number 2
             make: "Honda",
             model: "CR-V",
             year: 2023,
@@ -179,7 +181,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
               "https://images.unsplash.com/photo-1568844293986-ca9c5c1bc2e8?w=800&q=80",
           },
           {
-            id: "3",
+            id: 3, // Changed from string "3" to number 3
             make: "Mitsubishi",
             model: "Xpander",
             year: 2022,
@@ -347,158 +349,46 @@ const BookingForm: React.FC<BookingFormProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Get current user
-      const { data: sessionData, error: sessionError } =
-        await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
+      // Build service name for cart
+      const serviceName = `${vehicleToUse.make} ${vehicleToUse.model} ${vehicleToUse.year ? `(${vehicleToUse.year})` : ""} - ${calculateTotalDays()} day(s)`;
 
-      if (!sessionData.session?.user?.id) {
-        throw new Error("You must be logged in to create a booking");
-      }
-
-      const userId = sessionData.session.user.id;
-
-      // Validate user ID is a valid UUID
-      if (!isValidUUID(userId)) {
-        throw new Error("Invalid user ID format");
-      }
-
-      // Check if user exists in public.users table
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("id", userId)
-        .single();
-
-      // If user doesn't exist in public.users table, create them
-      if (userError || !userData) {
-        console.log("User not found in public.users table, creating entry");
-        const { data: userMetadata } = await supabase.auth.getUser();
-        const { error: insertError } = await supabase.from("users").insert({
-          id: userId,
-          email: userMetadata.user?.email || "",
-          created_at: toISOString(new Date()),
-          updated_at: toISOString(new Date()),
-          role: "customer",
-        });
-
-        if (insertError) {
-          console.error(
-            "Error creating user in public.users table:",
-            insertError,
-          );
-          throw new Error("Failed to create user record. Please try again.");
-        }
-      }
-
-      // Check if user is a driver
-      const { data: driverData, error: driverError } = await supabase
-        .from("drivers")
-        .select("id")
-        .eq("id", userId)
-        .maybeSingle();
-
-      if (driverError) {
-        console.error("Error fetching driver data:", driverError.message);
-      }
-
-      // Cek role user
-      const userRole =
-        sessionData.session.user.user_metadata?.role || "customer";
-
-      // Cek apakah user terdaftar di tabel driver
-      const isDriverRegistered =
-        driverData && typeof driverData.id !== "undefined";
-
-      // Validasi tambahan
-      if (userRole === "driver" && !isDriverRegistered) {
-        throw new Error(
-          "Your account is not registered as a driver. Please contact admin.",
-        );
-      }
-
-      // Build base booking data
-      // Build bookingData
-      let bookingData: any = {
-        user_id: userId,
-        vehicle_id: vehicleToUse.id,
-        start_date: format(data.startDate, "yyyy-MM-dd"),
-        end_date: format(data.endDate, "yyyy-MM-dd"),
-        total_amount: calculateTotal(),
-        payment_status: "unpaid",
-        status: "pending",
-        created_at: toISOString(new Date()),
-        pickup_time: data.pickupTime,
-        driver_option: data.driverOption,
+      // Build cart item details
+      const cartItemDetails = {
+        vehicleId: vehicleToUse.id,
+        make: vehicleToUse.make,
+        model: vehicleToUse.model,
+        year: vehicleToUse.year,
+        startDate: format(data.startDate, "yyyy-MM-dd"),
+        endDate: format(data.endDate, "yyyy-MM-dd"),
+        pickupTime: data.pickupTime,
+        returnTime: data.returnTime,
+        driverOption: data.driverOption,
+        driverId: data.driverId,
+        totalDays: calculateTotalDays(),
+        basePrice: vehicleToUse.price * calculateTotalDays(),
+        driverFee:
+          data.driverOption === "provided" ? 150000 * calculateTotalDays() : 0,
       };
 
-      // ✅ Kalau driver self-drive dan role = driver, baru isi driver_id
-      if (
-        userRole === "driver" &&
-        isDriverRegistered &&
-        data.driverOption === "self"
-      ) {
-        bookingData.driver_id = userId;
-      }
-
-      // ✅ Kalau with-driver dan memilih driver tertentu (nanti harus isi driver_id manual)
-      if (data.driverOption === "provided" && data.driverId) {
-        bookingData.driver_id = data.driverId;
-
-        // Cari nama driver dari daftar availableDrivers
-        const selectedDriver = availableDrivers.find(
-          (d: any) => d.id === data.driverId,
-        );
-        bookingData.driver_name = selectedDriver?.name || null;
-      }
-
-      // ✅ Bersihkan undefined
-      const cleanedBookingData = Object.fromEntries(
-        Object.entries(bookingData).filter(([_, v]) => v !== undefined),
-      );
-
-      // Insert
-      const { data: insertedBooking, error: bookingError } = await supabase
-        .from("bookings")
-        .insert(cleanedBookingData)
-        .select()
-        .single();
-
-      if (bookingError) {
-        throw new Error("Error submitting booking: " + bookingError.message);
-      }
-
-      // ✅ Update vehicle status
-      const { error: vehicleUpdateError } = await supabase
-        .from("vehicles")
-        .update({ status: "booked" })
-        .eq("id", vehicleToUse.id);
-
-      if (vehicleUpdateError) {
-        console.error("Error updating vehicle status:", vehicleUpdateError);
-      }
-
-      // ✅ Validate booking ID
-      if (!insertedBooking?.id) {
-        throw new Error("No booking ID returned from server");
-      }
-
-      // ✅ Set the booking ID
-      setBookingId(insertedBooking.id.toString());
-
-      // ✅ Call onBookingComplete
-      onBookingComplete({
-        bookingId: insertedBooking.id,
-        vehicleId: vehicleToUse.id,
-        totalAmount: calculateTotal(),
-        depositAmount: 0,
+      // Add to cart using the shopping cart hook
+      await addToCart({
+        item_type: "car",
+        item_id: vehicleToUse.id.toString(),
+        service_name: serviceName,
+        price: calculateTotal(),
+        details: cartItemDetails,
       });
 
-      // Redirect ke halaman pembayaran
-      navigate(`/payment/form/${insertedBooking.id}`);
+      console.log("✅ Car rental added to cart");
+      console.log("🛒 Redirecting to cart for checkout");
+
+      // Redirect to cart page
+      navigate("/cart");
     } catch (error) {
-      console.error("Error submitting booking:", error);
-      alert(`There was an error processing your booking: ${error.message}`);
+      console.error("Error adding car rental to cart:", error);
+      alert(
+        `There was an error adding the car rental to your cart: ${error.message}`,
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -973,10 +863,13 @@ const BookingForm: React.FC<BookingFormProps> = ({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => navigate("/")}
+                  onClick={() => {
+                    console.log("Navigating back to vehicle selection");
+                    navigate(-1);
+                  }}
                   className="flex items-center justify-center gap-1 w-full sm:w-auto"
                 >
-                  <ArrowLeft className="h-4 w-4" /> Back1
+                  <ArrowLeft className="h-4 w-4" /> Back
                 </Button>
               ) : (
                 <Button
@@ -995,42 +888,18 @@ const BookingForm: React.FC<BookingFormProps> = ({
                     Next
                   </Button>
                 ) : (
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() =>
-                        navigate("/", {
-                          state: { openAuthForm: true, initialTab: "login" },
-                        })
-                      }
-                      className="w-full sm:w-auto"
-                    >
-                      Sign In
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() =>
-                        navigate("/", {
-                          state: { openAuthForm: true, initialTab: "register" },
-                        })
-                      }
-                      className="w-full sm:w-auto"
-                    >
-                      Register
-                    </Button>
-                    <Button
-                      type="button"
-                      className="w-full sm:w-auto sm:ml-2"
-                      onClick={() => {
-                        alert(
-                          "Please sign in or register to continue with your booking.",
-                        );
-                      }}
-                    >
-                      Next <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto sm:ml-auto"
+                    onClick={() => {
+                      alert(
+                        "Please sign in or register to continue with your booking.",
+                      );
+                    }}
+                  >
+                    Please Sign In to Continue{" "}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
                 )
               ) : (
                 <Button
@@ -1038,7 +907,7 @@ const BookingForm: React.FC<BookingFormProps> = ({
                   className="w-full sm:w-auto sm:ml-auto"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? "Processing..." : "Complete Booking"}
+                  {isSubmitting ? "Adding to Cart..." : "Add to Cart"}
                   {!isSubmitting && <Check className="ml-2 h-4 w-4" />}
                 </Button>
               )}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format, isSameDay } from "date-fns";
+import { v4 as uuidv4 } from "uuid";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon, ChevronDown, Loader2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { supabase } from "@/lib/supabase";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Popover,
   PopoverContent,
@@ -31,49 +34,114 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-const formSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters" }),
-  email: z.string().email({ message: "Please enter a valid email address" }),
-  phone: z
-    .string()
-    .min(8, { message: "Phone number must be at least 8 characters" }),
-  flightNumber: z.string().optional(),
-  airport: z.string({ required_error: "Please select an airport" }),
-  terminal: z.string({ required_error: "Please select a terminal" }),
-  // Separate fields for Hours mode
-  startDate_Hours: z
-    .date({ required_error: "Please select a date" })
-    .optional(),
-  startTime_Hours: z.string().optional(),
-  hours: z.number().min(1).optional(),
-  // Separate fields for Days mode
-  startDate_Days: z.date({ required_error: "Please select a date" }).optional(),
-  endDate_Days: z.date({ required_error: "Please select a date" }).optional(),
-  startTime_Days: z.string().optional(),
-});
+import { useShoppingCart } from "@/hooks/useShoppingCart";
 
-type FormValues = z.infer<typeof formSchema>;
+// Create a function to generate the form schema based on selectedSize
+const createFormSchema = (selectedSize: string) => {
+  return z.object({
+    name: z.string().min(2, { message: "Name must be at least 2 characters" }),
+    email: z.string().email({ message: "Please enter a valid email address" }),
+    phone: z
+      .string()
+      .min(8, { message: "Phone number must be at least 8 characters" }),
+    itemName:
+      selectedSize === "electronic"
+        ? z
+            .string()
+            .min(1, { message: "Item name is required for electronic items" })
+        : z.string().optional(),
+    flightNumber: z.string().optional(),
+    airport: z.string({ required_error: "Please select an airport" }),
+    terminal: z.string({ required_error: "Please select a terminal" }),
+    // Separate fields for Hours mode
+    startDate_Hours: z
+      .date({ required_error: "Please select a date" })
+      .optional(),
+    startTime_Hours: z.string().optional(),
+    hours: z.number().min(1).max(4).optional(),
+    // Separate fields for Days mode
+    startDate_Days: z
+      .date({ required_error: "Please select a date" })
+      .optional(),
+    endDate_Days: z.date({ required_error: "Please select a date" }).optional(),
+    startTime_Days: z.string().optional(),
+  });
+};
+
+type FormValues = z.infer<ReturnType<typeof createFormSchema>>;
 
 interface BookingFormProps {
-  selectedSize?: "small" | "medium" | "large";
+  selectedSize?:
+    | "small"
+    | "medium"
+    | "large"
+    | "extra_large"
+    | "electronic"
+    | "surfingboard"
+    | "wheelchair"
+    | "stickgolf";
   onComplete?: (data: any) => void;
   onCancel?: () => void;
+  baggagePrices?: {
+    small: number;
+    medium: number;
+    large: number;
+    extra_large: number;
+    electronic: number;
+    surfingboard: number;
+    wheelchair: number;
+    stickgolf: number;
+  };
+  initialDate?: Date;
+  initialTime?: string;
 }
 
 const BookingForm = ({
   selectedSize = "small",
   onComplete,
   onCancel,
+  baggagePrices,
+  initialDate,
+  initialTime,
 }: BookingFormProps) => {
+  // Authentication removed - allow all users to access baggage booking
+  const { addToCart } = useShoppingCart();
   const [step, setStep] = useState<number>(0);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [durationType, setDurationType] = useState<"hours" | "days">("hours");
   const [selectedAirport, setSelectedAirport] =
     useState<string>("soekarno_hatta");
-  const [startDateHoursTouched, setStartDateHoursTouched] = useState(false);
-  const [startDateDaysTouched, setStartDateDaysTouched] = useState(false);
-  const [dateTimeHoursTouched, setDateTimeHoursTouched] = useState(false);
-  const [dateTimeDaysTouched, setDateTimeDaysTouched] = useState(false);
+  const [customerPhone, setCustomerPhone] = useState<string>("");
+
+  // Hours mode state
+  const [hoursStartDate, setHoursStartDate] = useState<Date | undefined>(
+    initialDate || new Date(),
+  );
+  const [hoursTime, setHoursTime] = useState<string | undefined>(
+    initialTime || "",
+  );
+  const [hourCount, setHourCount] = useState<number>(1);
+  const [startDateHoursTouched, setStartDateHoursTouched] =
+    useState(!!initialDate);
+  const [dateTimeHoursTouched, setDateTimeHoursTouched] =
+    useState(!!initialTime);
+
+  // Days mode state
+  const [daysStartDate, setDaysStartDate] = useState<Date | undefined>(
+    initialDate || new Date(),
+  );
+  const [daysEndDate, setDaysEndDate] = useState<Date | undefined>(
+    initialDate
+      ? new Date(new Date(initialDate).setDate(initialDate.getDate() + 1))
+      : new Date(new Date().setDate(new Date().getDate() + 1)),
+  );
+  const [daysPickTime, setDaysPickTime] = useState<string | undefined>(
+    initialTime || "",
+  );
+  const [startDateDaysTouched, setStartDateDaysTouched] =
+    useState(!!initialDate);
+  const [dateTimeDaysTouched, setDateTimeDaysTouched] = useState(!!initialTime);
+
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   // Function to get current time in HH:MM format
@@ -114,11 +182,14 @@ const BookingForm = ({
     ],
   };
 
+  const formSchema = createFormSchema(selectedSize);
+
   const {
     register,
     handleSubmit,
     setValue,
     watch,
+    reset,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -127,49 +198,64 @@ const BookingForm = ({
       name: "",
       email: "",
       phone: "",
+      itemName: "",
       flightNumber: "",
       airport: "soekarno_hatta",
       terminal: "3_DOMESTIK",
-      startDate_Hours: new Date(),
-      startTime_Hours: "",
-      hours: 1,
-      startDate_Days: new Date(),
-      endDate_Days: new Date(new Date().setDate(new Date().getDate() + 1)),
-      startTime_Days: "",
+      startDate_Hours: hoursStartDate,
+      startTime_Hours: hoursTime,
+      hours: hourCount,
+      startDate_Days: daysStartDate,
+      endDate_Days: daysEndDate,
+      startTime_Days: daysPickTime,
     },
   });
 
+  // Watch form values for Hours mode
   const watchStartDateHours = watch("startDate_Hours");
   const watchStartTimeHours = watch("startTime_Hours");
   const watchHours = watch("hours");
 
+  // Watch form values for Days mode
   const watchStartDateDays = watch("startDate_Days");
   const watchEndDateDays = watch("endDate_Days");
   const watchStartTimeDays = watch("startTime_Days");
 
+  // Separate validation for each duration type
+  const isHoursModeValid =
+    startDateHoursTouched &&
+    !!watchHours &&
+    watchHours >= 1 &&
+    watchHours <= 4 &&
+    !!watchStartTimeHours;
+
+  const isDaysModeValid =
+    startDateDaysTouched && !!watchEndDateDays && !!watchStartTimeDays;
+
   const isDurationStepValid =
-    (durationType === "hours" &&
-      startDateHoursTouched &&
-      !!watchHours &&
-      watchHours >= 1 &&
-      watchHours <= 4 &&
-      !!watchStartTimeHours) ||
-    (durationType === "days" &&
-      startDateDaysTouched &&
-      !!watchEndDateDays &&
-      !!watchStartTimeDays);
+    (durationType === "hours" && isHoursModeValid) ||
+    (durationType === "days" && isDaysModeValid);
 
   const getPricePerUnit = () => {
-    switch (selectedSize) {
-      case "small":
-        return 70000;
-      case "medium":
-        return 90000;
-      case "large":
-        return 120000;
-      default:
-        return 70000;
+    // Check if baggagePrices prop exists and has the selected size
+    if (baggagePrices && baggagePrices[`${selectedSize}_price`]) {
+      return baggagePrices[`${selectedSize}_price`];
     }
+
+    // Default price map that matches database values
+    const priceMap = {
+      small: 75000,
+      medium: 80000,
+      large: 90000,
+      extra_large: 100000,
+      electronic: 90000,
+      surfingboard: 100000,
+      wheelchair: 60000,
+      stickgolf: 120000,
+    };
+
+    // Fallback to default price map
+    return priceMap[selectedSize] || 75000;
   };
 
   const calculateTotalPrice = () => {
@@ -192,40 +278,99 @@ const BookingForm = ({
     return pricePerUnit; // Default to one unit
   };
 
-  const onSubmit = (data: FormValues) => {
+  // Customer data fetching removed - no authentication required
+
+  // Auto-fill form fields removed - no authentication required
+
+  useEffect(() => {
+    if (initialTime) {
+      setHoursTime(initialTime);
+      setDaysPickTime(initialTime);
+      setValue("startTime_Hours", initialTime);
+      setValue("startTime_Days", initialTime);
+      setDateTimeHoursTouched(true);
+      setDateTimeDaysTouched(true);
+    }
+  }, []);
+
+  const onSubmit = async (data: FormValues) => {
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    try {
+      const calculatedDuration =
+        durationType === "days"
+          ? data.endDate_Days
+            ? Math.ceil(
+                (data.endDate_Days.getTime() - data.startDate_Days!.getTime()) /
+                  (1000 * 60 * 60 * 24),
+              )
+            : 1
+          : Math.ceil((data.hours || 0) / 4); // 4-jam blok
+
+      const serviceName = `Baggage Storage - ${
+        selectedSize === "small"
+          ? "Small"
+          : selectedSize === "medium"
+            ? "Medium"
+            : selectedSize === "large"
+              ? "Large"
+              : selectedSize === "extra_large"
+                ? "Extra Large"
+                : selectedSize === "electronic"
+                  ? "Electronic"
+                  : selectedSize === "surfingboard"
+                    ? "Surfing Board"
+                    : selectedSize === "wheelchair"
+                      ? "Wheel Chair"
+                      : selectedSize === "stickgolf"
+                        ? "Stick Golf"
+                        : "Unknown"
+      }`;
+
+      // Add to shopping cart instead of directly saving booking
+      await addToCart({
+        item_type: "baggage",
+        item_id: selectedSize,
+        service_name: serviceName,
+        price: calculateTotalPrice(),
+        details: {
+          customer_name: data.name,
+          customer_phone: data.phone,
+          customer_email: data.email,
+          item_name: selectedSize === "electronic" ? data.itemName || "" : null,
+          flight_number: data.flightNumber || "-",
+          baggage_size: selectedSize,
+          duration: calculatedDuration,
+          storage_location: "Terminal 1, Level 1",
+          start_date:
+            durationType === "hours"
+              ? data.startDate_Hours
+              : data.startDate_Days,
+          end_date:
+            durationType === "hours" ? data.startDate_Hours : data.endDate_Days,
+          start_time:
+            durationType === "hours"
+              ? data.startTime_Hours
+              : data.startTime_Days,
+          airport: data.airport,
+          terminal: data.terminal,
+          duration_type: durationType,
+          hours: durationType === "hours" ? data.hours : null,
+        },
+      });
 
       if (onComplete) {
-        const calculatedDuration =
-          durationType === "days"
-            ? data.endDate_Days
-              ? Math.ceil(
-                  (data.endDate_Days.getTime() -
-                    data.startDate_Days.getTime()) /
-                    (1000 * 60 * 60 * 24),
-                )
-              : 1
-            : Math.ceil((data.hours || 0) / 4); // 4-jam blok
-
         onComplete({
           name: data.name,
           phone: data.phone,
           email: data.email,
-          contact: `${data.email}\n${data.phone}`, // tampilkan email + phone
+          itemName:
+            selectedSize === "electronic" ? data.itemName || "" : undefined,
           flightNumber: data.flightNumber || "-",
-          baggageSize:
-            selectedSize === "small"
-              ? "Small"
-              : selectedSize === "medium"
-                ? "Medium"
-                : "Large",
+          baggageSize: serviceName.replace("Baggage Storage - ", ""),
           price: calculateTotalPrice(),
           duration: calculatedDuration,
-          storageLocation: "Terminal 1, Level 1", // bisa diganti dinamis
-          bookingId: `BG-${Math.floor(Math.random() * 10000)}`,
+          storageLocation: "Terminal 1, Level 1",
           startDate:
             durationType === "hours"
               ? data.startDate_Hours
@@ -245,68 +390,86 @@ const BookingForm = ({
           hours: durationType === "hours" ? data.hours : undefined,
         });
       }
-    }, 1500);
+    } catch (error) {
+      console.error("Error in booking submission:", error);
+      // You could add error handling UI here
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const isStepValid = () => {
-    if (step === 0) return isValid; // hanya validasi form biasa
+    if (step === 0) {
+      return isValid; // Standard form validation for all users
+    }
     if (step === 1) {
-      // Validasi durasi dengan pengecekan waktu untuk tanggal hari ini
-      if (
-        durationType === "hours" &&
-        watchStartDateHours &&
-        watchStartTimeHours
-      ) {
-        const today = new Date();
-        const isToday = isSameDay(watchStartDateHours, today);
+      // Validasi berdasarkan mode durasi yang aktif
+      if (durationType === "hours") {
+        // Validasi khusus untuk mode Hours
+        if (watchStartDateHours && watchStartTimeHours && watchHours) {
+          const today = new Date();
+          const isToday = isSameDay(watchStartDateHours, today);
 
-        if (isToday) {
-          // Jika tanggal hari ini, pastikan waktu yang dipilih belum lewat
-          const currentHour = today.getHours();
-          const currentMinute = today.getMinutes();
+          if (isToday) {
+            // Jika tanggal hari ini, pastikan waktu yang dipilih belum lewat
+            const currentHour = today.getHours();
+            const currentMinute = today.getMinutes();
 
-          const [selectedHour, selectedMinute] = watchStartTimeHours
-            .split(":")
-            .map(Number);
+            const [selectedHour, selectedMinute] = watchStartTimeHours
+              .split(":")
+              .map(Number);
 
-          const isTimeValid =
-            selectedHour > currentHour ||
-            (selectedHour === currentHour && selectedMinute >= currentMinute);
+            const isTimeValid =
+              selectedHour > currentHour ||
+              (selectedHour === currentHour && selectedMinute > currentMinute);
 
+            return (
+              !!watchHours &&
+              watchHours >= 1 &&
+              watchHours <= 4 &&
+              (isTimeValid || !isToday)
+            );
+          }
+
+          // Jika bukan hari ini, cukup validasi hours saja
           return (
-            isValid &&
             !!watchHours &&
             watchHours >= 1 &&
             watchHours <= 4 &&
-            isTimeValid
+            !!watchStartTimeHours
           );
         }
-      } else if (
-        durationType === "days" &&
-        watchStartDateDays &&
-        watchStartTimeDays
-      ) {
-        const today = new Date();
-        const isToday = isSameDay(watchStartDateDays, today);
+        return false;
+      } else if (durationType === "days") {
+        // Validasi khusus untuk mode Days
+        if (watchStartDateDays && watchStartTimeDays && watchEndDateDays) {
+          const today = new Date();
+          const isToday = isSameDay(watchStartDateDays, today);
 
-        if (isToday) {
-          // Jika tanggal hari ini, pastikan waktu yang dipilih belum lewat
-          const currentHour = today.getHours();
-          const currentMinute = today.getMinutes();
+          if (isToday) {
+            // Jika tanggal hari ini, pastikan waktu yang dipilih belum lewat
+            const currentHour = today.getHours();
+            const currentMinute = today.getMinutes();
 
-          const [selectedHour, selectedMinute] = watchStartTimeDays
-            .split(":")
-            .map(Number);
+            const [selectedHour, selectedMinute] = watchStartTimeDays
+              .split(":")
+              .map(Number);
 
-          const isTimeValid =
-            selectedHour > currentHour ||
-            (selectedHour === currentHour && selectedMinute >= currentMinute);
+            const isTimeValid =
+              selectedHour > currentHour ||
+              (selectedHour === currentHour && selectedMinute > currentMinute);
 
-          return isValid && !!watchEndDateDays && isTimeValid;
+            return !!watchEndDateDays && (isTimeValid || !isToday);
+          }
+
+          // Jika bukan hari ini, cukup validasi tanggal akhir saja
+          return !!watchEndDateDays;
         }
+        return false;
       }
-      return isValid && isDurationStepValid;
+      return false;
     }
+
     return isValid;
   };
 
@@ -318,7 +481,7 @@ const BookingForm = ({
         <div className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="name">Full Name</Label>
-            <Input id="name" placeholder="John Doe" {...register("name")} />
+            <Input id="name" placeholder="Full Name" {...register("name")} />
             {errors.name && (
               <p className="text-sm text-red-500">{errors.name.message}</p>
             )}
@@ -348,6 +511,22 @@ const BookingForm = ({
               <p className="text-sm text-red-500">{errors.phone.message}</p>
             )}
           </div>
+
+          {selectedSize === "electronic" && (
+            <div className="grid gap-2">
+              <Label htmlFor="itemName">Item Name</Label>
+              <Input
+                id="itemName"
+                placeholder="e.g., Laptop, Camera, Keyboard"
+                {...register("itemName")}
+              />
+              {errors.itemName && (
+                <p className="text-sm text-red-500">
+                  {errors.itemName.message}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="flightNumber">Flight Number (Optional)</Label>
@@ -416,9 +595,10 @@ const BookingForm = ({
         <div className="space-y-4">
           <Tabs
             value={durationType}
-            onValueChange={(value) =>
-              setDurationType(value as "hours" | "days")
-            }
+            onValueChange={(value) => {
+              const newDurationType = value as "hours" | "days";
+              setDurationType(newDurationType);
+            }}
           >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="hours">Hours</TabsTrigger>
@@ -433,7 +613,11 @@ const BookingForm = ({
                   min="1"
                   max="4"
                   defaultValue="1"
-                  onChange={(e) => setValue("hours", parseInt(e.target.value))}
+                  onChange={(e) => {
+                    const newHourCount = parseInt(e.target.value);
+                    setHourCount(newHourCount);
+                    setValue("hours", newHourCount);
+                  }}
                 />
                 <p className="text-sm text-muted-foreground">
                   Minimum 1 hour, maximum 4 hours
@@ -472,6 +656,7 @@ const BookingForm = ({
                         selected={watchStartDateHours}
                         onSelect={(date) => {
                           if (date) {
+                            setHoursStartDate(date);
                             setValue("startDate_Hours", date);
                             setStartDateHoursTouched(true);
                           }
@@ -490,7 +675,9 @@ const BookingForm = ({
                             className="flex-1"
                             value={watchStartTimeHours || ""}
                             onChange={(e) => {
-                              setValue("startTime_Hours", e.target.value);
+                              const newTime = e.target.value;
+                              setHoursTime(newTime);
+                              setValue("startTime_Hours", newTime);
                               setDateTimeHoursTouched(true);
                             }}
                             min={
@@ -534,12 +721,14 @@ const BookingForm = ({
                       selected={watchStartDateDays}
                       onSelect={(date) => {
                         if (date) {
+                          setDaysStartDate(date);
                           setValue("startDate_Days", date);
                           setStartDateDaysTouched(true);
 
                           // Always set end date to next day
                           const nextDay = new Date(date);
                           nextDay.setDate(date.getDate() + 1);
+                          setDaysEndDate(nextDay);
                           setValue("endDate_Days", nextDay);
                         }
                       }}
@@ -562,7 +751,9 @@ const BookingForm = ({
                     className="flex-1"
                     value={watchStartTimeDays || ""}
                     onChange={(e) => {
-                      setValue("startTime_Days", e.target.value);
+                      const newTime = e.target.value;
+                      setDaysPickTime(newTime);
+                      setValue("startTime_Days", newTime);
                       setDateTimeDaysTouched(true);
                     }}
                     min={
@@ -599,9 +790,12 @@ const BookingForm = ({
                     <Calendar
                       mode="single"
                       selected={watchEndDateDays}
-                      onSelect={(date) =>
-                        date && setValue("endDate_Days", date)
-                      }
+                      onSelect={(date) => {
+                        if (date) {
+                          setDaysEndDate(date);
+                          setValue("endDate_Days", date);
+                        }
+                      }}
                       disabled={(date) => {
                         if (!watchStartDateDays) return true;
 
@@ -621,25 +815,31 @@ const BookingForm = ({
       ),
     },
     {
-      title: "Review & Payment",
+      title: "Review & Add to Cart",
       description: "Confirm your booking details",
       content: (
         <div className="space-y-4">
           <div className="rounded-lg bg-muted p-4">
             <h3 className="font-medium mb-2">Booking Summary</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div>Baggage Size:</div>
+              <div>Baggage Size/Items:</div>
               <div className="font-medium capitalize">{selectedSize}</div>
 
               <div>Name:</div>
               <div className="font-medium">{watch("name")}</div>
 
+              <div>Email:</div>
+              <div className="font-medium">{watch("email")}</div>
+
               <div>Contact:</div>
-              <div className="font-medium">
-                {watch("email")}
-                <br />
-                {watch("phone")}
-              </div>
+              <div className="font-medium">{watch("phone")}</div>
+
+              {selectedSize === "electronic" && watch("itemName") && (
+                <>
+                  <div>Item Name:</div>
+                  <div className="font-medium">{watch("itemName")}</div>
+                </>
+              )}
 
               <div>Airport:</div>
               <div className="font-medium">
@@ -704,29 +904,53 @@ const BookingForm = ({
             </div>
           </div>
 
-          <div className="border rounded-lg p-4">
-            <h3 className="font-medium mb-2">Payment Method</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                className="h-20 flex flex-col items-center justify-center"
-              >
-                <div className="text-2xl mb-1">💳</div>
-                <div className="text-sm">Credit Card</div>
-              </Button>
-              <Button
-                variant="outline"
-                className="h-20 flex flex-col items-center justify-center"
-              >
-                <div className="text-2xl mb-1">🏦</div>
-                <div className="text-sm">Bank Transfer</div>
-              </Button>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <p className="text-sm text-blue-700">
+                This item will be added to your cart. You can select payment
+                method and complete checkout from the shopping cart.
+              </p>
             </div>
           </div>
         </div>
       ),
     },
   ];
+
+  // Function to fetch baggage prices if needed
+  const fetchBaggagePrices = async () => {
+    // This function is a placeholder since prices are passed via props
+    // The actual implementation is in AirportBaggage.tsx
+    console.log("Using baggage prices from props:", baggagePrices);
+  };
+
+  // Handle tab change to reset fields for the inactive mode
+  useEffect(() => {
+    if (durationType === "hours") {
+      // Update form with current hours mode state
+      setValue("startDate_Hours", hoursStartDate);
+      setValue("startTime_Hours", hoursTime);
+      setValue("hours", hourCount);
+    } else {
+      // Update form with current days mode state
+      setValue("startDate_Days", daysStartDate);
+      setValue("endDate_Days", daysEndDate);
+      setValue("startTime_Days", daysPickTime);
+    }
+  }, [durationType]);
+
+  // Initialize time fields if initialTime is provided
+  useEffect(() => {
+    if (initialTime) {
+      setHoursTime(initialTime);
+      setDaysPickTime(initialTime);
+      setValue("startTime_Hours", initialTime);
+      setValue("startTime_Days", initialTime);
+      setDateTimeHoursTouched(true);
+      setDateTimeDaysTouched(true);
+    }
+  }, []);
 
   return (
     <Card className="w-full max-w-lg mx-auto bg-white">
@@ -746,12 +970,18 @@ const BookingForm = ({
           {step === 0 ? "Cancel" : "Back"}
         </Button>
         <Button
-          onClick={() =>
+          onClick={() => {
+            if (step === steps.length - 1) {
+              handleSubmit(onSubmit)();
+            } else {
+              setStep(step + 1);
+            }
+          }}
+          disabled={
             step === steps.length - 1
-              ? handleSubmit(onSubmit)()
-              : setStep(step + 1)
+              ? isSubmitting
+              : !isStepValid() || isSubmitting
           }
-          disabled={!isStepValid() || isSubmitting}
           className="bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
         >
           {isSubmitting ? (
@@ -760,7 +990,7 @@ const BookingForm = ({
               Processing
             </>
           ) : step === steps.length - 1 ? (
-            "Complete Booking"
+            "Book Now"
           ) : (
             "Next"
           )}

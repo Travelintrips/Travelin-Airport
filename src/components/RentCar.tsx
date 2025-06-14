@@ -27,7 +27,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { Badge } from "./ui/badge";
-import { useAuth } from "../hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { useVehicleData } from "@/hooks/useVehicleData";
 
 interface Vehicle {
@@ -54,7 +54,8 @@ const RentCar = () => {
   const navigate = useNavigate();
   const { modelName } = useParams<{ modelName: string }>();
   const { t, i18n } = useTranslation();
-  const { isAuthenticated, userRole, userEmail, userName, signOut } = useAuth();
+  const { userRole, userEmail, userName, signOut, isAuthenticated, userId } =
+    useAuth();
 
   // Use the custom hook for vehicle data
   const {
@@ -70,41 +71,8 @@ const RentCar = () => {
     document.title = t("brand", "Premium Car Rental Service");
   }, [t, i18n.language]);
 
-  // Check for auth requirements from navigation state
+  // Handle auth form visibility based on authentication state
   useEffect(() => {
-    const location = window.location;
-    console.log("Checking auth requirements, location state:", location.state);
-
-    // Check if user is already authenticated from localStorage
-    const authUserStr = localStorage.getItem("auth_user");
-    if (authUserStr) {
-      try {
-        const authUser = JSON.parse(authUserStr);
-        console.log("Found auth user in localStorage:", authUser);
-        if (authUser && authUser.id) {
-          // User is already authenticated, no need to show auth form
-          console.log("User already authenticated, hiding auth form");
-          setShowAuthForm(false);
-          return; // Exit early if user is authenticated
-        }
-      } catch (e) {
-        console.error("Error parsing auth_user from localStorage:", e);
-      }
-    } else {
-      console.log("No auth_user found in localStorage");
-    }
-
-    // Only check navigation state if user is not already authenticated
-    if (location.state && location.state.requireAuth) {
-      console.log("Auth required from navigation state");
-      setShowAuthForm(true);
-      setAuthFormType(location.state.authType || "register");
-    }
-  }, []);
-
-  // Additional check for authentication status changes
-  useEffect(() => {
-    // If user becomes authenticated, hide the auth form
     if (isAuthenticated) {
       setShowAuthForm(false);
     }
@@ -143,63 +111,20 @@ const RentCar = () => {
 
   // Handle vehicle selection
   const handleSelectVehicle = (vehicle: Vehicle) => {
-    if (!isAuthenticated) {
-      // Store vehicle ID for redirection after authentication
-      const returnPath = `/booking/${vehicle.id}`;
-      console.log(`User not authenticated. Storing return path: ${returnPath}`);
-
-      // Show auth form with login tab active
-      setShowAuthForm(true);
-      setAuthFormType("login");
-
-      // Set location state for redirection after login
-      window.history.replaceState(
-        {
-          requireAuth: true,
-          returnPath,
-          returnState: { selectedVehicle: vehicle },
-        },
-        "",
-      );
-    } else {
-      setSelectedVehicle(vehicle);
-      setActiveTab("booking");
-    }
+    setSelectedVehicle(vehicle);
+    setActiveTab("booking");
   };
 
   // Handle navigation to model detail page
   const handleViewModelDetail = (model: any) => {
-    if (!isAuthenticated) {
-      // Store return path for after authentication
-      const encodedModelName = encodeURIComponent(model.modelName.trim());
-      const returnPath = `/models/${encodedModelName}`;
-      console.log(`Storing return path: ${returnPath}`);
-
-      // Show auth form with login tab active
-      setShowAuthForm(true);
-      setAuthFormType("login");
-
-      // Set location state for redirection after login
-      window.history.replaceState(
-        {
-          requireAuth: true,
-          returnPath,
-          returnState: { modelName: model.modelName },
-        },
-        "",
-      );
-      return; // Stop execution here to prevent navigation
-    } else {
-      // Navigate to the model detail page with the model name in the URL
-      // Ensure proper encoding of the model name
-      const encodedModelName = encodeURIComponent(model.modelName.trim());
-      console.log(
-        `Navigating to model: ${model.modelName} (encoded: ${encodedModelName})`,
-      );
-      navigate(`/models/${encodedModelName}`);
-      setSelectedModel(model);
-      setShowModelDetail(true);
-    }
+    // Navigate to the model detail page with the model name in the URL
+    const encodedModelName = encodeURIComponent(model.modelName.trim());
+    console.log(
+      `Navigating to model: ${model.modelName} (encoded: ${encodedModelName})`,
+    );
+    navigate(`/models/${encodedModelName}`);
+    setSelectedModel(model);
+    setShowModelDetail(true);
   };
 
   // Handle booking completion
@@ -267,13 +192,28 @@ const RentCar = () => {
 
   // Handle user logout
   const handleLogout = async () => {
-    console.log("Logging out user");
-    const success = await signOut();
-    if (success) {
-      console.log("Logout successful, navigating to TravelPage");
-      navigate("/"); // Navigate to TravelPage
-    } else {
-      console.error("Logout failed");
+    console.log("RentCar - Starting logout process");
+    try {
+      // Clear any pending auth forms first
+      setShowAuthForm(false);
+
+      // Clear all local state immediately
+      setSelectedVehicle(null);
+      setBookingData(null);
+      setShowInspection(false);
+      setShowPayment(false);
+      setActiveTab("vehicles");
+
+      // Call signOut from AuthContext which handles all cleanup
+      await signOut();
+
+      // Force page refresh and redirect to travel page
+      console.log("RentCar - Forcing page refresh and redirect to travel page");
+      window.location.replace("/sub-account");
+    } catch (error) {
+      console.error("RentCar - Error during logout:", error);
+      // Force page refresh and redirect even if there's an error
+      window.location.replace("/sub-account");
     }
   };
 
@@ -343,7 +283,8 @@ const RentCar = () => {
               )}
             </Button>
 
-            {isAuthenticated ? (
+            {/* Show auth-dependent UI when authenticated */}
+            {isAuthenticated && (
               <div className="flex items-center space-x-4">
                 {userRole === "Admin" && (
                   <Button
@@ -355,39 +296,37 @@ const RentCar = () => {
                     {t("navbar.adminPanel")}
                   </Button>
                 )}
-                <Button variant="outline" className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="flex items-center gap-2"
+                  onClick={() => navigate("/profile")}
+                >
                   <User className="h-4 w-4" />
                   {userName
                     ? userName
                     : userEmail?.split("@")[0] || t("navbar.myAccount")}
                 </Button>
-                <Button variant="destructive" onClick={handleLogout}>
-                  {t("navbar.signOut")}
+                <Button
+                  variant="ghost"
+                  onClick={handleLogout}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  {t("navbar.signOut", "Sign Out")}
                 </Button>
               </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    console.log("Sign In button clicked");
-                    setAuthFormType("login");
-                    setShowAuthForm(true);
-                  }}
-                >
-                  {t("navbar.signIn")}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    console.log("Register button clicked");
-                    setAuthFormType("register");
-                    setShowAuthForm(true);
-                  }}
-                >
-                  {t("navbar.register", "Register")}
-                </Button>
-              </div>
+            )}
+
+            {/* Show sign in button when not authenticated */}
+            {!isAuthenticated && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowAuthForm(true);
+                  setAuthFormType("login");
+                }}
+              >
+                {t("navbar.signIn", "Sign In")}
+              </Button>
             )}
           </div>
         </div>
@@ -424,16 +363,17 @@ const RentCar = () => {
                 variant="outline"
                 className="flex items-center gap-2 shadow-sm hover:shadow-md transition-all hover:bg-secondary/50 hover:text-primary"
                 onClick={() => {
-                  if (!isAuthenticated) {
-                    setShowAuthForm(true);
-                    setAuthFormType("login");
-                    window.history.replaceState(
-                      { requireAuth: true, returnPath: "/booking" },
-                      "",
+                  // Navigate to the vehicle selection section of RentCar page
+                  setActiveTab("vehicles");
+                  // Scroll to the vehicle selection section
+                  setTimeout(() => {
+                    const vehicleSection = document.querySelector(
+                      '[data-section="vehicles"]',
                     );
-                  } else {
-                    navigate("/booking");
-                  }
+                    if (vehicleSection) {
+                      vehicleSection.scrollIntoView({ behavior: "smooth" });
+                    }
+                  }, 100);
                 }}
               >
                 <Calendar className="h-5 w-5" />
@@ -491,24 +431,23 @@ const RentCar = () => {
                   onAuthStateChange={(state) => {
                     console.log("Auth state changed to:", state);
 
-                    // If user successfully authenticated and there was a return path
-                    if (state && window.location.state) {
-                      const locationState = window.location.state;
-                      console.log(
-                        "Home component location state:",
-                        locationState,
-                      );
-                      if (locationState.returnPath) {
-                        const { returnPath, returnState } = locationState;
-                        console.log("Redirecting to:", returnPath, returnState);
-                        navigate(returnPath, { state: returnState });
-                      }
-                    }
-
                     // Always close the auth form when authentication is successful
                     if (state) {
                       console.log("Authentication successful, closing form");
                       setShowAuthForm(false);
+
+                      // Check for return path in window history state
+                      const historyState = window.history.state;
+                      if (historyState && historyState.returnPath) {
+                        const { returnPath, returnState } = historyState;
+                        console.log("Redirecting to:", returnPath, returnState);
+                        // Clear the history state before navigation
+                        window.history.replaceState(null, "");
+                        navigate(returnPath, { state: returnState });
+                      } else {
+                        // No return path, just refresh the current page state
+                        console.log("No return path, staying on current page");
+                      }
                     }
                   }}
                   initialTab={authFormType}
@@ -608,7 +547,6 @@ const RentCar = () => {
                       className="w-full"
                       disabled={!vehicle.available}
                       onClick={() => {
-                        // Always use handleSelectVehicle which now handles authentication check
                         if (vehicle.available) {
                           handleSelectVehicle(vehicle);
                         }
@@ -707,77 +645,80 @@ const RentCar = () => {
                       availableCount={model.availableCount}
                       imageUrl={model.imageUrl}
                       vehicles={model.vehicles}
-                      onViewDetail={() => handleViewModelDetail(model)}
+                      onViewDetail={() => {
+                        handleViewModelDetail(model);
+                      }}
                     />
                   ))}
               </div>
             )}
 
-            {isAuthenticated && (
-              <div className="mt-12 pt-8 border-t border-border">
-                <div className="text-center max-w-3xl mx-auto mb-8">
-                  <h2 className="text-2xl font-bold mb-2">
-                    Continue Your Booking
-                  </h2>
-                  <p className="text-muted-foreground">
-                    If you've already selected a vehicle, you can continue your
-                    booking process below
-                  </p>
-                </div>
-
-                <Tabs
-                  value={activeTab}
-                  onValueChange={setActiveTab}
-                  className="w-full"
-                >
-                  <TabsList className="grid w-full max-w-md mx-auto grid-cols-4">
-                    <TabsTrigger value="vehicles">
-                      {t("booking.selectVehicle")}
-                    </TabsTrigger>
-                    <TabsTrigger value="booking">
-                      {t("booking.bookingDetails")}
-                    </TabsTrigger>
-                    <TabsTrigger value="inspection" disabled={!showInspection}>
-                      {t("booking.inspection")}
-                    </TabsTrigger>
-                    <TabsTrigger value="payment" disabled={!showPayment}>
-                      {t("booking.payment")}
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="vehicles" className="mt-6">
-                    <VehicleSelector onSelectVehicle={handleSelectVehicle} />
-                  </TabsContent>
-                  <TabsContent value="booking" className="mt-6">
-                    <BookingForm
-                      selectedVehicle={selectedVehicle}
-                      onBookingComplete={handleBookingComplete}
-                    />
-                  </TabsContent>
-                  <TabsContent value="inspection" className="mt-6">
-                    {bookingData && (
-                      <PreRentalInspectionForm
-                        vehicleId={bookingData.vehicleId}
-                        bookingId={bookingData.bookingId}
-                        onComplete={handleInspectionComplete}
-                        onCancel={() => {
-                          setActiveTab("booking");
-                          setShowInspection(false);
-                        }}
-                      />
-                    )}
-                  </TabsContent>
-                  <TabsContent value="payment" className="mt-6">
-                    {bookingData && showPayment && (
-                      <Card className="w-full max-w-2xl mx-auto">
-                        <CardContent className="pt-6">
-                          {/* Payment content remains the same */}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </TabsContent>
-                </Tabs>
+            <div
+              className="mt-12 pt-8 border-t border-border"
+              data-section="vehicles"
+            >
+              <div className="text-center max-w-3xl mx-auto mb-8">
+                <h2 className="text-2xl font-bold mb-2">
+                  Continue Your Booking
+                </h2>
+                <p className="text-muted-foreground">
+                  If you've already selected a vehicle, you can continue your
+                  booking process below
+                </p>
               </div>
-            )}
+
+              <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="w-full"
+              >
+                <TabsList className="grid w-full max-w-md mx-auto grid-cols-4">
+                  <TabsTrigger value="vehicles">
+                    {t("booking.selectVehicle")}
+                  </TabsTrigger>
+                  <TabsTrigger value="booking">
+                    {t("booking.bookingDetails")}
+                  </TabsTrigger>
+                  <TabsTrigger value="inspection" disabled={!showInspection}>
+                    {t("booking.inspection")}
+                  </TabsTrigger>
+                  <TabsTrigger value="payment" disabled={!showPayment}>
+                    {t("booking.payment")}
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="vehicles" className="mt-6">
+                  <VehicleSelector onSelectVehicle={handleSelectVehicle} />
+                </TabsContent>
+                <TabsContent value="booking" className="mt-6">
+                  <BookingForm
+                    selectedVehicle={selectedVehicle}
+                    onBookingComplete={handleBookingComplete}
+                  />
+                </TabsContent>
+                <TabsContent value="inspection" className="mt-6">
+                  {bookingData && (
+                    <PreRentalInspectionForm
+                      vehicleId={bookingData.vehicleId}
+                      bookingId={bookingData.bookingId}
+                      onComplete={handleInspectionComplete}
+                      onCancel={() => {
+                        setActiveTab("booking");
+                        setShowInspection(false);
+                      }}
+                    />
+                  )}
+                </TabsContent>
+                <TabsContent value="payment" className="mt-6">
+                  {bookingData && showPayment && (
+                    <Card className="w-full max-w-2xl mx-auto">
+                      <CardContent className="pt-6">
+                        {/* Payment content remains the same */}
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
         )}
       </section>

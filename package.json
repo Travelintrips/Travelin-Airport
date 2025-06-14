@@ -13,6 +13,8 @@
     "deploy:function": "node scripts/deploy-edge-function.js"
   },
   "dependencies": {
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
     "@hookform/resolvers": "^3.6.0",
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-alert-dialog": "^1.0.5",
@@ -67,7 +69,7 @@
     "react-router-dom": "^6.23.1",
     "react-select": "^5.10.1",
     "react-time-picker": "^7.0.0",
-    "recharts": "^2.15.2",
+    "recharts": "^2.15.3",
     "tailwind-merge": "^2.3.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",

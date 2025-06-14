@@ -78,9 +78,6 @@ function useAuthCheck() {
   // Function to handle authentication state changes
   const handleAuthStateChange = (state: boolean) => {
     setIsAuthenticated(state);
-    if (state) {
-      setShowAuthForm(false); // Tambahkan ini untuk jaga-jaga
-    }
 
     if (state) {
       // Get user data from localStorage if available
@@ -116,14 +113,14 @@ function useAuthCheck() {
   };
 
   // Function to sign out
-  const signOut = async () => {
+  /*  const signOut = async () => {
     try {
       await supabase.auth.signOut();
       handleAuthStateChange(false);
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
+  };*/
 
   return {
     isAuthenticated,
@@ -132,7 +129,7 @@ function useAuthCheck() {
     userEmail,
     isLoading,
     handleAuthStateChange,
-    signOut,
+    //  signOut,
   };
 }
 

@@ -131,9 +131,9 @@ export default function BookingManagement() {
         .select(
           `
     *,
-    user:users(full_name, email, role),
-    driver:fk_bookings_driver(id, name),
-    vehicle:vehicles(make, model, license_plate)
+    user:users!bookings_user_id_fkey(full_name, email, role),
+    driver:drivers!bookings_driver_id_fkey(id, name),
+    vehicle:vehicles!bookings_vehicle_id_fkey(make, model, license_plate)
   `,
         )
         .order("created_at", { ascending: false });

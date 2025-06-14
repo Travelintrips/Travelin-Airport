@@ -1,5 +1,6 @@
 import React from "react";
 import { Outlet, Link, useLocation, useNavigate } from "react-router-dom";
+import { Luggage } from "lucide-react";
 import {
   Users,
   Car,
@@ -20,6 +21,7 @@ import {
   Plane,
   Key,
   Tag,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
@@ -168,11 +170,39 @@ const AdminLayout = () => {
               {sidebarOpen && <span className="ml-3">Price KM</span>}
             </Link>
             <Link
+              to="price-baggage"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/price-baggage") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
+            >
+              <Luggage className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Price Baggage</span>}
+            </Link>
+            <Link
+              to="payment-methods"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/payment-methods") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
+            >
+              <Wallet className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Payment Methods</span>}
+            </Link>
+            <Link
+              to="baggage-booking"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/baggage-booking") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
+            >
+              <Luggage className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Baggage Booking</span>}
+            </Link>
+            <Link
               to="api-settings"
               className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/api-settings") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
             >
               <Key className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">API Settings</span>}
+            </Link>
+            <Link
+              to="chart"
+              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/chart") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
+            >
+              <BarChart3 className="h-5 w-5 text-white" />
+              {sidebarOpen && <span className="ml-3">Chart</span>}
             </Link>
           </nav>
 
