@@ -1,6 +1,6 @@
 import React from "react";
 import UserDashboard from "@/components/dashboard/UserDashboard";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 
 const ProfilePage = () => {
   const { userEmail, userRole, userName } = useAuth();

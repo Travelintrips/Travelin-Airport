@@ -4,7 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { supabase } from "../lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
+import { useShoppingCart } from "@/hooks/useShoppingCart";
+import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
 
 // UI Components
 import { ArrowRightCircle, UserCheck, CarFront } from "lucide-react";
@@ -109,16 +111,16 @@ interface Driver {
   surcharge?: number;
   distance?: number;
   eta?: number;
-  has_bid?: boolean;
-  bid_price?: number | null;
-  bid_id?: string | null;
 }
 
 function AirportTransferPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { isAuthenticated, userId, userName, userEmail } = useAuth();
+  const { userId, userName, userEmail } = useAuth();
+  const isAuthenticated = false; // Temporarily disable authentication
+  const { addToCart } = useShoppingCart();
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Step tracking
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -168,40 +170,6 @@ function AirportTransferPageContent() {
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [isSearchingDriver, setIsSearchingDriver] = useState<boolean>(false);
-
-  // Fetch user data if authenticated
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (isAuthenticated && userId) {
-        try {
-          const { data, error } = await supabase
-            .from("users")
-            .select("full_name, phone")
-            .eq("id", userId)
-            .single();
-
-          if (data && !error) {
-            console.log("User data fetched:", data);
-            setFormData((prev) => ({
-              ...prev,
-              fullName: data.full_name || userName || "",
-              phoneNumber: data.phone || "",
-            }));
-          } else {
-            console.log("No user data found, using auth data");
-            setFormData((prev) => ({
-              ...prev,
-              fullName: userName || "",
-            }));
-          }
-        } catch (error) {
-          console.error("Error fetching user data:", error);
-        }
-      }
-    };
-
-    fetchUserData();
-  }, [isAuthenticated, userId, userName]);
 
   // Terminal options for airport
   {
@@ -835,21 +803,6 @@ function AirportTransferPageContent() {
   const searchDrivers = async () => {
     setIsSearchingDriver(true);
     try {
-      // Check for any bids from drivers in the airport_transfer_notification table
-      const { data: bids, error: initialBidsError } = await supabase
-        .from("airport_transfer_notification")
-        .select("*")
-        .eq("vehicle_type", formData.vehicleType)
-        .eq("status", "bidding")
-        .order("created_at", { ascending: false })
-        .limit(5);
-
-      if (initialBidsError) {
-        console.error("Error fetching driver bids:", initialBidsError);
-      } else if (bids && bids.length > 0) {
-        console.log("Found driver bids:", bids);
-        // We'll process these bids later in the driver display section
-      }
       const { data: drivers, error: driverError } = await supabase
         .from("drivers")
         .select(
@@ -859,8 +812,6 @@ function AirportTransferPageContent() {
         name,
         phone,
         selfie_url
-        
-        
       `,
         )
         .eq("is_online", true);
@@ -978,28 +929,6 @@ function AirportTransferPageContent() {
       // Format available drivers
       const availableDriversFormatted = [];
 
-      // Check for any bids from drivers in the airport_transfer_notification table
-      const { data: driverBids, error: driverBidsError } = await supabase
-        .from("airport_transfer_notification")
-        .select("*")
-        .eq("vehicle_type", formData.vehicleType)
-        .eq("status", "bidding")
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      // Create a map of driver IDs who have placed bids
-      const driverBidsMap = new Map();
-      if (!driverBidsError && driverBids && driverBids.length > 0) {
-        driverBids.forEach((bid) => {
-          if (bid.driver_id) {
-            driverBidsMap.set(bid.driver_id, {
-              bid_price: bid.bid_price,
-              bid_id: bid.id,
-            });
-          }
-        });
-      }
-
       // Fetch vehicle pricing data once for the selected vehicle type
       const { data: vehiclePricing, error: vehiclePricingError } =
         await supabase
@@ -1022,10 +951,6 @@ function AirportTransferPageContent() {
 
         // For each available driver, use default pricing data
         for (const driver of availableDriversData || []) {
-          // Check if this driver has placed a bid
-          const hasBid = driverBids.has(driver.id);
-          const bidInfo = hasBid ? driverBids.get(driver.id) : null;
-
           availableDriversFormatted.push({
             id: driver.id,
             id_driver: driver.id_driver,
@@ -1037,15 +962,10 @@ function AirportTransferPageContent() {
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
             // Add default pricing data
-            price_km: bidInfo
-              ? bidInfo.bid_price / formData.distance
-              : defaultValues.price_km,
+            price_km: defaultValues.price_km,
             basic_price: defaultValues.basic_price,
             surcharge: defaultValues.surcharge,
             vehicle_type: formData.vehicleType,
-            has_bid: hasBid,
-            bid_price: bidInfo ? bidInfo.bid_price : null,
-            bid_id: bidInfo ? bidInfo.bid_id : null,
           });
         }
 
@@ -1075,7 +995,7 @@ function AirportTransferPageContent() {
             // Simulate distance and ETA for demo purposes
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
-            // Add default pricing data
+            // Add vehicle pricing data from database
             price_km: defaultValues.price_km,
             basic_price: defaultValues.basic_price,
             surcharge: defaultValues.surcharge,
@@ -1109,10 +1029,6 @@ function AirportTransferPageContent() {
 
         // For each available driver, use default pricing data
         for (const driver of availableDriversData || []) {
-          // Check if this driver has placed a bid
-          const hasBid = driverBids.has(driver.id);
-          const bidInfo = hasBid ? driverBids.get(driver.id) : null;
-
           availableDriversFormatted.push({
             id: driver.id,
             id_driver: driver.id_driver,
@@ -1123,16 +1039,11 @@ function AirportTransferPageContent() {
             // Simulate distance and ETA for demo purposes
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
-            // Add default pricing data
-            price_km: bidInfo
-              ? bidInfo.bid_price / formData.distance
-              : defaultValues.price_km,
-            basic_price: defaultValues.basic_price,
-            surcharge: defaultValues.surcharge,
+            // Add vehicle pricing data from database
+            price_km,
+            basic_price,
+            surcharge,
             vehicle_type: formData.vehicleType,
-            has_bid: hasBid,
-            bid_price: bidInfo ? bidInfo.bid_price : null,
-            bid_id: bidInfo ? bidInfo.bid_id : null,
           });
         }
 
@@ -1298,7 +1209,6 @@ function AirportTransferPageContent() {
             customer_id: userId || null,
             customer_name: formData.fullName,
             customer_phone: formData.phoneNumber,
-            is_bidding_open: true,
           };
 
           console.log("Step notification data to be sent:", notificationData);
@@ -1430,26 +1340,43 @@ function AirportTransferPageContent() {
     setCurrentStep((prev) => Math.max(prev - 1, 1));
   };
 
+  // Send WhatsApp message function
+  const sendWhatsAppMessage = async (
+    targetNumber: string,
+    messageContent: string,
+  ) => {
+    try {
+      const formData = new FormData();
+      formData.append("target", targetNumber);
+      formData.append("message", messageContent);
+
+      const response = await fetch("https://api.fonnte.com/send", {
+        method: "POST",
+        headers: {
+          Authorization:
+            import.meta.env.FONNTE_API_KEY || "3hYIZghAc5N1!sUe3dMb",
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+      console.log("Fonnte response:", result);
+      return result;
+    } catch (error) {
+      console.error("Error sending WhatsApp message:", error);
+    }
+  };
+
+  if (bookingType === "instant") {
+    const now = new Date();
+    formData.pickupDate = now.toISOString().split("T")[0]; // YYYY-MM-DD
+    formData.pickupTime = now.toTimeString().slice(0, 5); // HH:MM
+  }
+
   // Submit booking to database
   const handleSubmitBooking = async () => {
     setIsLoading(true);
     try {
-      // Update the airport_transfer_notification status to 'confirmed'
-      if (selectedDriver && selectedDriver.bid_id) {
-        try {
-          const { error } = await supabase
-            .from("airport_transfer_notification")
-            .update({ status: "confirmed" })
-            .eq("id", selectedDriver.bid_id);
-
-          if (error) {
-            console.error("Error updating notification status:", error);
-          }
-        } catch (err) {
-          console.error("Error updating notification status:", err);
-        }
-      }
-
       const bookingData = {
         booking_code: formData.bookingCode,
         customer_name: formData.fullName,
@@ -1475,6 +1402,7 @@ function AirportTransferPageContent() {
         customer_id: userId,
         fromLocation: formData.fromLocation,
         toLocation: formData.toLocation,
+        //is_guest: !isAuthenticated || !userId, // Set is_guest flag based on auth status
       };
 
       const { data, error } = await supabase
@@ -1487,6 +1415,57 @@ function AirportTransferPageContent() {
 
       // Move to success step
       setCurrentStep(4);
+
+      // Send WhatsApp message to customer
+      const customerMessage = `🚗 Airport Transfer Booking Confirmed!
+
+Booking Code: ${formData.bookingCode}
+Driver: ${formData.driverName}
+Vehicle: ${formData.vehicleName} (${formData.vehiclePlate})
+Pickup: ${formData.fromAddress}
+Dropoff: ${formData.toAddress}
+Date & Time: ${bookingType === "instant" ? "Now" : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
+Total Price: Rp ${formData.price.toLocaleString()}
+
+Thank you for choosing our service!`;
+
+      try {
+        await sendWhatsAppMessage(formData.phoneNumber, customerMessage);
+        console.log("WhatsApp message sent to customer successfully");
+      } catch (whatsappError) {
+        console.error(
+          "Failed to send WhatsApp message to customer:",
+          whatsappError,
+        );
+        // Don't show error to user since the booking was already saved
+      }
+
+      // Send WhatsApp message to driver if driver phone is available
+      if (formData.driverPhone) {
+        const driverMessage = `🚗 New Airport Transfer Booking!
+
+Booking Code: ${formData.bookingCode}
+Customer: ${formData.fullName}
+Phone: ${formData.phoneNumber}
+Pickup: ${formData.fromAddress}
+Dropoff: ${formData.toAddress}
+Date & Time: ${bookingType === "instant" ? "Now" : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
+Passengers: ${formData.passenger}
+Payment: ${formData.paymentMethod}
+
+Please prepare for the trip!`;
+
+        try {
+          await sendWhatsAppMessage(formData.driverPhone, driverMessage);
+          console.log("WhatsApp message sent to driver successfully");
+        } catch (whatsappError) {
+          console.error(
+            "Failed to send WhatsApp message to driver:",
+            whatsappError,
+          );
+          // Don't show error to user since the booking was already saved
+        }
+      }
 
       // Send notification (simulated)
       console.log("Sending booking notification to customer and driver");
@@ -1874,112 +1853,6 @@ function AirportTransferPageContent() {
                           vehicleType: type.name,
                         }));
 
-                        // Send notification to airport_transfer_notification table
-                        try {
-                          console.log(
-                            "Preparing to send notification to airport_transfer_notification table",
-                          );
-
-                          // Log Supabase connection status
-                          console.log(
-                            "Supabase URL being used:",
-                            import.meta.env.VITE_SUPABASE_URL,
-                          );
-                          console.log(
-                            "Supabase connection check:",
-                            supabase
-                              ? "Client initialized"
-                              : "Client not initialized",
-                          );
-
-                          const notificationData = {
-                            from_address: formData.fromAddress,
-                            to_address: formData.toAddress,
-                            pickup_date:
-                              formData.pickupDate ||
-                              new Date().toISOString().split("T")[0],
-                            pickup_time: formData.pickupTime,
-                            vehicle_type: type.name,
-                            distance: formData.distance,
-                            duration: formData.duration,
-                            estimated_price: calculateEstimatedPrice(),
-                            status: "pending",
-                            created_at: new Date().toISOString(),
-                            customer_id: userId || null,
-                            customer_name: formData.fullName,
-                            customer_phone: formData.phoneNumber,
-                            is_bidding_open: true,
-                          };
-
-                          console.log(
-                            "Notification data to be sent:",
-                            notificationData,
-                          );
-
-                          // Check if the table exists
-                          const { data: tableCheck, error: tableError } =
-                            await supabase
-                              .from("airport_transfer_notification")
-                              .select("id")
-                              .limit(1);
-
-                          if (tableError) {
-                            console.error(
-                              "Error checking airport_transfer_notification table:",
-                              tableError,
-                            );
-                            toast({
-                              title: "Database Error",
-                              description:
-                                "Could not access the notifications table. Please contact support.",
-                              variant: "destructive",
-                            });
-                            return;
-                          }
-
-                          console.log("Table check result:", tableCheck);
-
-                          // Proceed with insert
-                          const { data, error } = await supabase
-                            .from("airport_transfer_notification")
-                            .insert([notificationData]);
-
-                          if (error) {
-                            console.error("Error sending notification:", error);
-                            console.error(
-                              "Error details:",
-                              JSON.stringify(error),
-                            );
-                            toast({
-                              title: "Notification Error",
-                              description: `Could not notify drivers: ${error.message || error.code || "Unknown error"}`,
-                              variant: "destructive",
-                            });
-                          } else {
-                            console.log(
-                              "Notification sent successfully:",
-                              data,
-                            );
-                            toast({
-                              title: "Notification Sent",
-                              description:
-                                "Drivers have been notified about your booking request.",
-                            });
-                          }
-                        } catch (err) {
-                          console.error("Error in notification process:", err);
-                          console.error(
-                            "Error stack:",
-                            err instanceof Error ? err.stack : "No stack trace",
-                          );
-                          toast({
-                            title: "System Error",
-                            description:
-                              "An unexpected error occurred. Please try again.",
-                            variant: "destructive",
-                          });
-                        }
-
                         // Navigate to step 2
                         setCurrentStep(2);
                         // Search for drivers immediately
@@ -2001,9 +1874,37 @@ function AirportTransferPageContent() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-bold text-green-600">
+                            <p className="font-bold text-green-600 mb-2">
                               Rp {calculateEstimatedPrice().toLocaleString()}
                             </p>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  await addToCart({
+                                    item_type: "airport_transfer",
+                                    service_name: `Airport Transfer - ${type.name}`,
+                                    price: calculateEstimatedPrice(),
+                                    details: {
+                                      vehicleType: type.name,
+                                      fromAddress: formData.fromAddress,
+                                      toAddress: formData.toAddress,
+                                      distance: formData.distance,
+                                      duration: formData.duration,
+                                    },
+                                  });
+                                } catch (error) {
+                                  console.error(
+                                    "Failed to add to cart:",
+                                    error,
+                                  );
+                                }
+                              }}
+                            >
+                              + Cart
+                            </Button>
                           </div>
                         </div>
                       </CardContent>
@@ -2083,49 +1984,6 @@ function AirportTransferPageContent() {
               </div>
             </div>
           </div>
-
-          {bookingType === "scheduled" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Pickup Date */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Pickup Date</label>
-                <div className="relative">
-                  <Input
-                    type="date"
-                    value={formData.pickupDate}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        pickupDate: e.target.value,
-                      }))
-                    }
-                    min={new Date().toISOString().split("T")[0]}
-                    className="pl-10"
-                  />
-                  <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-
-              {/* Pickup Time */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Pickup Time</label>
-                <div className="relative">
-                  <Input
-                    type="time"
-                    value={formData.pickupTime}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        pickupTime: e.target.value,
-                      }))
-                    }
-                    className="pl-10"
-                  />
-                  <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     );
@@ -2272,12 +2130,6 @@ function AirportTransferPageContent() {
                       className={`border rounded-lg p-4 cursor-pointer transition-all ${selectedDriver?.id === driver.id ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
                       onClick={() => handleSelectDriver(driver)}
                     >
-                      {/* Show bidding badge if driver has placed a bid */}
-                      {driver.has_bid && (
-                        <div className="absolute top-2 right-2 bg-yellow-400 text-yellow-800 text-xs font-bold px-2 py-1 rounded-full">
-                          Bidding
-                        </div>
-                      )}
                       <div className="flex items-center gap-4">
                         <div className="h-16 w-16 rounded-full bg-gray-200 overflow-hidden">
                           {driver.photo_url ? (
@@ -2346,11 +2198,6 @@ function AirportTransferPageContent() {
                           <div className="text-xs text-gray-500">
                             ETA: {driver.eta} min
                           </div>
-                          {driver.has_bid && driver.bid_price && (
-                            <div className="text-sm font-bold text-yellow-600 mt-1">
-                              Bid: Rp {driver.bid_price.toLocaleString()}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -2520,44 +2367,32 @@ function AirportTransferPageContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Full Name</label>
-              {isAuthenticated ? (
-                <div className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  {formData.fullName}
-                </div>
-              ) : (
-                <Input
-                  type="text"
-                  value={formData.fullName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      fullName: e.target.value,
-                    }))
-                  }
-                  placeholder="Enter your full name"
-                />
-              )}
+              <Input
+                type="text"
+                value={formData.fullName}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    fullName: e.target.value,
+                  }))
+                }
+                placeholder="Enter your full name"
+              />
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Phone Number</label>
-              {isAuthenticated ? (
-                <div className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                  {formData.phoneNumber}
-                </div>
-              ) : (
-                <Input
-                  type="tel"
-                  value={formData.phoneNumber}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      phoneNumber: e.target.value,
-                    }))
-                  }
-                  placeholder="Enter your phone number"
-                />
-              )}
+              <Input
+                type="tel"
+                value={formData.phoneNumber}
+                onChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    phoneNumber: e.target.value,
+                  }))
+                }
+                placeholder="Enter your phone number"
+              />
             </div>
           </div>
         </div>

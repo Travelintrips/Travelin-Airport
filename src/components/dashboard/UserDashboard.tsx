@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
@@ -240,6 +240,7 @@ const UserDashboard = () => {
   // State for storing real booking data from Supabase
   const [activeBookings, setActiveBookings] = useState<any[]>([]);
   const [bookingHistory, setBookingHistory] = useState<any[]>([]);
+  const [baggageBookings, setBaggageBookings] = useState<any[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState<boolean>(false);
 
   // Fetch real booking data from Supabase
@@ -264,7 +265,7 @@ const UserDashboard = () => {
             vehicle_id,
             driver_name,
             kode_booking,
-            vehicles:vehicle_id (id, name, image_url, make, model, image),
+            vehicles!inner (id, name, image_url, make, model, image),
             payments (payment_method)
           `,
           )
@@ -297,13 +298,37 @@ const UserDashboard = () => {
             )
             .eq("customer_id", userId);
 
-        if (airportTransferError) {
-          console.error(
-            "Error fetching airport transfers:",
-            airportTransferError,
-          );
-          return;
-        }
+        // Fetch baggage booking data for this user
+        const { data: baggageBookingData, error: baggageBookingError } =
+          await supabase
+            .from("baggage_booking")
+            .select(
+              `
+        id,
+        booking_id,
+        customer_name,
+        customer_phone,
+        customer_email,
+        flight_number,
+        baggage_size,
+        price,
+        duration,
+        duration_type,
+        hours,
+        start_date,
+        end_date,
+        start_time,
+        end_time,
+        airport,
+        terminal,
+        storage_location,
+        status,
+        created_at,
+        updated_at
+      `,
+            )
+            .eq("customer_id", userId)
+            .order("created_at", { ascending: false });
 
         if (airportTransferError) {
           console.error(
@@ -312,9 +337,17 @@ const UserDashboard = () => {
           );
         }
 
-        if (bookingsData || airportTransferData) {
+        if (baggageBookingError) {
+          console.error(
+            "Error fetching baggage bookings:",
+            baggageBookingError,
+          );
+        }
+
+        if (bookingsData || airportTransferData || baggageBookingData) {
           console.log("Fetched bookings:", bookingsData);
           console.log("Fetched airport transfers:", airportTransferData);
+          console.log("Fetched baggage bookings:", baggageBookingData);
 
           // Transform the bookings data to match our component's expected format
           const formattedBookings = (bookingsData || []).map((booking) => {
@@ -456,10 +489,56 @@ const UserDashboard = () => {
             },
           );
 
-          // Combine both booking types
+          // Transform the baggage booking data
+          const formattedBaggageBookings = (baggageBookingData || []).map(
+            (booking) => {
+              return {
+                id: booking.id.toString(),
+                vehicleName: `Baggage Storage - ${booking.baggage_size.replace("_", " ").toUpperCase()}`,
+                vehicleModel: booking.baggage_size.replace("_", " "),
+                vehicleType: "Baggage Storage",
+                startDate: booking.start_date
+                  ? new Date(booking.start_date)
+                  : new Date(),
+                endDate: booking.end_date
+                  ? new Date(booking.end_date)
+                  : new Date(),
+                status: booking.status || "pending",
+                totalAmount: booking.price || 0,
+                paymentStatus:
+                  booking.status === "confirmed" ? "paid" : "pending",
+                imageUrl:
+                  "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80",
+                licensePlate: "-",
+                driverName: "-",
+                bookingCode: booking.booking_id || "-",
+                pickupStatus: "not_applicable",
+                isBaggageBooking: true,
+                baggageSize: booking.baggage_size,
+                duration: booking.duration,
+                durationType: booking.duration_type,
+                airport: booking.airport,
+                terminal: booking.terminal,
+                storageLocation: booking.storage_location,
+                flightNumber: booking.flight_number,
+                customerName: booking.customer_name,
+                customerPhone: booking.customer_phone,
+                customerEmail: booking.customer_email,
+                startTime: booking.start_time,
+                endTime: booking.end_time,
+                paymentMethod: "-",
+              };
+            },
+          );
+
+          // Store baggage bookings separately
+          setBaggageBookings(formattedBaggageBookings);
+
+          // Combine all booking types
           const allBookings = [
             ...formattedBookings,
             ...formattedAirportTransfers,
+            ...formattedBaggageBookings,
           ];
 
           // Split into active and history based on status
@@ -606,7 +685,7 @@ const UserDashboard = () => {
 
       // First update auth.users metadata with the selfie URL
       const { error: authUpdateError } = await supabase.functions.invoke(
-        "supabase-functions-update-user-metadata",
+        "update-user-metadata",
         {
           body: {
             userId: userId,
@@ -910,7 +989,9 @@ const UserDashboard = () => {
                                 <Badge className="mb-2">
                                   {booking.isAirportTransfer
                                     ? "Airport Transfer"
-                                    : "Rentcar"}
+                                    : booking.isBaggageBooking
+                                      ? "Baggage Storage"
+                                      : "Rentcar"}
                                 </Badge>
                                 <h3 className="text-lg font-semibold">
                                   {booking.vehicleName}
@@ -927,7 +1008,9 @@ const UserDashboard = () => {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Vehicle Model
+                                  {booking.isBaggageBooking
+                                    ? "Baggage Items"
+                                    : "Vehicle Model"}
                                 </p>
                                 <p className="font-medium">
                                   {booking.vehicleModel || booking.vehicleName}
@@ -936,29 +1019,35 @@ const UserDashboard = () => {
                               {booking.vehicleType && (
                                 <div>
                                   <p className="text-sm text-muted-foreground">
-                                    Vehicle Type
+                                    {booking.isBaggageBooking
+                                      ? "Storage"
+                                      : "Vehicle Type"}
                                   </p>
                                   <p className="font-medium">
                                     {booking.vehicleType}
                                   </p>
                                 </div>
                               )}
-                              <div>
-                                <p className="text-sm text-muted-foreground">
-                                  License Plate
-                                </p>
-                                <p className="font-medium">
-                                  {booking.licensePlate || "-"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground">
-                                  Driver Name
-                                </p>
-                                <p className="font-medium">
-                                  {booking.driverName}
-                                </p>
-                              </div>
+                              {!booking.isBaggageBooking && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    License Plate
+                                  </p>
+                                  <p className="font-medium">
+                                    {booking.licensePlate || "-"}
+                                  </p>
+                                </div>
+                              )}
+                              {!booking.isBaggageBooking && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    Driver Name
+                                  </p>
+                                  <p className="font-medium">
+                                    {booking.driverName}
+                                  </p>
+                                </div>
+                              )}
                               <div>
                                 <p className="text-sm text-muted-foreground">
                                   Booking Code
@@ -971,7 +1060,9 @@ const UserDashboard = () => {
                                 <p className="text-sm text-muted-foreground">
                                   {booking.isAirportTransfer
                                     ? "Pickup Date & Time"
-                                    : "Pickup Date"}
+                                    : booking.isBaggageBooking
+                                      ? "Storage Period"
+                                      : "Pickup Date"}
                                 </p>
                                 <p className="font-medium">
                                   {formatDate(booking.startDate)}
@@ -979,9 +1070,15 @@ const UserDashboard = () => {
                                   booking.pickupTime
                                     ? `, ${booking.pickupTime}`
                                     : ""}
-                                  {!booking.isAirportTransfer
-                                    ? ` - ${formatDate(booking.endDate)}`
+                                  {booking.isBaggageBooking && booking.startTime
+                                    ? ` ${booking.startTime}`
                                     : ""}
+                                  {!booking.isAirportTransfer &&
+                                  !booking.isBaggageBooking
+                                    ? ` - ${formatDate(booking.endDate)}`
+                                    : booking.isBaggageBooking
+                                      ? ` - ${formatDate(booking.endDate)}${booking.endTime ? ` ${booking.endTime}` : ""}`
+                                      : ""}
                                 </p>
                               </div>
                               {booking.isAirportTransfer && (
@@ -1002,6 +1099,55 @@ const UserDashboard = () => {
                                       {booking.dropoffLocation || "-"}
                                     </p>
                                   </div>
+                                </>
+                              )}
+                              {booking.isBaggageBooking && (
+                                <>
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">
+                                      Baggage Size
+                                    </p>
+                                    <p className="font-medium capitalize">
+                                      {booking.baggageSize?.replace("_", " ") ||
+                                        "-"}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">
+                                      Duration
+                                    </p>
+                                    <p className="font-medium">
+                                      {booking.duration} {booking.durationType}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <p className="text-sm text-muted-foreground">
+                                      Airport
+                                    </p>
+                                    <p className="font-medium">
+                                      {booking.airport || "-"}
+                                    </p>
+                                  </div>
+                                  {booking.flightNumber && (
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">
+                                        Flight Number
+                                      </p>
+                                      <p className="font-medium">
+                                        {booking.flightNumber}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {booking.storageLocation && (
+                                    <div className="md:col-span-2">
+                                      <p className="text-sm text-muted-foreground">
+                                        Storage Location
+                                      </p>
+                                      <p className="font-medium">
+                                        {booking.storageLocation}
+                                      </p>
+                                    </div>
+                                  )}
                                 </>
                               )}
                               <div>
@@ -1029,38 +1175,40 @@ const UserDashboard = () => {
                                 </p>
                               </div>
                             </div>
-                            <div className="flex gap-2 mt-4">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex items-center gap-1"
-                              >
-                                <FileText size={14} />
-                                View Details
-                              </Button>
-                              <Button
-                                size="sm"
-                                className="flex items-center gap-1"
-                                onClick={() => {
-                                  if (
-                                    booking.status === "approved" &&
-                                    booking.pickupStatus === "picked_up"
-                                  ) {
-                                    window.location.href = `/inspection?vehicleId=${booking.vehicleId}&bookingId=${booking.id}`;
-                                  } else {
-                                    alert(
-                                      "Vehicle must be approved and picked up before inspection",
-                                    );
-                                  }
-                                }}
-                              >
-                                <Car size={14} />
-                                {booking.status === "approved" &&
-                                booking.pickupStatus === "picked_up"
-                                  ? "Pre-Rental Inspection"
-                                  : "Return Vehicle"}
-                              </Button>
-                            </div>
+                            {!booking.isBaggageBooking && (
+                              <div className="flex gap-2 mt-4">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="flex items-center gap-1"
+                                >
+                                  <FileText size={14} />
+                                  View Details
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className="flex items-center gap-1"
+                                  onClick={() => {
+                                    if (
+                                      booking.status === "approved" &&
+                                      booking.pickupStatus === "picked_up"
+                                    ) {
+                                      window.location.href = `/inspection?vehicleId=${booking.vehicleId}&bookingId=${booking.id}`;
+                                    } else {
+                                      alert(
+                                        "Vehicle must be approved and picked up before inspection",
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Car size={14} />
+                                  {booking.status === "approved" &&
+                                  booking.pickupStatus === "picked_up"
+                                    ? "Pre-Rental Inspection"
+                                    : "Return Vehicle"}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1184,7 +1332,9 @@ const UserDashboard = () => {
                               <Badge className="mb-2">
                                 {booking.isAirportTransfer
                                   ? "Airport Transfer"
-                                  : "Rentcar"}
+                                  : booking.isBaggageBooking
+                                    ? "Baggage Storage"
+                                    : "Rentcar"}
                               </Badge>
                               <h3 className="text-lg font-semibold">
                                 {booking.vehicleName}
@@ -1199,18 +1349,22 @@ const UserDashboard = () => {
                             </Badge>
                           </div>
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-                            <div>
-                              <p className="text-sm text-muted-foreground">
-                                License Plate
-                              </p>
-                              <p className="font-medium">
-                                {booking.licensePlate || "-"}
-                              </p>
-                            </div>
+                            {!booking.isBaggageBooking && (
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  License Plate
+                                </p>
+                                <p className="font-medium">
+                                  {booking.licensePlate || "-"}
+                                </p>
+                              </div>
+                            )}
                             {booking.vehicleType && (
                               <div>
                                 <p className="text-sm text-muted-foreground">
-                                  Vehicle Type
+                                  {booking.isBaggageBooking
+                                    ? "Storage"
+                                    : "Vehicle Type"}
                                 </p>
                                 <p className="font-medium">
                                   {booking.vehicleType}
@@ -1218,14 +1372,16 @@ const UserDashboard = () => {
                               </div>
                             )}
 
-                            <div>
-                              <p className="text-sm text-muted-foreground">
-                                Driver Name
-                              </p>
-                              <p className="font-medium">
-                                {booking.driverName}
-                              </p>
-                            </div>
+                            {!booking.isBaggageBooking && (
+                              <div>
+                                <p className="text-sm text-muted-foreground">
+                                  Driver Name
+                                </p>
+                                <p className="font-medium">
+                                  {booking.driverName}
+                                </p>
+                              </div>
+                            )}
                             <div>
                               <p className="text-sm text-muted-foreground">
                                 Booking Code
@@ -1238,16 +1394,24 @@ const UserDashboard = () => {
                               <p className="text-sm text-muted-foreground">
                                 {booking.isAirportTransfer
                                   ? "Pickup Date & Time"
-                                  : "Pickup Date"}
+                                  : booking.isBaggageBooking
+                                    ? "Storage Period"
+                                    : "Pickup Date"}
                               </p>
                               <p className="font-medium">
                                 {formatDate(booking.startDate)}
                                 {booking.isAirportTransfer && booking.pickupTime
                                   ? `, ${booking.pickupTime}`
                                   : ""}
-                                {!booking.isAirportTransfer
-                                  ? ` - ${formatDate(booking.endDate)}`
+                                {booking.isBaggageBooking && booking.startTime
+                                  ? ` ${booking.startTime}`
                                   : ""}
+                                {!booking.isAirportTransfer &&
+                                !booking.isBaggageBooking
+                                  ? ` - ${formatDate(booking.endDate)}`
+                                  : booking.isBaggageBooking
+                                    ? ` - ${formatDate(booking.endDate)}${booking.endTime ? ` ${booking.endTime}` : ""}`
+                                    : ""}
                               </p>
                             </div>
                             {booking.isAirportTransfer && (
@@ -1266,6 +1430,35 @@ const UserDashboard = () => {
                                   </p>
                                   <p className="font-medium">
                                     {booking.dropoffLocation || "-"}
+                                  </p>
+                                </div>
+                              </>
+                            )}
+                            {booking.isBaggageBooking && (
+                              <>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    Baggage Size
+                                  </p>
+                                  <p className="font-medium capitalize">
+                                    {booking.baggageSize?.replace("_", " ") ||
+                                      "-"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    Airport
+                                  </p>
+                                  <p className="font-medium">
+                                    {booking.airport || "-"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm text-muted-foreground">
+                                    Terminal
+                                  </p>
+                                  <p className="font-medium">
+                                    {booking.terminal || "-"}
                                   </p>
                                 </div>
                               </>
@@ -1299,7 +1492,9 @@ const UserDashboard = () => {
                             <Button size="sm" variant="outline">
                               View Details
                             </Button>
-                            <Button size="sm">Manage Booking</Button>
+                            {!booking.isBaggageBooking && (
+                              <Button size="sm">Manage Booking</Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1356,13 +1551,17 @@ const UserDashboard = () => {
                                   <p className="text-sm text-muted-foreground">
                                     {booking.isAirportTransfer
                                       ? "Airport Transfer"
-                                      : "Rentcar"}
+                                      : booking.isBaggageBooking
+                                        ? "Baggage Storage"
+                                        : "Rentcar"}
                                   </p>
                                   <p className="font-medium">
                                     {formatDate(booking.startDate)}
                                     {booking.pickupTime
                                       ? `, ${booking.pickupTime}`
-                                      : ""}
+                                      : booking.startTime
+                                        ? ` ${booking.startTime}`
+                                        : ""}
                                   </p>
                                 </div>
 
@@ -1675,7 +1874,7 @@ const UserDashboard = () => {
                             // First update auth.users metadata as the primary source of truth
                             const { error: authUpdateError } =
                               await supabase.functions.invoke(
-                                "supabase-functions-update-user-metadata",
+                                "update-user-metadata",
                                 {
                                   body: {
                                     userId: userId,

@@ -1,5 +1,7 @@
 {
-  "imports": {
-    "@shared/": "./_shared/"
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"],
+    "strict": false
   }
 }

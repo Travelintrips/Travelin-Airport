@@ -97,6 +97,12 @@
   h2,
   h3 {
     word-break: break-word;
+    hyphens: auto;
+  }
+
+  .container-luggage {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 }
 
@@ -107,4 +113,6 @@
 .container-luggage {
   padding-left: 0;
   padding-right: 0;
+  width: 100%;
+  overflow-x: hidden;
 }

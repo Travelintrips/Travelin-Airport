@@ -4,6 +4,7 @@ import App from "./App.tsx";
 import "./index.css";
 import { BrowserRouter } from "react-router-dom";
 import "./lib/i18n";
+import { supabase } from "./lib/supabase";
 
 import { TempoDevtools } from "tempo-devtools";
 
@@ -14,6 +15,8 @@ if (
 ) {
   TempoDevtools.init();
 }
+
+// Removed redundant global auth listener to prevent repeated authentication checks
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

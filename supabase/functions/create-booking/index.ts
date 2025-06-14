@@ -68,6 +68,11 @@ Deno.serve(async (req) => {
       bookingData.created_at = new Date().toISOString();
     }
 
+    // Set is_guest flag - if user is authenticated, it's not a guest
+    if (bookingData.is_guest === undefined) {
+      bookingData.is_guest = false; // Authenticated users are not guests
+    }
+
     // Insert booking into database
     const { data, error } = await supabase
       .from("bookings")

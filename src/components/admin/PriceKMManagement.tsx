@@ -220,13 +220,17 @@ const PriceKMManagement = () => {
 
   // Filter vehicle types by type for each tab
   const getVehicleTypesByCategory = (category: string) => {
-    return vehicleTypes.filter((vehicleType) =>
-      vehicleType.type.toLowerCase().includes(category.toLowerCase()),
+    return vehicleTypes.filter(
+      (vehicleType) =>
+        vehicleType.type &&
+        vehicleType.type.toLowerCase &&
+        vehicleType.type.toLowerCase().includes(category.toLowerCase()),
     );
   };
 
   const mpvVehicleTypes = getVehicleTypesByCategory("mpv").filter(
-    (v) => !v.type.toLowerCase().includes("premium"),
+    (v) =>
+      v.type && v.type.toLowerCase && !v.type.toLowerCase().includes("premium"),
   );
   const mpvPremiumVehicleTypes = getVehicleTypesByCategory("premium");
   const electricVehicleTypes = getVehicleTypesByCategory("electric");

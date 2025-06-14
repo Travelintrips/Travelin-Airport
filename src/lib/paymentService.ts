@@ -14,6 +14,39 @@ interface PaymentRequest {
 
 export async function processPayment(paymentData: PaymentRequest) {
   try {
+    // Check if this is a guest booking to bypass journal entries
+    let isGuestBooking = false;
+
+    // Check booking tables for is_guest flag
+    const bookingTables = ["bookings", "baggage_booking", "airport_transfer"];
+
+    for (const table of bookingTables) {
+      try {
+        const { data: bookingData, error } = await supabase
+          .from(table)
+          .select("is_guest")
+          .eq("id", paymentData.bookingId)
+          .maybeSingle();
+
+        if (!error && bookingData) {
+          isGuestBooking = bookingData.is_guest === true;
+          console.log(
+            `[Payment Service] Found booking in ${table}, is_guest: ${isGuestBooking}`,
+          );
+          break;
+        }
+      } catch (err) {
+        console.warn(
+          `[Payment Service] Could not check ${table} for booking ${paymentData.bookingId}:`,
+          err,
+        );
+      }
+    }
+
+    if (isGuestBooking) {
+      console.log("[Journal Skipped] Booking by guest, jurnal tidak disimpan.");
+    }
+
     // First try to use the edge function
     try {
       // Check if this payment is for damage fees
@@ -59,8 +92,11 @@ export async function processPayment(paymentData: PaymentRequest) {
 
       // Use supabase client to invoke the function for regular payments
       const { data: functionData, error: functionError } =
-        await supabase.functions.invoke("processPayment", {
-          body: paymentData,
+        await supabase.functions.invoke("supabase-functions-processPayment", {
+          body: {
+            ...paymentData,
+            isGuestBooking, // Pass guest flag to edge function
+          },
         });
 
       if (functionError) {

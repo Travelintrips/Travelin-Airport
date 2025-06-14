@@ -264,9 +264,68 @@ const HotelBookingForm = () => {
           )}
         />
 
-        <Button type="submit" className="w-full">
-          Tambahkan ke Keranjang
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={async () => {
+              const formData = form.getValues();
+              const profit =
+                formData.sellingPrice -
+                formData.basicPrice -
+                (formData.feeSales || 0);
+
+              try {
+                await addToCart({
+                  item_type: "airport_transfer", // Using airport_transfer as closest match
+                  service_name: `${formData.hotelName} - ${formData.location}`,
+                  price: formData.sellingPrice,
+                  details: {
+                    hotelName: formData.hotelName,
+                    location: formData.location,
+                    checkInDate: formData.checkInDate,
+                    checkOutDate: formData.checkOutDate,
+                    roomCount: formData.roomCount,
+                    nightCount: formData.nightCount,
+                    date: formData.date,
+                    basicPrice: formData.basicPrice,
+                    feeSales: formData.feeSales || 0,
+                    profit: profit,
+                    notes: formData.notes,
+                  },
+                });
+
+                // Reset form after adding to cart
+                form.reset({
+                  hotelName: "",
+                  location: "",
+                  checkInDate: new Date().toISOString().split("T")[0],
+                  checkOutDate: new Date(Date.now() + 86400000)
+                    .toISOString()
+                    .split("T")[0],
+                  roomCount: 1,
+                  nightCount: 1,
+                  date: new Date().toISOString().split("T")[0],
+                  basicPrice: 0,
+                  sellingPrice: 0,
+                  feeSales: 0,
+                  notes: "",
+                });
+
+                alert("Hotel berhasil ditambahkan ke keranjang!");
+              } catch (error) {
+                console.error("Error adding to cart:", error);
+                alert("Gagal menambahkan ke keranjang");
+              }
+            }}
+          >
+            Add to Cart
+          </Button>
+          <Button type="submit" className="w-full">
+            Book Now
+          </Button>
+        </div>
       </form>
     </Form>
   );

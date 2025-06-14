@@ -5,6 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Car, User, CreditCard, Calendar } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
 
 interface Vehicle {
   id: string;
@@ -29,19 +31,17 @@ interface Vehicle {
 const ModelDetailPage = () => {
   const { modelName } = useParams<{ modelName: string }>();
   const navigate = useNavigate();
+  const { isAuthenticated, userId } = useAuth();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
-    // Check authentication status
-    const checkAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setIsAuthenticated(!!data.session);
-    };
-    checkAuth();
-  }, []);
+    if (!isAuthenticated || !userId) {
+      setShowAuthModal(true);
+    }
+  }, [isAuthenticated, userId]);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -145,6 +145,23 @@ const ModelDetailPage = () => {
       navigate("/booking", { state: { selectedVehicle: vehicle } });
     }
   };
+
+  if (!isAuthenticated || !userId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
+          </div>
+        </div>
+        <AuthRequiredModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

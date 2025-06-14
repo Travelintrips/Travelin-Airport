@@ -208,9 +208,60 @@ const FlightBookingForm = () => {
           )}
         />
 
-        <Button type="submit" className="w-full">
-          Tambahkan ke Keranjang
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={async () => {
+              const formData = form.getValues();
+              const profit =
+                formData.sellingPrice -
+                formData.basicPrice -
+                (formData.feeSales || 0);
+
+              try {
+                await addToCart({
+                  item_type: "airport_transfer", // Using airport_transfer as closest match
+                  service_name: `${formData.airline} - ${formData.route}`,
+                  price: formData.sellingPrice,
+                  details: {
+                    airline: formData.airline,
+                    route: formData.route,
+                    passengerCount: formData.passengerCount,
+                    date: formData.date,
+                    basicPrice: formData.basicPrice,
+                    feeSales: formData.feeSales || 0,
+                    profit: profit,
+                    notes: formData.notes,
+                  },
+                });
+
+                // Reset form after adding to cart
+                form.reset({
+                  airline: "",
+                  route: "",
+                  passengerCount: 1,
+                  date: new Date().toISOString().split("T")[0],
+                  basicPrice: 0,
+                  sellingPrice: 0,
+                  feeSales: 0,
+                  notes: "",
+                });
+
+                alert("Tiket pesawat berhasil ditambahkan ke keranjang!");
+              } catch (error) {
+                console.error("Error adding to cart:", error);
+                alert("Gagal menambahkan ke keranjang");
+              }
+            }}
+          >
+            Add to Cart
+          </Button>
+          <Button type="submit" className="w-full">
+            Book Now
+          </Button>
+        </div>
       </form>
     </Form>
   );

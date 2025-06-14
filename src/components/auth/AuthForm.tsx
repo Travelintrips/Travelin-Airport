@@ -91,10 +91,17 @@ const AuthForm: React.FC<AuthFormProps> = ({
     },
   });
 
-  const handleLoginSuccess = async (authData: Session) => {
+  const handleLoginSuccess = async (authData: any) => {
+    console.log(
+      "🎯 handleLoginSuccess called with session:",
+      !!authData.session,
+    );
+
     const userMeta = authData.user?.user_metadata || {};
+    console.log("📋 User metadata:", userMeta);
 
     // Try to get name from users table first
+    console.log("🔍 Fetching user name from users table...");
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("full_name")
@@ -105,8 +112,9 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
     if (!userError && userData?.full_name) {
       userFullName = userData.full_name.trim();
-      console.log("Found name in users table during login:", userFullName);
+      console.log("✅ Found name in users table during login:", userFullName);
     } else {
+      console.log("🔍 Checking customers table for name...");
       // Check if user is a customer, try customers table
       const { data: customerData, error: customerError } = await supabase
         .from("customers")
@@ -117,17 +125,18 @@ const AuthForm: React.FC<AuthFormProps> = ({
       if (!customerError && (customerData?.full_name || customerData?.name)) {
         userFullName = (customerData.full_name || customerData.name).trim();
         console.log(
-          "Found name in customers table during login:",
+          "✅ Found name in customers table during login:",
           userFullName,
         );
       } else {
+        console.log("🔄 Using fallback name from metadata or email...");
         // Fallback to metadata
         userFullName =
           (userMeta.full_name && userMeta.full_name.trim()) ||
           (userMeta.name && userMeta.name.trim()) ||
           authData.user.email?.split("@")[0] ||
           "Guest";
-        console.log("Using fallback name during login:", userFullName);
+        console.log("📝 Using fallback name during login:", userFullName);
       }
     }
 
@@ -135,7 +144,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
     if (!userFullName || userFullName === "Customer") {
       userFullName = authData.user.email?.split("@")[0] || "User";
       console.log(
-        "Replaced empty/Customer name with email username:",
+        "🔄 Replaced empty/Customer name with email username:",
         userFullName,
       );
     }
@@ -147,6 +156,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
       name: userFullName,
     };
 
+    console.log("💾 Saving user data to localStorage:", userDataObj);
     localStorage.setItem("auth_user", JSON.stringify(userDataObj));
     localStorage.setItem("userName", userFullName);
     localStorage.setItem("userId", authData.user.id);
@@ -154,10 +164,13 @@ const AuthForm: React.FC<AuthFormProps> = ({
       localStorage.setItem("userEmail", authData.user.email);
     }
 
-    console.log("User logged in:", userDataObj);
+    console.log("✅ User logged in successfully:", userDataObj);
 
     if (onAuthStateChange) {
+      console.log("🔄 Calling onAuthStateChange(true)...");
       onAuthStateChange(true);
+    } else {
+      console.log("⚠️ No onAuthStateChange handler provided");
     }
   };
 
@@ -165,11 +178,16 @@ const AuthForm: React.FC<AuthFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLoginSubmit = async (data: LoginFormValues) => {
+    console.log("🔄 handleLoginSubmit called with:", {
+      email: data.email,
+      hasPassword: !!data.password,
+    });
+
     setLoginError(null);
     setIsSubmitting(true);
 
     try {
-      console.log("Login submission started with email:", data.email);
+      console.log("🚀 Login submission started with email:", data.email);
 
       // Clear any previous session data to prevent conflicts
       localStorage.removeItem("userRole");
@@ -178,26 +196,43 @@ const AuthForm: React.FC<AuthFormProps> = ({
       localStorage.removeItem("auth_user");
       localStorage.removeItem("driverData");
       localStorage.removeItem("userName");
+      localStorage.removeItem("isAdmin");
 
-      console.log("Attempting to sign in with email:", data.email);
+      console.log("🔐 Attempting to sign in with email:", data.email);
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
 
-      console.log("Sign in response:", error ? "Error" : "Success");
+      console.log("📡 Sign in response:", error ? "❌ Error" : "✅ Success");
+      if (error) {
+        console.error("❌ Login error details:", {
+          message: error.message,
+          status: error.status,
+          name: error.name,
+        });
+      }
 
       if (error) {
-        console.error("Login error:", error);
+        console.error("❌ Login error:", error);
         setLoginError(error.message);
+        setIsSubmitting(false);
         return;
       }
+
+      console.log("👤 Processing user data:", {
+        userId: authData.user.id,
+        email: authData.user.email,
+        metadata: authData.user.user_metadata,
+      });
 
       const userRole = authData.user?.user_metadata?.role || "Customer";
       const isAdmin = userRole === "Admin";
       localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
+      console.log("🏷️ User role determined:", userRole, "isAdmin:", isAdmin);
 
       if (userRole === "Driver") {
+        console.log("🚗 Checking driver status...");
         const { data: driverData, error: driverError } = await supabase
           .from("drivers")
           .select("status")
@@ -205,25 +240,23 @@ const AuthForm: React.FC<AuthFormProps> = ({
           .single();
 
         if (driverError) {
-          console.error("Error fetching driver status:", driverError);
+          console.error("❌ Error fetching driver status:", driverError);
         } else if (driverData && driverData.status === "suspended") {
+          console.log("🚫 Driver account suspended");
           setLoginError(
             "Your account has been suspended. Please contact an administrator.",
           );
           await supabase.auth.signOut();
+          setIsSubmitting(false);
           return;
         }
       }
-      handleLoginSuccess(authData);
-      onLogin(data);
 
-      {
-        /*    localStorage.setItem("userRole", userRole);
-      localStorage.setItem("userId", authData.user.id);
-      if (authData.user.email) {
-        localStorage.setItem("userEmail", authData.user.email);
-      } */
-      }
+      console.log("✅ Calling handleLoginSuccess...");
+      await handleLoginSuccess(authData);
+      console.log("📞 Calling onLogin callback...");
+      onLogin(data);
+      console.log("✅ onLogin callback completed");
 
       const userMeta = authData.user?.user_metadata || {};
 
@@ -298,24 +331,26 @@ const AuthForm: React.FC<AuthFormProps> = ({
       localStorage.setItem("userName", userFullName);
       console.log("Saved userName to localStorage during login:", userFullName);
 
-      console.log("User logged in with role:", userRole);
-      console.log("User logged in successfully with ID:", authData.user.id);
+      console.log("🏷️ User logged in with role:", userRole);
+      console.log("🆔 User logged in successfully with ID:", authData.user.id);
 
+      console.log("📞 Calling onLogin callback (second time)...");
       onLogin(data);
+      console.log("✅ onLogin callback completed (second time)");
 
       if (onAuthStateChange) {
-        console.log("Updating auth state to true");
+        console.log("🔄 Updating auth state to true (second time)...");
         onAuthStateChange(true);
       } else {
-        console.log("No onAuthStateChange handler provided");
+        console.log("⚠️ No onAuthStateChange handler provided (second time)");
       }
 
       // Force immediate redirect for Admin users
       if (userRole === "Admin" || isAdmin) {
-        console.log("Redirecting Admin user to admin panel");
+        console.log("🔀 Redirecting Admin user to admin panel");
         navigate("/admin");
       } else if (userRole === "Staff Trips") {
-        console.log("Redirecting Staff user to sub-account panel");
+        console.log("🔀 Redirecting Staff user to sub-account panel");
         const token = authData.session?.access_token; // ambil access_token dari session
         const refresh_token = authData.session?.refresh_token;
 
@@ -326,22 +361,29 @@ const AuthForm: React.FC<AuthFormProps> = ({
           );
         } else {
           console.error(
-            "No access token or refresh token found for Staff Trips user.",
+            "❌ No access token or refresh token found for Staff Trips user.",
           );
         }
       } else {
-        console.log("No redirect needed for role:", userRole);
+        console.log("ℹ️ No redirect needed for role:", userRole);
       }
 
       if (onClose) {
-        console.log("Closing auth form after successful login");
+        console.log("🚪 Closing auth form after successful login");
         onClose();
       }
     } catch (error) {
-      setLoginError("An unexpected error occurred");
-      console.error("Login error:", error);
+      console.error("💥 Unexpected login error:", {
+        error,
+        message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : "No stack trace",
+      });
+      setLoginError(
+        error instanceof Error ? error.message : "An unexpected error occurred",
+      );
     } finally {
       setIsSubmitting(false);
+      console.log("🏁 Login submission completed, isSubmitting set to false");
     }
   };
 
@@ -790,8 +832,11 @@ const AuthForm: React.FC<AuthFormProps> = ({
           "Registration successful! Please log in to complete your profile with a selfie verification.",
         );
 
-        // Redirect to login page
-        navigate("/login");
+        // Force page refresh and redirect to login page
+        setTimeout(() => {
+          window.location.href = "/login";
+          window.location.reload();
+        }, 100);
       } else {
         // For other roles, keep the existing behavior
         if (onAuthStateChange) {

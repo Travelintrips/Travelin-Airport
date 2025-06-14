@@ -15,53 +15,44 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 
 const UserDropdown = () => {
   const {
-    role,
+    userRole: role,
     signOut,
     isAdmin,
     isLoading,
     userEmail,
     userName: authUserName,
+    isAuthenticated,
   } = useAuth();
-  console.log("UserDropdown debug", {
-    isLoading,
-    authUserName,
-    local: localStorage.getItem("userName"),
-  });
 
   const navigate = useNavigate();
 
-  // Prioritize userName from useAuth hook, then localStorage, then email
-  let userName: string | null = authUserName;
+  // Show loading only for a brief moment with timeout
+  const [showLoading, setShowLoading] = React.useState(true);
 
-  if (!userName || ["user", "customer"].includes(userName.toLowerCase())) {
-    const storedName = localStorage.getItem("userName");
-    if (
-      storedName &&
-      !["user", "customer"].includes(storedName.toLowerCase())
-    ) {
-      userName = storedName;
-    } else if (userEmail) {
-      userName = userEmail.split("@")[0];
+  React.useEffect(() => {
+    if (isLoading) {
+      // Set a timeout to stop showing loading after 5 seconds
+      const timeout = setTimeout(() => {
+        setShowLoading(false);
+      }, 5000);
+
+      return () => clearTimeout(timeout);
     } else {
-      userName = null; // jangan paksa "User"
+      setShowLoading(false);
     }
+  }, [isLoading]);
+
+  // Don't render if not authenticated and not loading
+  if (!isAuthenticated && !isLoading && !showLoading) {
+    return null;
   }
 
-  if (!userName && !isLoading) {
-    return (
-      <Button
-        variant="ghost"
-        className="flex items-center gap-2 text-white opacity-70"
-      >
-        Not Logged In
-      </Button>
-    );
-  }
-  if (isLoading) {
+  // Show loading state
+  if (isLoading && showLoading) {
     return (
       <Button
         variant="ghost"
@@ -72,28 +63,40 @@ const UserDropdown = () => {
     );
   }
 
-  // Get isAdmin from localStorage as a backup
-  const isAdminFromStorage = localStorage.getItem("isAdmin") === "true";
-  const effectiveIsAdmin = isAdmin || isAdminFromStorage;
+  // If not authenticated after loading is complete, don't render
+  if (!isAuthenticated) {
+    return null;
+  }
 
-  // Ensure we're correctly displaying the role
-  console.log(
-    "UserDropdown - role:",
-    role,
-    "isAdmin:",
-    isAdmin,
-    "isAdminFromStorage:",
-    isAdminFromStorage,
-    "userName:",
-    userName,
-    "authUserName:",
-    authUserName,
-  );
+  // Simplified userName resolution
+  const userName =
+    authUserName ||
+    localStorage.getItem("userName") ||
+    (userEmail ? userEmail.split("@")[0] : "User");
+
+  // Simplified admin check
+  const effectiveIsAdmin =
+    isAdmin || localStorage.getItem("isAdmin") === "true";
   const displayRole = effectiveIsAdmin ? "Admin" : role || "Customer";
 
   const handleLogout = async () => {
-    await signOut();
-    navigate("/");
+    console.log("[UserDropdown] Starting logout process");
+
+    try {
+      // Call the signOut function from AuthContext
+      // This will handle all cleanup and page refresh
+      await signOut();
+
+      // Additional fallback to ensure page refresh
+      setTimeout(() => {
+        window.location.replace("/");
+      }, 500);
+    } catch (error) {
+      console.error("[UserDropdown] Error during logout:", error);
+
+      // Fallback: force complete page refresh even if signOut fails
+      window.location.replace("/");
+    }
   };
 
   const handleNavigate = (path: string) => {
@@ -109,10 +112,7 @@ const UserDropdown = () => {
           className="flex items-center gap-2 text-white hover:bg-transparent hover:text-white"
         >
           <span>
-            {userName && !["user", "customer"].includes(userName.toLowerCase())
-              ? userName
-              : userEmail?.split("@")[0] || "Guest"}{" "}
-            ({displayRole})
+            {userName} ({displayRole})
           </span>
 
           <ChevronDown className="h-4 w-4" />

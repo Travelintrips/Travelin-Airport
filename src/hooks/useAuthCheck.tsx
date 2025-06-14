@@ -78,9 +78,6 @@ function useAuthCheck() {
   // Function to handle authentication state changes
   const handleAuthStateChange = (state: boolean) => {
     setIsAuthenticated(state);
-    if (state) {
-      setShowAuthForm(false); // Tambahkan ini untuk jaga-jaga
-    }
 
     if (state) {
       // Get user data from localStorage if available

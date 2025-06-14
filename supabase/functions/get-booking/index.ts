@@ -58,8 +58,27 @@ Deno.serve(async (req) => {
     const vehicleId = url.searchParams.get("vehicle_id");
     const status = url.searchParams.get("status");
 
-    // Build query
-    let query = supabase.from("bookings").select("*, vehicles(*)");
+    // Build query - use proper join syntax
+    let query = supabase.from("bookings").select(`
+      *,
+      vehicles!inner(
+        id,
+        make,
+        model,
+        year,
+        type,
+        category,
+        price,
+        image,
+        license_plate,
+        seats,
+        transmission,
+        fuel_type,
+        available,
+        status,
+        features
+      )
+    `);
 
     // Apply filters if provided
     if (id) {

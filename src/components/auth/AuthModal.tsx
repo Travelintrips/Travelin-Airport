@@ -242,12 +242,25 @@ const AuthModal: React.FC<ModalProps> = ({
                       type="submit"
                       className="w-full"
                       disabled={isLoading || isSubmitting}
-                      onClick={() => {
+                      onClick={(e) => {
+                        console.log("🖱️ Login button clicked!");
+                        console.log("📊 Current state:", {
+                          isLoading,
+                          isSubmitting,
+                          formValid: loginForm.formState.isValid,
+                          errors: loginForm.formState.errors,
+                          values: loginForm.getValues(),
+                        });
+
                         if (loginError) {
-                          // Clear error state when trying again
+                          console.log("🧹 Clearing previous login error");
                           loginForm.clearErrors();
                         }
-                        console.log("Login button clicked");
+
+                        // Don't prevent default - let form submission handle it
+                        console.log(
+                          "✅ Button click handler completed, form will submit",
+                        );
                       }}
                     >
                       {isLoading || isSubmitting ? "Signing in..." : "Sign In"}

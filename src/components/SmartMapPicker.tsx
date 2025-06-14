@@ -17,6 +17,9 @@ export default function SmartMapPicker({
 }: SmartMapPickerProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const routingControlRef = useRef<any>(null);
+  const isComponentMountedRef = useRef(true);
+  const cleanupInProgressRef = useRef(false);
 
   const [mapMode, setMapMode] = useState<MapMode>("osm");
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -75,6 +78,88 @@ export default function SmartMapPicker({
     }
   }, [forceMode]);
 
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      isComponentMountedRef.current = false;
+
+      if (cleanupInProgressRef.current) {
+        return;
+      }
+      cleanupInProgressRef.current = true;
+
+      // Clean up routing control first
+      if (routingControlRef.current) {
+        try {
+          // Stop any ongoing routing requests
+          if (
+            routingControlRef.current._router &&
+            typeof routingControlRef.current._router.abort === "function"
+          ) {
+            routingControlRef.current._router.abort();
+          }
+
+          // Remove event listeners
+          if (typeof routingControlRef.current.off === "function") {
+            routingControlRef.current.off();
+          }
+
+          // Remove the control from map if map still exists
+          if (
+            mapInstanceRef.current &&
+            typeof mapInstanceRef.current.removeControl === "function"
+          ) {
+            mapInstanceRef.current.removeControl(routingControlRef.current);
+          }
+        } catch (error) {
+          console.warn("Error removing routing control:", error);
+        }
+        routingControlRef.current = null;
+      }
+
+      // Clean up map instance
+      if (mapInstanceRef.current) {
+        try {
+          // Remove all event listeners first
+          if (typeof mapInstanceRef.current.off === "function") {
+            mapInstanceRef.current.off();
+          }
+
+          // Clear all layers safely
+          if (typeof mapInstanceRef.current.eachLayer === "function") {
+            const layersToRemove: any[] = [];
+            mapInstanceRef.current.eachLayer((layer: any) => {
+              layersToRemove.push(layer);
+            });
+
+            layersToRemove.forEach((layer) => {
+              try {
+                if (
+                  mapInstanceRef.current &&
+                  typeof mapInstanceRef.current.removeLayer === "function"
+                ) {
+                  mapInstanceRef.current.removeLayer(layer);
+                }
+              } catch (e) {
+                // Ignore layer removal errors
+              }
+            });
+          }
+
+          // Remove the map
+          if (typeof mapInstanceRef.current.remove === "function") {
+            mapInstanceRef.current.remove();
+          }
+        } catch (error) {
+          console.warn("Error removing map:", error);
+        }
+        mapInstanceRef.current = null;
+      }
+
+      cleanupInProgressRef.current = false;
+    };
+  }, []);
+
   // Load peta setelah posisi valid dan API key ada
   useEffect(() => {
     if (
@@ -83,7 +168,7 @@ export default function SmartMapPicker({
       pickup[0] === 0 ||
       dropoff[0] === 0 ||
       !mapRef.current ||
-      !apiKey // ← tambahkan ini!
+      !apiKey
     )
       return;
 
@@ -92,32 +177,145 @@ export default function SmartMapPicker({
     } else if (mapMode === "google") {
       loadGoogleMap();
     }
-  }, [mapMode, pickup, dropoff, apiKey]); // ← tambahkan apiKey ke dependencies
+  }, [mapMode, pickup, dropoff, apiKey]);
 
   const loadLeaflet = () => {
     const L = (window as any).L;
 
     if (!L) {
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
-      script.async = true;
-      script.onload = () => initLeafletMap();
-      document.body.appendChild(script);
-
+      // Load Leaflet CSS
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.css";
       document.head.appendChild(link);
+
+      // Load Leaflet JS
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.3/dist/leaflet.js";
+      script.async = true;
+      script.onload = () => {
+        // Load Leaflet Routing Machine after Leaflet is loaded
+        loadLeafletRoutingMachine();
+      };
+      document.body.appendChild(script);
     } else {
-      initLeafletMap();
+      // Check if routing machine is available, if not load it
+      if (!L.Routing) {
+        loadLeafletRoutingMachine();
+      } else {
+        initLeafletMap();
+      }
     }
+  };
+
+  const loadLeafletRoutingMachine = () => {
+    const L = (window as any).L;
+
+    if (L.Routing) {
+      initLeafletMap();
+      return;
+    }
+
+    // Load Leaflet Routing Machine CSS
+    const routingCss = document.createElement("link");
+    routingCss.rel = "stylesheet";
+    routingCss.href =
+      "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css";
+    document.head.appendChild(routingCss);
+
+    // Load Leaflet Routing Machine JS
+    const routingScript = document.createElement("script");
+    routingScript.src =
+      "https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js";
+    routingScript.async = true;
+    routingScript.onload = () => {
+      initLeafletMap();
+    };
+    routingScript.onerror = () => {
+      console.warn(
+        "Failed to load Leaflet Routing Machine, continuing without routing",
+      );
+      initLeafletMap();
+    };
+    document.body.appendChild(routingScript);
   };
 
   const initLeafletMap = () => {
     const L = (window as any).L;
 
+    // Don't initialize if component is unmounted or cleanup is in progress
+    if (!isComponentMountedRef.current || cleanupInProgressRef.current) {
+      return;
+    }
+
+    // Clean up existing routing control first
+    if (routingControlRef.current) {
+      try {
+        // Stop any ongoing routing requests
+        if (
+          routingControlRef.current._router &&
+          typeof routingControlRef.current._router.abort === "function"
+        ) {
+          routingControlRef.current._router.abort();
+        }
+
+        // Remove event listeners
+        if (typeof routingControlRef.current.off === "function") {
+          routingControlRef.current.off();
+        }
+
+        if (
+          mapInstanceRef.current &&
+          typeof mapInstanceRef.current.removeControl === "function"
+        ) {
+          mapInstanceRef.current.removeControl(routingControlRef.current);
+        }
+      } catch (error) {
+        console.warn("Error removing existing routing control:", error);
+      }
+      routingControlRef.current = null;
+    }
+
+    // Clean up existing map
     if (mapInstanceRef.current) {
-      mapInstanceRef.current.remove();
+      try {
+        // Remove all event listeners first
+        if (typeof mapInstanceRef.current.off === "function") {
+          mapInstanceRef.current.off();
+        }
+
+        // Clear all layers safely
+        if (typeof mapInstanceRef.current.eachLayer === "function") {
+          const layersToRemove: any[] = [];
+          mapInstanceRef.current.eachLayer((layer: any) => {
+            layersToRemove.push(layer);
+          });
+
+          layersToRemove.forEach((layer) => {
+            try {
+              if (
+                mapInstanceRef.current &&
+                typeof mapInstanceRef.current.removeLayer === "function"
+              ) {
+                mapInstanceRef.current.removeLayer(layer);
+              }
+            } catch (e) {
+              // Ignore layer removal errors
+            }
+          });
+        }
+
+        if (typeof mapInstanceRef.current.remove === "function") {
+          mapInstanceRef.current.remove();
+        }
+      } catch (error) {
+        console.warn("Error removing existing map:", error);
+      }
+    }
+
+    // Don't continue if component unmounted during cleanup
+    if (!isComponentMountedRef.current || cleanupInProgressRef.current) {
+      return;
     }
 
     const centerLat = (pickup[0] + dropoff[0]) / 2;
@@ -149,6 +347,66 @@ export default function SmartMapPicker({
         iconAnchor: [10, 10],
       }),
     }).addTo(map);
+
+    // Add routing if Leaflet Routing Machine is available and component is still mounted
+    if (
+      L.Routing &&
+      typeof L.Routing.control === "function" &&
+      isComponentMountedRef.current &&
+      !cleanupInProgressRef.current
+    ) {
+      try {
+        const routingControl = L.Routing.control({
+          waypoints: [
+            L.latLng(pickup[0], pickup[1]),
+            L.latLng(dropoff[0], dropoff[1]),
+          ],
+          routeWhileDragging: false,
+          addWaypoints: false,
+          createMarker: function () {
+            return null;
+          }, // Don't create default markers
+          lineOptions: {
+            styles: [{ color: "#3388ff", weight: 4, opacity: 0.7 }],
+          },
+        });
+
+        // Add error handling for routing events
+        routingControl.on("routesfound", function (e) {
+          if (!isComponentMountedRef.current || cleanupInProgressRef.current) {
+            return;
+          }
+        });
+
+        routingControl.on("routingerror", function (e) {
+          if (!isComponentMountedRef.current || cleanupInProgressRef.current) {
+            return;
+          }
+          console.warn("Routing error:", e);
+        });
+
+        // Override the _clearLines method to prevent null errors
+        if (routingControl._clearLines) {
+          const originalClearLines = routingControl._clearLines;
+          routingControl._clearLines = function () {
+            try {
+              if (this._map && this._map.hasLayer) {
+                originalClearLines.call(this);
+              }
+            } catch (error) {
+              console.warn("Error in _clearLines:", error);
+            }
+          };
+        }
+
+        if (isComponentMountedRef.current && !cleanupInProgressRef.current) {
+          routingControl.addTo(map);
+          routingControlRef.current = routingControl;
+        }
+      } catch (error) {
+        console.warn("Error adding routing control:", error);
+      }
+    }
   };
 
   const loadGoogleMap = () => {
