@@ -23,6 +23,7 @@ import TravelPage from "./pages/TravelPage";
 import ModelDetailPage from "./pages/ModelDetailPage";
 import PaymentDetailsPage from "./pages/PaymentDetailsPage";
 import PaymentFormPage from "./pages/PaymentFormPage";
+import ThankYouPage from "./pages/ThankYouPage";
 import BookingPage from "./pages/BookingPage";
 import NewBookingPage from "./pages/NewBookingPage";
 import BookingForm from "./components/booking/BookingForm";
@@ -80,12 +81,34 @@ function AppContent() {
   });
   const navigate = useNavigate();
 
-  // isAdmin is now directly provided by the useAuth hook
-  // No need to recompute it here
+  // Check for authentication state
+  React.useEffect(() => {
+    // Check for loggedOut flag to prevent redirect loops
+    const loggedOut = sessionStorage.getItem("loggedOut");
+    if (loggedOut) {
+      console.log("Logged out flag detected, not redirecting");
+      sessionStorage.removeItem("loggedOut");
 
+      // Clear any remaining auth tokens to ensure clean state for next login
+      try {
+        localStorage.removeItem("supabase.auth.token");
+        localStorage.removeItem("sb-refresh-token");
+        localStorage.removeItem("sb-access-token");
+        localStorage.removeItem("sb-auth-token");
+      } catch (e) {
+        console.warn("Error clearing auth tokens:", e);
+      }
+      return;
+    }
+  }, []);
+
+  // Role-based redirects
   React.useEffect(() => {
     if (isAuthenticated && !isLoading) {
       const currentPath = window.location.pathname;
+
+      // Clear any logout flags to ensure proper authentication state
+      sessionStorage.removeItem("loggedOut");
 
       // Debug output to help diagnose issues
       console.log("Current authentication state:", {
@@ -168,186 +191,24 @@ function AppContent() {
     return children;
   };
 
-  React.useEffect(() => {
-    if (!isAuthenticated && !isLoading && sessionStorage.getItem("loggedOut")) {
-      console.log("[App.tsx] Detected logout flag, clearing and reloading");
-      sessionStorage.removeItem("loggedOut");
-      window.location.replace("/"); // ⬅️ lebih baik daripada reload untuk reset state + cache
-    }
-  }, [isAuthenticated, isLoading]);
-
   return (
-    <ShoppingCartProvider>
-      <div className="min-h-screen w-full">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-screen">
-              <p>Loading...</p>
-            </div>
-          }
-        >
-          {import.meta.env.VITE_TEMPO ? (
-            <>
-              <Routes>
-                {/* Payment form route - only accessible from cart */}
-                <Route path="/payment/form/:id" element={<PaymentFormPage />} />
-                <Route
-                  path="/payment/form/:id/*"
-                  element={<PaymentFormPage />}
-                />
-                <Route path="/payment/:id" element={<PaymentDetailsPage />} />
-                <Route
-                  path="/damage-payment/:bookingId"
-                  element={<DamagePaymentForm />}
-                />
-                <Route
-                  path="damage-payment/:bookingId"
-                  element={<DamagePaymentForm />}
-                />
-
-                <Route index element={<TravelPage />} />
-                <Route path="/home" element={<RentCar />} />
-                <Route path="/sub-account" element={<TravelPage />} />
-                <Route path="/rentcar" element={<RentCar />} />
-                <Route
-                  path="/models/:modelName"
-                  element={<ModelDetailPage />}
-                />
-                <Route
-                  path="/models/:modelName/*"
-                  element={<ModelDetailPage />}
-                />
-                <Route path="/booking" element={<BookingPage />} />
-                <Route path="/booking/:vehicle_id" element={<BookingPage />} />
-                <Route path="/booking/:vehicleId" element={<BookingForm />} />
-                <Route
-                  path="/booking/model/:model_name"
-                  element={<BookingPage />}
-                />
-                <Route
-                  path="/airport-transfer"
-                  element={<AirportTransferPage />}
-                />
-                <Route
-                  path="/airport-preview/:previewCode"
-                  element={<AirportTransferPreview />}
-                />
-                <Route path="/baggage" element={<AirportBaggage />} />
-                <Route path="/cart" element={<ShoppingCart />} />
-                <Route path="/driver-mitra" element={<DriverMitraPage />} />
-                <Route
-                  path="/driver-perusahaan"
-                  element={<DriverPerusahaanPage />}
-                />
-                <Route path="/driver-profile" element={<DriverProfile />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/bookings" element={<BookingsPage />} />
-                <Route path="/hotels" element={<HotelsPage />} />
-                <Route path="/flights" element={<FlightsPage />} />
-                <Route path="/trains" element={<TrainsPage />} />
-                <Route path="/bus-travel" element={<BusPage />} />
-                <Route path="/things-to-do" element={<ActivitiesPage />} />
-
-                <Route
-                  path="/new-booking"
-                  element={
-                    <ProtectedRoute
-                      allowedRoles={[
-                        ROLES.ADMIN,
-                        ROLES.STAFF,
-                        ROLES.STAFF_TRIPS,
-                      ]}
-                    >
-                      <NewBookingPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin"
-                  element={
-                    <ProtectedRoute
-                      allowedRoles={[
-                        ROLES.ADMIN,
-                        ROLES.STAFF,
-                        ROLES.STAFF_TRIPS,
-                      ]}
-                    >
-                      <AdminLayout />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/*"
-                  element={
-                    <ProtectedRoute
-                      allowedRoles={[
-                        ROLES.ADMIN,
-                        ROLES.STAFF,
-                        ROLES.STAFF_TRIPS,
-                      ]}
-                    >
-                      <AdminLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route path="api-settings" element={<ApiSettings />} />
-                  <Route path="price-km" element={<PriceKMManagement />} />
-                  <Route path="price-baggage" element={<PriceBaggage />} />
-                  <Route
-                    path="payment-methods"
-                    element={<PaymentMethodsManagement />}
-                  />
-                  <Route
-                    path="baggage-booking"
-                    element={<BaggageBookingManagement />}
-                  />
-                  <Route path="chart" element={<ChartManagement />} />
-                  <Route
-                    path="damage-payment/:bookingId"
-                    element={<DamagePaymentForm />}
-                  />
-                  <Route index element={<AdminDashboard />} />
-                  <Route path="dashboard" element={<AdminDashboard />} />
-                  <Route path="customers" element={<CustomerManagement />} />
-                  <Route path="drivers" element={<DriverManagement />} />
-                  <Route path="cars" element={<CarsManagement />} />
-                  <Route path="payments" element={<Payments />} />
-                  <Route
-                    path="bookings"
-                    element={<BookingManagementConnected />}
-                  />
-                  <Route path="staff" element={<StaffPage />} />
-                  <Route
-                    path="inspections"
-                    element={<InspectionManagement />}
-                  />
-                  <Route path="checklist" element={<ChecklistManagement />} />
-                  <Route path="damages" element={<DamageManagement />} />
-                  <Route
-                    path="vehicle-inventory"
-                    element={<VehicleInventory />}
-                  />
-                  <Route
-                    path="airport-transfer"
-                    element={<AirportTransferManagement />}
-                  />
-                </Route>
-
-                <Route path="/tempobook/*" element={<div />} />
-
-                <Route path="*" element={<Navigate to="/" />} />
-              </Routes>
-            </>
-          ) : (
+    <div className="min-h-screen w-full">
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-screen">
+            <p>Loading...</p>
+          </div>
+        }
+      >
+        {import.meta.env.VITE_TEMPO ? (
+          <>
+            {useRoutes(routes)}
             <Routes>
-              <Route
-                path="/airport-preview/:previewCode"
-                element={<AirportTransferPreview />}
-              />
-
+              {/* Payment form route - only accessible from cart */}
               <Route path="/payment/form/:id" element={<PaymentFormPage />} />
               <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
               <Route path="/payment/:id" element={<PaymentDetailsPage />} />
+              <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
               <Route
                 path="/damage-payment/:bookingId"
                 element={<DamagePaymentForm />}
@@ -357,7 +218,7 @@ function AppContent() {
                 element={<DamagePaymentForm />}
               />
 
-              <Route path="/" element={<TravelPage />} />
+              <Route index element={<TravelPage />} />
               <Route path="/home" element={<RentCar />} />
               <Route path="/sub-account" element={<TravelPage />} />
               <Route path="/rentcar" element={<RentCar />} />
@@ -377,6 +238,10 @@ function AppContent() {
                 path="/airport-transfer"
                 element={<AirportTransferPage />}
               />
+              <Route
+                path="/airport-preview/:previewCode"
+                element={<AirportTransferPreview />}
+              />
               <Route path="/baggage" element={<AirportBaggage />} />
               <Route path="/cart" element={<ShoppingCart />} />
               <Route path="/driver-mitra" element={<DriverMitraPage />} />
@@ -392,6 +257,7 @@ function AppContent() {
               <Route path="/trains" element={<TrainsPage />} />
               <Route path="/bus-travel" element={<BusPage />} />
               <Route path="/things-to-do" element={<ActivitiesPage />} />
+
               <Route
                 path="/new-booking"
                 element={
@@ -402,7 +268,6 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/admin"
                 element={
@@ -423,6 +288,22 @@ function AppContent() {
                   </ProtectedRoute>
                 }
               >
+                <Route path="api-settings" element={<ApiSettings />} />
+                <Route path="price-km" element={<PriceKMManagement />} />
+                <Route path="price-baggage" element={<PriceBaggage />} />
+                <Route
+                  path="payment-methods"
+                  element={<PaymentMethodsManagement />}
+                />
+                <Route
+                  path="baggage-booking"
+                  element={<BaggageBookingManagement />}
+                />
+                <Route path="chart" element={<ChartManagement />} />
+                <Route
+                  path="damage-payment/:bookingId"
+                  element={<DamagePaymentForm />}
+                />
                 <Route index element={<AdminDashboard />} />
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="customers" element={<CustomerManagement />} />
@@ -445,37 +326,147 @@ function AppContent() {
                   path="airport-transfer"
                   element={<AirportTransferManagement />}
                 />
-                <Route path="api-settings" element={<ApiSettings />} />
-                <Route path="price-km" element={<PriceKMManagement />} />
-                <Route
-                  path="payment-methods"
-                  element={<PaymentMethodsManagement />}
-                />
-                <Route
-                  path="baggage-booking"
-                  element={<BaggageBookingManagement />}
-                />
-                <Route path="chart" element={<ChartManagement />} />
-                <Route
-                  path="damage-payment/:bookingId"
-                  element={<DamagePaymentForm />}
-                />
               </Route>
+
+              <Route path="/tempobook/*" element={<div />} />
 
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
-          )}
-        </Suspense>
-        <Toaster />
-      </div>
-    </ShoppingCartProvider>
+          </>
+        ) : (
+          <Routes>
+            <Route
+              path="/airport-preview/:previewCode"
+              element={<AirportTransferPreview />}
+            />
+
+            <Route path="/payment/form/:id" element={<PaymentFormPage />} />
+            <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
+            <Route path="/payment/:id" element={<PaymentDetailsPage />} />
+            <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
+            <Route
+              path="/damage-payment/:bookingId"
+              element={<DamagePaymentForm />}
+            />
+            <Route
+              path="damage-payment/:bookingId"
+              element={<DamagePaymentForm />}
+            />
+
+            <Route path="/" element={<TravelPage />} />
+            <Route path="/home" element={<RentCar />} />
+            <Route path="/sub-account" element={<TravelPage />} />
+            <Route path="/rentcar" element={<RentCar />} />
+            <Route path="/models/:modelName" element={<ModelDetailPage />} />
+            <Route path="/models/:modelName/*" element={<ModelDetailPage />} />
+            <Route path="/booking" element={<BookingPage />} />
+            <Route path="/booking/:vehicle_id" element={<BookingPage />} />
+            <Route path="/booking/:vehicleId" element={<BookingForm />} />
+            <Route
+              path="/booking/model/:model_name"
+              element={<BookingPage />}
+            />
+            <Route path="/airport-transfer" element={<AirportTransferPage />} />
+            <Route path="/baggage" element={<AirportBaggage />} />
+            <Route path="/cart" element={<ShoppingCart />} />
+            <Route path="/driver-mitra" element={<DriverMitraPage />} />
+            <Route
+              path="/driver-perusahaan"
+              element={<DriverPerusahaanPage />}
+            />
+            <Route path="/driver-profile" element={<DriverProfile />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/bookings" element={<BookingsPage />} />
+            <Route path="/hotels" element={<HotelsPage />} />
+            <Route path="/flights" element={<FlightsPage />} />
+            <Route path="/trains" element={<TrainsPage />} />
+            <Route path="/bus-travel" element={<BusPage />} />
+            <Route path="/things-to-do" element={<ActivitiesPage />} />
+            <Route
+              path="/new-booking"
+              element={
+                <ProtectedRoute
+                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                >
+                  <NewBookingPage />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute
+                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                >
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/*"
+              element={
+                <ProtectedRoute
+                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                >
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<AdminDashboard />} />
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="customers" element={<CustomerManagement />} />
+              <Route path="drivers" element={<DriverManagement />} />
+              <Route path="cars" element={<CarsManagement />} />
+              <Route path="payments" element={<Payments />} />
+              <Route path="bookings" element={<BookingManagementConnected />} />
+              <Route path="staff" element={<StaffPage />} />
+              <Route path="inspections" element={<InspectionManagement />} />
+              <Route path="checklist" element={<ChecklistManagement />} />
+              <Route path="damages" element={<DamageManagement />} />
+              <Route path="vehicle-inventory" element={<VehicleInventory />} />
+              <Route
+                path="airport-transfer"
+                element={<AirportTransferManagement />}
+              />
+              <Route path="api-settings" element={<ApiSettings />} />
+              <Route path="price-km" element={<PriceKMManagement />} />
+              <Route
+                path="payment-methods"
+                element={<PaymentMethodsManagement />}
+              />
+              <Route
+                path="baggage-booking"
+                element={<BaggageBookingManagement />}
+              />
+              <Route path="chart" element={<ChartManagement />} />
+              <Route
+                path="damage-payment/:bookingId"
+                element={<DamagePaymentForm />}
+              />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" />} />
+          </Routes>
+        )}
+      </Suspense>
+      <Toaster />
+    </div>
   );
 }
 
 function App() {
+  // Clear any stale authentication flags on initial load
+  React.useEffect(() => {
+    // Remove any session flags that might interfere with authentication
+    sessionStorage.removeItem("forceLogout");
+  }, []);
+
   return (
     <AuthProvider>
-      <AppContent />
+      <ShoppingCartProvider>
+        <AppContent />
+      </ShoppingCartProvider>
     </AuthProvider>
   );
 }

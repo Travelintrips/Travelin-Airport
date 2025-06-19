@@ -57,6 +57,96 @@ export type Database = {
         }
         Relationships: []
       }
+      airport_handling: {
+        Row: {
+          base_price: number
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          location: string
+          sales_fee: number
+          selling_price: number
+          service_name: string
+          service_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          base_price?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          location: string
+          sales_fee?: number
+          selling_price?: number
+          service_name: string
+          service_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          base_price?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          location?: string
+          sales_fee?: number
+          selling_price?: number
+          service_name?: string
+          service_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      airport_handling_services: {
+        Row: {
+          additional: number
+          additional_basic_price: number
+          airport: string | null
+          basic_price: number
+          category: string
+          created_at: string | null
+          id: number
+          sell_price: number
+          service_type: string
+          services_arrival: string
+          services_departure: string
+          terminal: string
+          trip_type: string
+        }
+        Insert: {
+          additional: number
+          additional_basic_price?: number
+          airport?: string | null
+          basic_price: number
+          category: string
+          created_at?: string | null
+          id?: number
+          sell_price: number
+          service_type: string
+          services_arrival: string
+          services_departure: string
+          terminal: string
+          trip_type: string
+        }
+        Update: {
+          additional?: number
+          additional_basic_price?: number
+          airport?: string | null
+          basic_price?: number
+          category?: string
+          created_at?: string | null
+          id?: number
+          sell_price?: number
+          service_type?: string
+          services_arrival?: string
+          services_departure?: string
+          terminal?: string
+          trip_type?: string
+        }
+        Relationships: []
+      }
       airport_transfer: {
         Row: {
           airport_location: string | null
@@ -403,40 +493,43 @@ export type Database = {
       }
       baggage_price: {
         Row: {
-          created_at: string
-          electronic_price: number | null
-          extra_large_price: number | null
-          id: number
-          large_price: number | null
-          medium_price: number | null
-          small_price: number | null
-          stickgolf_price: number | null
-          surfingboard_price: number | null
-          wheelchair_price: number | null
+          created_at: string | null
+          electronic_price: number
+          extra_large_price: number
+          id: string
+          large_price: number
+          medium_price: number
+          small_price: number
+          stickgolf_price: number
+          surfingboard_price: number
+          updated_at: string | null
+          wheelchair_price: number
         }
         Insert: {
-          created_at?: string
-          electronic_price?: number | null
-          extra_large_price?: number | null
-          id: number
-          large_price?: number | null
-          medium_price?: number | null
-          small_price?: number | null
-          stickgolf_price?: number | null
-          surfingboard_price?: number | null
-          wheelchair_price?: number | null
+          created_at?: string | null
+          electronic_price?: number
+          extra_large_price?: number
+          id?: string
+          large_price?: number
+          medium_price?: number
+          small_price?: number
+          stickgolf_price?: number
+          surfingboard_price?: number
+          updated_at?: string | null
+          wheelchair_price?: number
         }
         Update: {
-          created_at?: string
-          electronic_price?: number | null
-          extra_large_price?: number | null
-          id?: number
-          large_price?: number | null
-          medium_price?: number | null
-          small_price?: number | null
-          stickgolf_price?: number | null
-          surfingboard_price?: number | null
-          wheelchair_price?: number | null
+          created_at?: string | null
+          electronic_price?: number
+          extra_large_price?: number
+          id?: string
+          large_price?: number
+          medium_price?: number
+          small_price?: number
+          stickgolf_price?: number
+          surfingboard_price?: number
+          updated_at?: string | null
+          wheelchair_price?: number
         }
         Relationships: []
       }
@@ -805,6 +898,7 @@ export type Database = {
       }
       bookings_trips: {
         Row: {
+          additional_data: string | null
           bank_account: string | null
           created_at: string
           detail_layanan: string | null
@@ -832,9 +926,12 @@ export type Database = {
           nomor_plat: string | null
           passenger_name: string | null
           payment_method: string | null
+          price: number | null
           profit: number | null
           quantity: number | null
           rute_penerbangan: string | null
+          service_details: string | null
+          service_name: string | null
           service_type: string | null
           status: string | null
           tanggal: string | null
@@ -843,12 +940,14 @@ export type Database = {
           tanggal_mulai: string | null
           tanggal_selesai: string | null
           terminal: string | null
+          total_amount: number | null
           total_harga: number | null
           tujuan: string | null
           type_unit: string | null
           user_id: string | null
         }
         Insert: {
+          additional_data?: string | null
           bank_account?: string | null
           created_at?: string
           detail_layanan?: string | null
@@ -876,9 +975,12 @@ export type Database = {
           nomor_plat?: string | null
           passenger_name?: string | null
           payment_method?: string | null
+          price?: number | null
           profit?: number | null
           quantity?: number | null
           rute_penerbangan?: string | null
+          service_details?: string | null
+          service_name?: string | null
           service_type?: string | null
           status?: string | null
           tanggal?: string | null
@@ -887,12 +989,14 @@ export type Database = {
           tanggal_mulai?: string | null
           tanggal_selesai?: string | null
           terminal?: string | null
+          total_amount?: number | null
           total_harga?: number | null
           tujuan?: string | null
           type_unit?: string | null
           user_id?: string | null
         }
         Update: {
+          additional_data?: string | null
           bank_account?: string | null
           created_at?: string
           detail_layanan?: string | null
@@ -920,9 +1024,12 @@ export type Database = {
           nomor_plat?: string | null
           passenger_name?: string | null
           payment_method?: string | null
+          price?: number | null
           profit?: number | null
           quantity?: number | null
           rute_penerbangan?: string | null
+          service_details?: string | null
+          service_name?: string | null
           service_type?: string | null
           status?: string | null
           tanggal?: string | null
@@ -931,6 +1038,7 @@ export type Database = {
           tanggal_mulai?: string | null
           tanggal_selesai?: string | null
           terminal?: string | null
+          total_amount?: number | null
           total_harga?: number | null
           tujuan?: string | null
           type_unit?: string | null
@@ -2660,6 +2768,7 @@ export type Database = {
           reference_number: string | null
           source_table: string | null
           total_amount: number | null
+          total_credit: number | null
           total_debit: number | null
           transaction_date: string | null
           updated_at: string
@@ -2685,6 +2794,7 @@ export type Database = {
           reference_number?: string | null
           source_table?: string | null
           total_amount?: number | null
+          total_credit?: number | null
           total_debit?: number | null
           transaction_date?: string | null
           updated_at?: string
@@ -2710,6 +2820,7 @@ export type Database = {
           reference_number?: string | null
           source_table?: string | null
           total_amount?: number | null
+          total_credit?: number | null
           total_debit?: number | null
           transaction_date?: string | null
           updated_at?: string
@@ -4296,7 +4407,7 @@ export type Database = {
       }
       process_journal_entry: {
         Args: { p_journal_entry_id: string }
-        Returns: boolean
+        Returns: undefined
       }
       test_user_insert: {
         Args: Record<PropertyKey, never>

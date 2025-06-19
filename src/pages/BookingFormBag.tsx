@@ -94,6 +94,11 @@ interface BookingFormProps {
   };
   initialDate?: Date;
   initialTime?: string;
+  prefilledData?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
 }
 
 const BookingForm = ({
@@ -103,6 +108,7 @@ const BookingForm = ({
   baggagePrices,
   initialDate,
   initialTime,
+  prefilledData,
 }: BookingFormProps) => {
   // Authentication removed - allow all users to access baggage booking
   const { addToCart } = useShoppingCart();
@@ -195,9 +201,9 @@ const BookingForm = ({
     resolver: zodResolver(formSchema),
     mode: "onChange", // 👉 ini penting untuk validasi realtime
     defaultValues: {
-      name: "",
-      email: "",
-      phone: "",
+      name: prefilledData?.name || "",
+      email: prefilledData?.email || "",
+      phone: prefilledData?.phone || "",
       itemName: "",
       flightNumber: "",
       airport: "soekarno_hatta",
@@ -328,36 +334,44 @@ const BookingForm = ({
       }`;
 
       // Add to shopping cart instead of directly saving booking
-      await addToCart({
-        item_type: "baggage",
-        item_id: selectedSize,
-        service_name: serviceName,
-        price: calculateTotalPrice(),
-        details: {
-          customer_name: data.name,
-          customer_phone: data.phone,
-          customer_email: data.email,
-          item_name: selectedSize === "electronic" ? data.itemName || "" : null,
-          flight_number: data.flightNumber || "-",
-          baggage_size: selectedSize,
-          duration: calculatedDuration,
-          storage_location: "Terminal 1, Level 1",
-          start_date:
-            durationType === "hours"
-              ? data.startDate_Hours
-              : data.startDate_Days,
-          end_date:
-            durationType === "hours" ? data.startDate_Hours : data.endDate_Days,
-          start_time:
-            durationType === "hours"
-              ? data.startTime_Hours
-              : data.startTime_Days,
-          airport: data.airport,
-          terminal: data.terminal,
-          duration_type: durationType,
-          hours: durationType === "hours" ? data.hours : null,
-        },
-      });
+      try {
+        await addToCart({
+          item_type: "baggage",
+          item_id: selectedSize,
+          service_name: serviceName,
+          price: calculateTotalPrice(),
+          details: {
+            customer_name: data.name,
+            customer_phone: data.phone,
+            customer_email: data.email,
+            item_name:
+              selectedSize === "electronic" ? data.itemName || "" : null,
+            flight_number: data.flightNumber || "-",
+            baggage_size: selectedSize,
+            duration: calculatedDuration,
+            storage_location: "Terminal 1, Level 1",
+            start_date:
+              durationType === "hours"
+                ? data.startDate_Hours
+                : data.startDate_Days,
+            end_date:
+              durationType === "hours"
+                ? data.startDate_Hours
+                : data.endDate_Days,
+            start_time:
+              durationType === "hours"
+                ? data.startTime_Hours
+                : data.startTime_Days,
+            airport: data.airport,
+            terminal: data.terminal,
+            duration_type: durationType,
+            hours: durationType === "hours" ? data.hours : null,
+          },
+        });
+      } catch (cartError) {
+        console.error("Failed to add item to cart:", cartError);
+        // Continue with the rest of the function even if cart addition fails
+      }
 
       if (onComplete) {
         onComplete({
@@ -481,9 +495,20 @@ const BookingForm = ({
         <div className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="name">Full Name</Label>
-            <Input id="name" placeholder="Full Name" {...register("name")} />
+            <Input
+              id="name"
+              placeholder="Full Name"
+              {...register("name")}
+              disabled={!!prefilledData?.name}
+              className={prefilledData?.name ? "bg-gray-100" : ""}
+            />
             {errors.name && (
               <p className="text-sm text-red-500">{errors.name.message}</p>
+            )}
+            {prefilledData?.name && (
+              <p className="text-xs text-gray-500">
+                Auto-filled from your profile
+              </p>
             )}
           </div>
 
@@ -494,9 +519,16 @@ const BookingForm = ({
               type="email"
               placeholder="john@example.com"
               {...register("email")}
+              disabled={!!prefilledData?.email}
+              className={prefilledData?.email ? "bg-gray-100" : ""}
             />
             {errors.email && (
               <p className="text-sm text-red-500">{errors.email.message}</p>
+            )}
+            {prefilledData?.email && (
+              <p className="text-xs text-gray-500">
+                Auto-filled from your profile
+              </p>
             )}
           </div>
 
@@ -506,9 +538,16 @@ const BookingForm = ({
               id="phone"
               placeholder="+62 812 3456 7890"
               {...register("phone")}
+              disabled={!!prefilledData?.phone}
+              className={prefilledData?.phone ? "bg-gray-100" : ""}
             />
             {errors.phone && (
               <p className="text-sm text-red-500">{errors.phone.message}</p>
+            )}
+            {prefilledData?.phone && (
+              <p className="text-xs text-gray-500">
+                Auto-filled from your profile
+              </p>
             )}
           </div>
 

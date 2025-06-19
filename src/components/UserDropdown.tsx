@@ -79,6 +79,10 @@ const UserDropdown = () => {
     isAdmin || localStorage.getItem("isAdmin") === "true";
   const displayRole = effectiveIsAdmin ? "Admin" : role || "Customer";
 
+  const handleNavigate = (path: string) => {
+    navigate(path);
+  };
+
   const handleLogout = async () => {
     try {
       const result = await signOut();

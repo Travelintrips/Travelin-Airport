@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/lib/supabase";
-import { toast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 
 // Types for shopping cart items
 export type CartItem = {
@@ -41,6 +41,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   // Load cart items on mount
   useEffect(() => {
@@ -56,11 +57,49 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         await loadCartItems();
       } else if (event === "SIGNED_OUT") {
         setCurrentUserId(null);
-        await loadCartItems();
+        setCartItems([]); // Clear cart items in state immediately
+        setIsLoading(false); // Ensure loading is set to false on sign out
       }
     });
 
     return () => subscription.unsubscribe();
+  }, []);
+
+  // Listen for force logout events
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === "forceLogout") {
+        setCartItems([]);
+        setCurrentUserId(null);
+        setIsLoading(false); // Ensure loading is set to false
+        // Clear cart from localStorage as well
+        try {
+          localStorage.removeItem(CART_STORAGE_KEY);
+        } catch (e) {
+          console.warn("Error clearing cart from localStorage:", e);
+        }
+      }
+    };
+
+    const handleSignOut = () => {
+      console.log("[ShoppingCart] User signed out, clearing cart");
+      setCartItems([]);
+      setCurrentUserId(null);
+      setIsLoading(false); // Ensure loading is set to false
+      try {
+        localStorage.removeItem(CART_STORAGE_KEY);
+      } catch (e) {
+        console.warn("Error clearing cart from localStorage:", e);
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("userSignedOut", handleSignOut);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("userSignedOut", handleSignOut);
+    };
   }, []);
 
   // Check current user on mount
@@ -93,6 +132,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 
         if (error) {
           console.error("Error loading cart from Supabase:", error);
+          setIsLoading(false); // Ensure loading is set to false on error
           return;
         }
 
@@ -115,6 +155,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Error loading cart items:", error);
+      setCartItems([]); // Reset cart items on error
     } finally {
       setIsLoading(false);
     }
@@ -135,6 +176,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         item_id: item.item_id,
         service_name: item.service_name,
         price: item.price,
+        details: item.details, // Include details field
         created_at: new Date().toISOString(),
       }));
 
@@ -191,6 +233,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             item_id: validItemId,
             service_name: item.service_name,
             price: item.price,
+            details: item.details,
           })
           .select()
           .single();
@@ -220,7 +263,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         description: "Terjadi kesalahan saat menambahkan item ke keranjang.",
         variant: "destructive",
       });
-      throw error;
+      // Don't throw error to prevent UI crashes
     } finally {
       setIsLoading(false);
     }

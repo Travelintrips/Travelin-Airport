@@ -128,19 +128,50 @@ export default function BookingManagement() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from("bookings")
-        .select(
-          `
-    *,
-    user:users!bookings_user_id_fkey(full_name, email, role),
-    driver:drivers!bookings_driver_id_fkey(id, name),
-    vehicle:vehicles!bookings_vehicle_id_fkey(make, model, license_plate)
-  `,
-        )
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setBookings(data || []);
-      setFilteredBookings(data || []);
+
+      // Fetch related data separately
+      const bookingsWithRelatedData = await Promise.all(
+        (data || []).map(async (booking) => {
+          // Fetch user data
+          const { data: userData } = await supabase
+            .from("users")
+            .select("full_name, email, role")
+            .eq("id", booking.user_id)
+            .single();
+
+          // Fetch driver data if driver_id exists
+          let driverData = null;
+          if (booking.driver_id) {
+            const { data: driver } = await supabase
+              .from("drivers")
+              .select("id, name")
+              .eq("id", booking.driver_id)
+              .single();
+            driverData = driver;
+          }
+
+          // Fetch vehicle data
+          const { data: vehicleData } = await supabase
+            .from("vehicles")
+            .select("make, model, license_plate")
+            .eq("id", booking.vehicle_id)
+            .single();
+
+          return {
+            ...booking,
+            user: userData,
+            driver: driverData,
+            vehicle: vehicleData,
+          };
+        }),
+      );
+
+      setBookings(bookingsWithRelatedData);
+      setFilteredBookings(bookingsWithRelatedData);
 
       // Apply URL status filter if present
       const urlParams = new URLSearchParams(location.search);
@@ -1135,11 +1166,13 @@ export default function BookingManagement() {
                 onComplete={async (data) => {
                   try {
                     // Update booking status to onride
+                    const now = new Date();
+                    const timeString = now.toTimeString().split(" ")[0]; // Extract HH:MM:SS format
                     const { error } = await supabase
                       .from("bookings")
                       .update({
                         status: "onride",
-                        pickup_time: new Date().toISOString(),
+                        pickup_time: timeString,
                       })
                       .eq("id", currentBooking.id);
 

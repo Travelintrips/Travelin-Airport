@@ -172,37 +172,36 @@ const AdminDashboard = () => {
 
         console.log("Vehicles data:", vehicles); // Debug log to check vehicles data
 
-        // Fetch bookings data with customer and driver information
-        const { data: bookings, error: bookingsError } = await supabase.from(
-          "bookings",
-        ).select(`
-            *,
-            user_id,
-            vehicle_id
-          `);
+        // Fetch all required data separately to avoid foreign key issues
+        const [bookingsResult, customersResult, staffResult, usersResult] =
+          await Promise.all([
+            supabase.from("bookings").select("*"),
+            supabase.from("customers").select("*"),
+            supabase.from("staff").select("*"),
+            supabase.from("users").select("*"),
+          ]);
 
-        if (bookingsError) throw bookingsError;
+        if (bookingsResult.error) {
+          console.error("Error fetching bookings:", bookingsResult.error);
+          throw bookingsResult.error;
+        }
+        if (customersResult.error) {
+          console.error("Error fetching customers:", customersResult.error);
+          throw customersResult.error;
+        }
+        if (staffResult.error) {
+          console.error("Error fetching staff:", staffResult.error);
+          throw staffResult.error;
+        }
+        if (usersResult.error) {
+          console.error("Error fetching users:", usersResult.error);
+          throw usersResult.error;
+        }
 
-        // Fetch customers data
-        const { data: customers, error: customersError } = await supabase
-          .from("customers")
-          .select("*");
-
-        if (customersError) throw customersError;
-
-        // Fetch staff data
-        const { data: staff, error: staffError } = await supabase
-          .from("staff")
-          .select("*");
-
-        if (staffError) throw staffError;
-
-        // Fetch users data to connect with customers and staff
-        const { data: users, error: usersError } = await supabase
-          .from("users")
-          .select("*");
-
-        if (usersError) throw usersError;
+        const bookings = bookingsResult.data || [];
+        const customers = customersResult.data || [];
+        const staff = staffResult.data || [];
+        const users = usersResult.data || [];
 
         console.log("Bookings data:", bookings); // Debug log
         console.log("Customers data:", customers); // Debug log
@@ -458,50 +457,74 @@ const AdminDashboard = () => {
         });
 
         // Connect bookings with customer and user data
-        const enhancedBookings =
-          bookings?.map((booking) => {
-            // Find the user associated with this booking
-            const user = users?.find((user) => user.id === booking.user_id);
+        const enhancedBookings = bookings.map((booking) => {
+          // Find the user associated with this booking
+          const user = users.find((user) => user.id === booking.user_id);
 
-            // Find the customer associated with this user
-            const customer = customers?.find(
-              (customer) => customer.id === user?.id,
-            );
+          // Find the customer associated with this booking's user_id
+          const customer = customers.find(
+            (customer) => customer.user_id === booking.user_id,
+          );
 
-            // Find the staff member who might be handling this booking
-            const staffMember = staff?.find((s) => s.id === booking.staff_id);
+          // Find the staff member who might be handling this booking
+          const staffMember = staff.find((s) => s.id === booking.driver_id);
 
-            return {
-              ...booking,
-              customerName:
-                customer?.name ||
-                user?.full_name ||
-                user?.firstName + " " + user?.lastName ||
-                "Unknown Customer",
-              customerEmail: customer?.email || user?.email || "No email",
-              customerPhone:
-                customer?.phone ||
-                user?.phone ||
-                user?.phone_number ||
-                "No phone",
-              staffName: staffMember
-                ? users?.find((u) => u.id === staffMember.id)?.full_name ||
-                  "Unknown Staff"
-                : null,
-            };
-          }) || [];
+          // Get customer name from multiple possible sources
+          let customerName = "Unknown Customer";
+          if (customer?.full_name) {
+            customerName = customer.full_name;
+          } else if (customer?.name) {
+            customerName = customer.name;
+          } else if (user?.full_name) {
+            customerName = user.full_name;
+          } else if (user?.first_name && user?.last_name) {
+            customerName = `${user.first_name} ${user.last_name}`;
+          } else if (user?.first_name) {
+            customerName = user.first_name;
+          }
+
+          // Get customer email
+          const customerEmail = customer?.email || user?.email || "No email";
+
+          // Get customer phone
+          const customerPhone =
+            customer?.phone || user?.phone || user?.phone_number || "No phone";
+
+          // Get staff name
+          let staffName = null;
+          if (staffMember) {
+            const staffUser = users.find((u) => u.id === staffMember.user_id);
+            staffName =
+              staffUser?.full_name ||
+              staffMember.full_name ||
+              staffMember.name ||
+              "Unknown Staff";
+          }
+
+          return {
+            ...booking,
+            customerName,
+            customerEmail,
+            customerPhone,
+            staffName,
+          };
+        });
 
         console.log("Enhanced bookings:", enhancedBookings); // Debug log
 
         // Transform bookings data for the table
-        const bookingTableData: BookingData[] =
-          enhancedBookings.map((booking) => ({
+        const bookingTableData: BookingData[] = enhancedBookings.map(
+          (booking) => ({
             id: booking.id,
             vehicleType: booking.vehicle_type || "",
             bookingStatus: (booking.status as any) || "Booked",
             paymentStatus: (booking.payment_status as any) || "Unpaid",
-            nominalPaid: booking.amount_paid || 0,
-            nominalUnpaid: booking.total_amount - (booking.amount_paid || 0),
+            nominalPaid: booking.paid_amount || booking.amount_paid || 0,
+            nominalUnpaid: Math.max(
+              0,
+              booking.total_amount -
+                (booking.paid_amount || booking.amount_paid || 0),
+            ),
             customer: booking.customerName,
             customerEmail: booking.customerEmail,
             customerPhone: booking.customerPhone,
@@ -509,7 +532,8 @@ const AdminDashboard = () => {
             startDate: booking.start_date || "",
             endDate: booking.end_date || "",
             createdAt: booking.created_at || "",
-          })) || [];
+          }),
+        );
 
         setBookingData(bookingTableData);
         setFilteredBookingData(bookingTableData);

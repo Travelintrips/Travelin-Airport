@@ -198,6 +198,10 @@ const AuthForm: React.FC<AuthFormProps> = ({
       localStorage.removeItem("userName");
       localStorage.removeItem("isAdmin");
 
+      // Remove any session flags that might prevent login
+      sessionStorage.removeItem("loggedOut");
+      sessionStorage.removeItem("forceLogout");
+
       console.log("🔐 Attempting to sign in with email:", data.email);
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,

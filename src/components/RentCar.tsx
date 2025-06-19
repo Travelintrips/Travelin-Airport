@@ -29,6 +29,8 @@ import { supabase } from "@/lib/supabase";
 import { Badge } from "./ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVehicleData } from "@/hooks/useVehicleData";
+import { useForceLogoutRedirect } from "@/hooks/useForceLogoutRedirect";
+import AuthRequiredModal from "./auth/AuthRequiredModal";
 
 interface Vehicle {
   id: string;
@@ -56,6 +58,9 @@ const RentCar = () => {
   const { t, i18n } = useTranslation();
   const { userRole, userEmail, userName, signOut, isAuthenticated, userId } =
     useAuth();
+
+  // Add force logout redirect hook
+  const { isLoading } = useForceLogoutRedirect(false);
 
   // Use the custom hook for vehicle data
   const {
@@ -98,6 +103,7 @@ const RentCar = () => {
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
   );
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // New state for search
   const [searchTerm, setSearchTerm] = useState("");
@@ -113,6 +119,14 @@ const RentCar = () => {
   const handleSelectVehicle = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
     setActiveTab("booking");
+
+    // Check if user is authenticated when selecting a vehicle
+    if (!isAuthenticated) {
+      // We don't block selection, but we'll show auth modal when they try to book
+      console.log(
+        "User not authenticated, will prompt for login at booking step",
+      );
+    }
   };
 
   // Handle navigation to model detail page
@@ -129,6 +143,11 @@ const RentCar = () => {
 
   // Handle booking completion
   const handleBookingComplete = (data: any) => {
+    // Check if user is authenticated before proceeding
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
     setBookingData(data);
     setShowInspection(true);
     setActiveTab("inspection");
@@ -779,6 +798,22 @@ const RentCar = () => {
           </div>
         </div>
       </section>
+
+      {/* Auth Required Modal */}
+      <AuthRequiredModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onLogin={() => {
+          setShowAuthModal(false);
+          setShowAuthForm(true);
+          setAuthFormType("login");
+        }}
+        onRegister={() => {
+          setShowAuthModal(false);
+          setShowAuthForm(true);
+          setAuthFormType("register");
+        }}
+      />
 
       {/* Footer */}
       <footer className="bg-muted/30 border-t border-border py-12">

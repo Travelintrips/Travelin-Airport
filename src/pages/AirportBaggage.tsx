@@ -42,7 +42,9 @@ const AirportBaggage = ({
 }: AirportBaggageProps) => {
   const { toast } = useToast();
   const { addToCart } = useShoppingCart();
-  const { userId, isLoading, isAuthenticated } = useAuth();
+  const { userId, isLoading, isAuthenticated, userName, userEmail } = useAuth();
+  const [userPhone, setUserPhone] = useState<string>("");
+
   const [showForm, setShowForm] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -115,10 +117,61 @@ const AirportBaggage = ({
     setShowCart(false);
   };
 
+  // Default prices to use as fallback
+  const DEFAULT_PRICES = {
+    small_price: 50000,
+    medium_price: 75000,
+    large_price: 100000,
+    extra_large_price: 125000,
+    electronic_price: 80000,
+    surfingboard_price: 150000,
+    wheelchair_price: 60000,
+    stickgolf_price: 120000,
+  };
+
+  // Save prices to localStorage for persistence across sessions
+  const savePricesToLocalStorage = (prices: Record<string, number>) => {
+    try {
+      localStorage.setItem("baggage_prices", JSON.stringify(prices));
+      console.log("💾 Baggage prices saved to localStorage");
+    } catch (error) {
+      console.error("❌ Error saving baggage prices to localStorage:", error);
+    }
+  };
+
+  // Load prices from localStorage
+  const loadPricesFromLocalStorage = (): Record<string, number> | null => {
+    try {
+      const savedPrices = localStorage.getItem("baggage_prices");
+      if (savedPrices) {
+        const parsedPrices = JSON.parse(savedPrices);
+        console.log(
+          "📂 Loaded baggage prices from localStorage:",
+          parsedPrices,
+        );
+        return parsedPrices;
+      }
+    } catch (error) {
+      console.error(
+        "❌ Error loading baggage prices from localStorage:",
+        error,
+      );
+    }
+    return null;
+  };
+
   // Fetch baggage prices from database
   const fetchBaggagePrices = async () => {
     setLoading(true);
     try {
+      // First try to load from localStorage for immediate display
+      const cachedPrices = loadPricesFromLocalStorage();
+      if (cachedPrices) {
+        console.log("🔄 Using cached prices while fetching from database...");
+        setBaggagePrices(cachedPrices);
+      }
+
+      console.log("🔄 Fetching baggage prices from database...");
       const { data, error } = await supabase
         .from("baggage_price")
         .select("*")
@@ -128,77 +181,167 @@ const AirportBaggage = ({
         console.error("❌ Error fetching baggage prices:", error);
         toast({
           title: "Error",
-          description: "Failed to fetch baggage prices",
+          description: "Failed to fetch baggage prices. Using default prices.",
           variant: "destructive",
         });
-        // Set default prices if there's an error
-        setBaggagePrices({
-          small_price: 50000,
-          medium_price: 75000,
-          large_price: 100000,
-          extra_large_price: 125000,
-          electronic_price: 80000,
-          surfingboard_price: 150000,
-          wheelchair_price: 60000,
-          stickgolf_price: 120000,
-        });
-        setLoading(false);
+
+        // If we don't have cached prices, use defaults
+        if (!cachedPrices) {
+          setBaggagePrices(DEFAULT_PRICES);
+          savePricesToLocalStorage(DEFAULT_PRICES);
+        }
         return;
       }
 
       if (data && data.length > 0) {
         const priceData = data[0];
-
         console.log("📦 Raw data from baggage_price table:", priceData);
 
-        // ✅ Parsing semua field yang berakhiran _price menjadi number
-        const parsedPrices = Object.entries(priceData).reduce(
+        // Parse all price fields and ensure they are valid numbers
+        const parsedPrices = {
+          small_price: parseFloat(priceData.small_price) || 50000,
+          medium_price: parseFloat(priceData.medium_price) || 75000,
+          large_price: parseFloat(priceData.large_price) || 100000,
+          extra_large_price: parseFloat(priceData.extra_large_price) || 125000,
+          electronic_price: parseFloat(priceData.electronic_price) || 80000,
+          surfingboard_price:
+            parseFloat(priceData.surfingboard_price) || 150000,
+          wheelchair_price: parseFloat(priceData.wheelchair_price) || 60000,
+          stickgolf_price: parseFloat(priceData.stickgolf_price) || 120000,
+        };
+
+        // Validate that all prices are valid numbers
+        const validPrices = Object.entries(parsedPrices).reduce(
           (acc, [key, value]) => {
-            if (key.endsWith("_price")) {
-              acc[key] = Number(value) || 0;
+            if (isNaN(value) || value <= 0) {
+              console.warn(
+                `⚠️ Invalid price for ${key}: ${value}, using default`,
+              );
+              // Use default values for invalid prices
+              acc[key] = DEFAULT_PRICES[key] || 50000;
+            } else {
+              acc[key] = value;
             }
             return acc;
           },
           {} as Record<string, number>,
         );
 
-        console.log("💰 Parsed baggage prices:", parsedPrices);
-        setBaggagePrices(parsedPrices);
+        console.log("💰 Final validated baggage prices:", validPrices);
+        setBaggagePrices(validPrices);
+        savePricesToLocalStorage(validPrices);
       } else {
-        console.warn("⚠️ No data found in baggage_price table.");
-        // Set default prices if no data found
-        setBaggagePrices({
-          small_price: 50000,
-          medium_price: 75000,
-          large_price: 100000,
-          extra_large_price: 125000,
-          electronic_price: 80000,
-          surfingboard_price: 150000,
-          wheelchair_price: 60000,
-          stickgolf_price: 120000,
-        });
+        console.warn(
+          "⚠️ No data found in baggage_price table. Using default prices.",
+        );
+        // If we don't have cached prices, use defaults
+        if (!cachedPrices) {
+          setBaggagePrices(DEFAULT_PRICES);
+          savePricesToLocalStorage(DEFAULT_PRICES);
+        }
       }
     } catch (error) {
       console.error("🚨 Exception in fetchBaggagePrices:", error);
-      // Set default prices if there's an exception
-      setBaggagePrices({
-        small_price: 50000,
-        medium_price: 75000,
-        large_price: 100000,
-        extra_large_price: 125000,
-        electronic_price: 80000,
-        surfingboard_price: 150000,
-        wheelchair_price: 60000,
-        stickgolf_price: 120000,
+      toast({
+        title: "Database Error",
+        description: "Could not connect to database. Using default prices.",
+        variant: "destructive",
       });
+
+      // If we don't have cached prices, use defaults
+      const cachedPrices = loadPricesFromLocalStorage();
+      if (!cachedPrices) {
+        setBaggagePrices(DEFAULT_PRICES);
+        savePricesToLocalStorage(DEFAULT_PRICES);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Load prices on component mount
+  // Fetch user phone number when authenticated
+  const fetchUserPhone = async () => {
+    if (!isAuthenticated || !userId) return;
+
+    try {
+      // Try to get phone from customers table first
+      const { data: customerData, error: customerError } = await supabase
+        .from("customers")
+        .select("phone")
+        .eq("id", userId)
+        .single();
+
+      if (!customerError && customerData?.phone) {
+        setUserPhone(customerData.phone);
+        return;
+      }
+
+      // If not found in customers, try drivers table
+      const { data: driverData, error: driverError } = await supabase
+        .from("drivers")
+        .select("phone")
+        .eq("id", userId)
+        .single();
+
+      if (!driverError && driverData?.phone) {
+        setUserPhone(driverData.phone);
+        return;
+      }
+
+      // If not found in drivers, try users table
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("phone")
+        .eq("id", userId)
+        .single();
+
+      if (!userError && userData?.phone) {
+        setUserPhone(userData.phone);
+      }
+    } catch (error) {
+      console.error("Error fetching user phone:", error);
+    }
+  };
+
+  // Load prices on component mount and when auth state changes
   useEffect(() => {
     fetchBaggagePrices();
+    if (isAuthenticated && userId) {
+      fetchUserPhone();
+    }
+  }, [isAuthenticated, userId]); // Re-fetch when auth state changes
+
+  // Reset loading state when auth loading state changes
+  useEffect(() => {
+    if (!isLoading && loading) {
+      // If auth is no longer loading but component is still loading,
+      // ensure we're not stuck in loading state
+      const timer = setTimeout(() => {
+        if (loading) {
+          console.log("🔄 Resetting stuck loading state in AirportBaggage");
+          setLoading(false);
+        }
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, loading]);
+
+  // Check for forced logout
+  useEffect(() => {
+    const forceLogout = sessionStorage.getItem("forceLogout");
+    if (forceLogout) {
+      console.log("Force logout detected in AirportBaggage, clearing flag");
+      sessionStorage.removeItem("forceLogout");
+      setShowAuthModal(false);
+
+      // When force logout is detected, ensure we have prices from localStorage
+      const cachedPrices = loadPricesFromLocalStorage();
+      if (cachedPrices) {
+        console.log("🔄 Restoring prices from localStorage after force logout");
+        setBaggagePrices(cachedPrices);
+      }
+    }
   }, []);
 
   const baggageOptions: BaggageSizeOption[] = [
@@ -273,8 +416,8 @@ const AirportBaggage = ({
       minimumFractionDigits: 0,
     }).format(price);
 
-  // Show loading state while loading prices
-  if (loading) {
+  // Show loading state while loading prices or auth
+  if (loading || isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -282,6 +425,11 @@ const AirportBaggage = ({
             <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
             <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
           </div>
+          <p className="mt-4 text-gray-600">
+            {isLoading
+              ? "Checking authentication..."
+              : "Loading baggage prices..."}
+          </p>
         </div>
       </div>
     );
@@ -379,49 +527,21 @@ const AirportBaggage = ({
                                 <p className="text-gray-500 text-center text-sm mb-4">
                                   {option.description}
                                 </p>
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant={
-                                      bookingData.size === option.id
-                                        ? "default"
-                                        : "outline"
-                                    }
-                                    className="flex-1"
-                                    onClick={() =>
-                                      handleSizeSelect(option.id, option.price)
-                                    }
-                                  >
-                                    {bookingData.size === option.id
-                                      ? "Selected"
-                                      : "Select"}
-                                  </Button>
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      try {
-                                        await addToCart({
-                                          item_type: "baggage",
-                                          item_id: option.id,
-                                          service_name: `Baggage Storage - ${option.size}`,
-                                          price: option.price,
-                                          details: {
-                                            size: option.size,
-                                            description: option.description,
-                                          },
-                                        });
-                                      } catch (error) {
-                                        console.error(
-                                          "Failed to add to cart:",
-                                          error,
-                                        );
-                                      }
-                                    }}
-                                  >
-                                    + Cart
-                                  </Button>
-                                </div>
+                                <Button
+                                  variant={
+                                    bookingData.size === option.id
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  className="w-full"
+                                  onClick={() =>
+                                    handleSizeSelect(option.id, option.price)
+                                  }
+                                >
+                                  {bookingData.size === option.id
+                                    ? "Selected"
+                                    : "Select"}
+                                </Button>
                               </CardContent>
                             </Card>
                           ))}
@@ -450,6 +570,15 @@ const AirportBaggage = ({
                         onCancel={() => setShowForm(false)}
                         initialDate={new Date()}
                         initialTime={bookingData.startTime}
+                        prefilledData={
+                          isAuthenticated
+                            ? {
+                                name: userName || "",
+                                email: userEmail || "",
+                                phone: userPhone || "",
+                              }
+                            : undefined
+                        }
                       />
                     </div>
                   )}
@@ -684,8 +813,8 @@ const AirportBaggage = ({
                       </Button>
                       <Button
                         onClick={() => {
-                          navigate("/cart");
                           handleCloseReceipt();
+                          navigate("/cart");
                         }}
                       >
                         View Cart
@@ -729,8 +858,17 @@ const AirportBaggage = ({
             </div>
           )}
 
-          {/* Shopping Cart Modal */}
-          <ShoppingCart isOpen={showCart} onClose={handleCloseCart} />
+          {/* Shopping Cart Modal - Only show if explicitly opened */}
+          {showCart && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+              <div className="w-full max-w-6xl max-h-[90vh] overflow-auto">
+                <ShoppingCart />
+                <div className="flex justify-end p-4">
+                  <Button onClick={handleCloseCart}>Close Cart</Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         {/* End of Airport Baggage Storage section */}
       </div>

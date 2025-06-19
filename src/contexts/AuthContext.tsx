@@ -270,13 +270,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     console.log("[AuthProvider] Starting comprehensive sign out process");
 
     try {
-      // Sign out from Supabase
+      // Sign out from Supabase with global scope to clear all sessions
       await supabase.auth.signOut({ scope: "global" });
     } catch (error) {
       console.warn("[AuthProvider] Error signing out from Supabase:", error);
     }
 
-    // Clear all React state
+    // Clear all React state immediately
     setIsAuthenticated(false);
     setUserRole(null);
     setUserId(null);
@@ -284,13 +284,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setUserName(null);
     setIsAdmin(false);
 
-    // Clear storages
-    localStorage.clear();
-    sessionStorage.clear();
+    // Dispatch a custom event for other components to listen to
+    try {
+      window.dispatchEvent(new CustomEvent("userSignedOut"));
+    } catch (e) {
+      console.warn("[AuthProvider] Error dispatching signout event:", e);
+    }
 
-    // IndexedDB
+    // Clear specific cart and booking data first
+    try {
+      localStorage.removeItem("shopping_cart");
+      localStorage.removeItem("booking_data");
+      localStorage.removeItem("recent_bookings");
+      localStorage.removeItem("selected_vehicle");
+      localStorage.removeItem("payment_data");
+      localStorage.removeItem("airport_transfer_data");
+      localStorage.removeItem("baggage_data");
+      localStorage.removeItem("supabase.auth.token");
+      localStorage.removeItem("sb-refresh-token");
+      localStorage.removeItem("sb-access-token");
+      localStorage.removeItem("sb-auth-token");
+      localStorage.removeItem("supabase.auth.data");
+      localStorage.removeItem("supabase.auth.expires_at");
+      localStorage.removeItem("supabase.auth.expires_in");
+      localStorage.removeItem("supabase.auth.refresh_token");
+      localStorage.removeItem("supabase.auth.access_token");
+      localStorage.removeItem("supabase.auth.provider_token");
+      localStorage.removeItem("supabase.auth.provider_refresh_token");
+      localStorage.removeItem("driverData");
+    } catch (e) {
+      console.warn("[AuthProvider] Error clearing specific items:", e);
+    }
+
+    // Clear all storages
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn("[AuthProvider] Error clearing storage:", e);
+    }
+
+    // IndexedDB - more comprehensive database list
     if (typeof indexedDB !== "undefined") {
-      const databases = ["supabase", "supabase-js", "keyval-store"];
+      const databases = [
+        "supabase",
+        "supabase-js",
+        "keyval-store",
+        "firebaseLocalStorageDb",
+        "auth",
+        "user-data",
+        "cart-data",
+        "supabase-auth-token",
+        "supabase-auth-data",
+        "sb-token",
+        "sb-data",
+        "supabase-db",
+        "supabase-storage",
+        "local-storage",
+        "session-storage",
+        "auth-storage",
+        "auth-session",
+        "auth-user",
+      ];
       databases.forEach((dbName) => {
         try {
           indexedDB.deleteDatabase(dbName);
@@ -312,28 +367,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
-    // Clear cookies
+    // Clear cookies - more thorough approach
     document.cookie.split(";").forEach((c) => {
       const eqPos = c.indexOf("=");
-      const name = eqPos > -1 ? c.substr(0, eqPos) : c;
-      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-      document.cookie =
-        name +
-        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
-      document.cookie =
-        name +
-        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.${window.location.hostname}`;
+      const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+      if (name) {
+        // Clear cookie with multiple path and domain combinations
+        const paths = [
+          "/",
+          "/admin",
+          "/booking",
+          "/cart",
+          "",
+          "*",
+          "/login",
+          "/profile",
+          "/bookings",
+        ];
+        const domains = [
+          window.location.hostname,
+          `.${window.location.hostname}`,
+          window.location.hostname.split(".").slice(1).join("."),
+          `.${window.location.hostname.split(".").slice(1).join(".")}`,
+          "",
+        ];
+
+        paths.forEach((path) => {
+          // Basic cookie clearing
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path}`;
+
+          // With domains
+          domains.forEach((domain) => {
+            if (domain) {
+              document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=${path};domain=${domain}`;
+            }
+          });
+        });
+
+        // Also try with secure and samesite flags
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=strict`;
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=lax`;
+        document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=none`;
+      }
+    });
+
+    // Clear Supabase specific cookies
+    const supabaseCookies = [
+      "sb-access-token",
+      "sb-refresh-token",
+      "sb-auth-token",
+      "supabase-auth-token",
+      "__session",
+      "__supabase",
+    ];
+    supabaseCookies.forEach((cookieName) => {
+      document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=strict`;
+      document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=lax`;
+      document.cookie = `${cookieName}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;secure;samesite=none`;
     });
 
     console.log(
-      "[AuthProvider] Logout cleanup completed. Forcing full reload...",
+      "[AuthProvider] Logout cleanup completed. Forcing full redirect...",
     );
 
-    // ✅ Tambahkan tanda logout agar tidak ada looping di useEffect App
+    // Set logout flag to prevent loops
     sessionStorage.setItem("loggedOut", "true");
 
-    // ⛔️ Jangan hanya pakai reload — pakai replace untuk mencegah back navigation
-    window.location.replace(window.location.origin);
+    // Force reload to clear any in-memory state before redirecting
+    // Use a longer timeout to ensure all cleanup operations complete
+    setTimeout(() => {
+      // Force redirect to home page with replace to prevent back navigation
+      window.location.replace(window.location.origin);
+    }, 300);
 
     return true;
   };

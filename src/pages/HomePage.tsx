@@ -3,8 +3,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
 
 const HomePage = () => {
-  const { isAuthenticated, userId } = useAuth();
+  const { isAuthenticated, userId, isLoading } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check for forced logout
+  useEffect(() => {
+    const forceLogout = sessionStorage.getItem("forceLogout");
+    if (forceLogout) {
+      // Clear the flag to prevent loops
+      sessionStorage.removeItem("forceLogout");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !userId) {

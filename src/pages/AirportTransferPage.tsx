@@ -117,8 +117,7 @@ function AirportTransferPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { userId, userName, userEmail } = useAuth();
-  const isAuthenticated = false; // Temporarily disable authentication
+  const { userId, userName, userEmail, isAuthenticated, isLoading } = useAuth();
   const { addToCart } = useShoppingCart();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -164,7 +163,7 @@ function AirportTransferPageContent() {
   );
 
   // UI states
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoadingBooking, setIsLoadingBooking] = useState<boolean>(false);
   const [showFromMap, setShowFromMap] = useState<boolean>(false);
   const [showToMap, setShowToMap] = useState<boolean>(false);
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
@@ -579,6 +578,40 @@ function AirportTransferPageContent() {
       surcharge: 40000,
     };
   }
+
+  // Helper function to get pricing from database
+  const getPricingFromDatabase = async (vehicleType: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("price_km")
+        .select("price_per_km, basic_price, surcharge")
+        .eq("vehicle_type", vehicleType)
+        .eq("is_active", true)
+        .limit(1);
+
+      if (error || !data || data.length === 0) {
+        console.warn(`No pricing data found in database for ${vehicleType}`);
+        return {
+          priceKm: 3250,
+          basicPrice: 75000,
+          surcharge: 40000,
+        };
+      }
+
+      return {
+        priceKm: Number(data[0].price_per_km) || 3250,
+        basicPrice: Number(data[0].basic_price) || 75000,
+        surcharge: Number(data[0].surcharge) || 40000,
+      };
+    } catch (err) {
+      console.error(`Error fetching pricing for ${vehicleType}:`, err);
+      return {
+        priceKm: 3250,
+        basicPrice: 75000,
+        surcharge: 40000,
+      };
+    }
+  };
 
   // Validate form based on current step
   const isCurrentStepValid = () => {
@@ -1168,7 +1201,7 @@ function AirportTransferPageContent() {
   // Handle next step
   const handleNextStep = async () => {
     if (currentStep === 1) {
-      setIsLoading(true);
+      setIsLoadingBooking(true);
       try {
         // Validate required fields first
         if (!formData.fromAddress || !formData.toAddress) {
@@ -1177,7 +1210,7 @@ function AirportTransferPageContent() {
             description: "Please provide both pickup and dropoff locations.",
             variant: "destructive",
           });
-          setIsLoading(false);
+          setIsLoadingBooking(false);
           return;
         }
 
@@ -1282,7 +1315,7 @@ function AirportTransferPageContent() {
           variant: "destructive",
         });
       } finally {
-        setIsLoading(false);
+        setIsLoadingBooking(false);
       }
       return;
     }
@@ -1362,7 +1395,7 @@ function AirportTransferPageContent() {
 
   // Handle direct booking without driver selection
   const handleDirectBooking = async () => {
-    setIsLoading(true);
+    setIsLoadingBooking(true);
     try {
       // Calculate price based on vehicle type
       const vehiclePricing = getPricingFromVehicleTypes(formData.vehicleType);
@@ -1460,13 +1493,13 @@ function AirportTransferPageContent() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoadingBooking(false);
     }
   };
 
   // Submit booking to database
   const handleSubmitBooking = async () => {
-    setIsLoading(true);
+    setIsLoadingBooking(true);
     try {
       const bookingData = {
         booking_code: formData.bookingCode,
@@ -1579,7 +1612,7 @@ Please prepare for the trip!`;
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoadingBooking(false);
     }
   };
 
@@ -1865,109 +1898,104 @@ Please prepare for the trip!`;
                 </div>
               </div>
 
-              {/* Show vehicle types only when schedule booking is selected */}
-              {bookingType === "scheduled" && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-medium">
-                    Available Vehicle Types
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                    {vehicleTypes.map((type) => {
-                      // Calculate estimated price for this vehicle type
-                      const calculateEstimatedPrice = () => {
-                        if (formData.distance <= 0) return 0;
+              {/* Show vehicle types for both instant and scheduled booking */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Available Vehicle Types</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {vehicleTypes.map((type) => {
+                    // Calculate estimated price for this vehicle type
+                    const calculateEstimatedPrice = () => {
+                      if (formData.distance <= 0) return 0;
 
-                        // Get pricing values from the current vehicle type
-                        const priceKm = type.price_per_km;
-                        const basicPrice = type.basic_price;
-                        const surcharge = type.surcharge;
-                        const baseDistance = type.minimum_distance || 8; // Use minimum_distance from price_km table
+                      // Get pricing values from the current vehicle type
+                      const priceKm = type.price_per_km;
+                      const basicPrice = type.basic_price;
+                      const surcharge = type.surcharge;
+                      const baseDistance = type.minimum_distance || 8; // Use minimum_distance from price_km table
 
-                        // Calculate price using the same formula as in the component
-                        const roundedDistance =
-                          Math.round(formData.distance * 10) / 10;
+                      // Calculate price using the same formula as in the component
+                      const roundedDistance =
+                        Math.round(formData.distance * 10) / 10;
 
-                        let total = 0;
-                        if (roundedDistance <= baseDistance) {
-                          total = basicPrice + surcharge;
-                        } else {
-                          const extraDistance = roundedDistance - baseDistance;
-                          total =
-                            basicPrice + extraDistance * priceKm + surcharge;
-                        }
+                      let total = 0;
+                      if (roundedDistance <= baseDistance) {
+                        total = basicPrice + surcharge;
+                      } else {
+                        const extraDistance = roundedDistance - baseDistance;
+                        total =
+                          basicPrice + extraDistance * priceKm + surcharge;
+                      }
 
-                        return total;
-                      };
+                      return total;
+                    };
 
-                      // Get icon based on vehicle type
-                      const getVehicleIcon = () => {
-                        switch (type.name.toLowerCase()) {
-                          case "sedan":
-                            return <CarFront className="h-8 w-8" />;
-                          case "suv":
-                            return <Car className="h-8 w-8" />;
-                          case "mpv":
-                          case "mpv premium":
-                            return <Car className="h-8 w-8" />;
-                          case "electric":
-                            return <Car className="h-8 w-8" />;
-                          default:
-                            return <Car className="h-8 w-8" />;
-                        }
-                      };
+                    // Get icon based on vehicle type
+                    const getVehicleIcon = () => {
+                      switch (type.name.toLowerCase()) {
+                        case "sedan":
+                          return <CarFront className="h-8 w-8" />;
+                        case "suv":
+                          return <Car className="h-8 w-8" />;
+                        case "mpv":
+                        case "mpv premium":
+                          return <Car className="h-8 w-8" />;
+                        case "electric":
+                          return <Car className="h-8 w-8" />;
+                        default:
+                          return <Car className="h-8 w-8" />;
+                      }
+                    };
 
-                      const isSelected = formData.vehicleType === type.name;
+                    const isSelected = formData.vehicleType === type.name;
 
-                      return (
-                        <Card
-                          key={type.name}
-                          className={`cursor-pointer transition-all ${
-                            isSelected
-                              ? "border-blue-500 bg-blue-50"
-                              : "hover:border-blue-500"
-                          }`}
-                          onClick={() => {
-                            // Set the selected vehicle type and its pricing
-                            setFormData((prev) => ({
-                              ...prev,
-                              vehicleType: type.name,
-                              vehiclePricePerKm: type.price_per_km,
-                              basicPrice: type.basic_price,
-                              surcharge: type.surcharge,
-                            }));
-                          }}
-                        >
-                          <CardContent className="pt-6">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
-                                  {getVehicleIcon()}
-                                </div>
-                                <div>
-                                  <h4 className="font-medium">{type.name}</h4>
-                                  <p className="text-sm text-gray-500">
-                                    {formData.distance.toFixed(1)} km •{" "}
-                                    {formData.duration} min
-                                  </p>
-                                </div>
+                    return (
+                      <Card
+                        key={type.name}
+                        className={`cursor-pointer transition-all ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50"
+                            : "hover:border-blue-500"
+                        }`}
+                        onClick={() => {
+                          // Set the selected vehicle type and its pricing
+                          setFormData((prev) => ({
+                            ...prev,
+                            vehicleType: type.name,
+                            vehiclePricePerKm: type.price_per_km,
+                            basicPrice: type.basic_price,
+                            surcharge: type.surcharge,
+                          }));
+                        }}
+                      >
+                        <CardContent className="pt-6">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
+                                {getVehicleIcon()}
                               </div>
-                              <div className="text-right">
-                                <p className="font-bold text-green-600">
-                                  Rp{" "}
-                                  {calculateEstimatedPrice().toLocaleString()}
+                              <div>
+                                <h4 className="font-medium">{type.name}</h4>
+                                <p className="text-sm text-gray-500">
+                                  {formData.distance.toFixed(1)} km •{" "}
+                                  {formData.duration} min
                                 </p>
-                                {isSelected && (
-                                  <CheckCircle className="h-5 w-5 text-blue-500 mt-1 ml-auto" />
-                                )}
                               </div>
                             </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
+                            <div className="text-right">
+                              <p className="font-bold text-green-600">
+                                Rp {calculateEstimatedPrice().toLocaleString()}
+                              </p>
+                              {isSelected && (
+                                <CheckCircle className="h-5 w-5 text-blue-500 mt-1 ml-auto" />
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
-              )}
+              </div>
             </div>
           </div>
         )}
@@ -2125,71 +2153,41 @@ Please prepare for the trip!`;
             </div>
           </div>
 
-          {/* Vehicle Type Selection */}
-          <div className="space-y-4 mt-6">
-            <div className="space-y-2">
-              <h3 className="text-lg font-medium">Select Vehicle Type</h3>
-              <select
-                value={formData.vehicleType}
-                onChange={(e) =>
-                  setFormData((prev) => ({
-                    ...prev,
-                    vehicleType: e.target.value,
-                  }))
-                }
-                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={isLoading}
-              >
-                {vehicleTypes.length > 0 ? (
-                  vehicleTypes.map((type) => (
-                    <option key={type.name} value={type.name}>
-                      {type.name}
-                    </option>
-                  ))
-                ) : (
-                  <option value="">Select a vehicle type</option>
-                )}
-              </select>
-            </div>
-
-            {/* Booking Summary */}
-            <div className="bg-gray-50 p-4 rounded-md">
-              <h4 className="font-medium text-gray-700 mb-3">
-                Booking Summary
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Vehicle Type:</span>
-                  <span className="font-medium">{formData.vehicleType}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Date & Time:</span>
-                  <span className="font-medium">
-                    {bookingType === "instant"
-                      ? "Now"
-                      : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Passengers:</span>
-                  <span className="font-medium">{formData.passenger}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Distance:</span>
-                  <span className="font-medium">
-                    {formData.distance.toFixed(1)} km
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Duration:</span>
-                  <span className="font-medium">{formData.duration} min</span>
-                </div>
-                <div className="flex justify-between pt-2 border-t">
-                  <span className="font-medium">Total Price:</span>
-                  <span className="font-bold text-green-600">
-                    Rp {formData.price.toLocaleString()}
-                  </span>
-                </div>
+          {/* Booking Summary */}
+          <div className="bg-gray-50 p-4 rounded-md">
+            <h4 className="font-medium text-gray-700 mb-3">Booking Summary</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Vehicle Type:</span>
+                <span className="font-medium">{formData.vehicleType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Date & Time:</span>
+                <span className="font-medium">
+                  {bookingType === "instant"
+                    ? "Now"
+                    : `${new Date(formData.pickupDate).toLocaleDateString()} at ${formData.pickupTime}`}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Passengers:</span>
+                <span className="font-medium">{formData.passenger}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Distance:</span>
+                <span className="font-medium">
+                  {formData.distance.toFixed(1)} km
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Duration:</span>
+                <span className="font-medium">{formData.duration} min</span>
+              </div>
+              <div className="flex justify-between pt-2 border-t">
+                <span className="font-medium">Total Price:</span>
+                <span className="font-bold text-green-600">
+                  Rp {formData.price.toLocaleString()}
+                </span>
               </div>
             </div>
           </div>
@@ -2214,7 +2212,7 @@ Please prepare for the trip!`;
               }))
             }
             className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={loading || vehicleTypes.length === 0}
+            disabled={isLoadingBooking || vehicleTypes.length === 0}
           >
             {vehicleTypes.length > 0 ? (
               vehicleTypes.map((type) => (
@@ -2677,7 +2675,7 @@ Please prepare for the trip!`;
                 <Button
                   variant="outline"
                   onClick={handlePrevStep}
-                  disabled={isLoading}
+                  disabled={isLoadingBooking}
                 >
                   Back
                 </Button>
@@ -2687,10 +2685,10 @@ Please prepare for the trip!`;
 
               <Button
                 onClick={handleNextStep}
-                disabled={!isCurrentStepValid() || isLoading}
+                disabled={!isCurrentStepValid() || isLoadingBooking}
                 className="min-w-[100px]"
               >
-                {isLoading ? (
+                {isLoadingBooking ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {currentStep === 2 ? "Adding to Cart..." : "Loading..."}
