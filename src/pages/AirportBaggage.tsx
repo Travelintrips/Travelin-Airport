@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SuitcaseRolling, BriefcaseMetal, Boxes } from "lucide-react";
+import { Boxes } from "lucide-react";
 import { Laptop, MonitorSmartphone, TabletSmartphone } from "lucide-react";
 import { Waves, Tent, Compass } from "lucide-react";
 import { WheelchairIcon } from "@/components/icons";
@@ -62,6 +62,9 @@ const AirportBaggage = ({
     hours: 4,
     date: "",
     endDate: "",
+    startTime: "",
+    duration: 0,
+    startDate: "",
   });
   const [baggagePrices, setBaggagePrices] = useState<Record<string, number>>(
     {},
@@ -261,7 +264,15 @@ const AirportBaggage = ({
 
   // Fetch user phone number when authenticated
   const fetchUserPhone = async () => {
-    if (!isAuthenticated || !userId) return;
+    if (!isAuthenticated || !userId) {
+      console.log(
+        "[AirportBaggage] Not authenticated or no userId, clearing phone",
+      );
+      setUserPhone("");
+      return;
+    }
+
+    console.log("[AirportBaggage] Fetching user phone for userId:", userId);
 
     try {
       // Try to get phone from customers table first
@@ -272,44 +283,318 @@ const AirportBaggage = ({
         .single();
 
       if (!customerError && customerData?.phone) {
+        console.log(
+          "[AirportBaggage] Phone found in customers table:",
+          customerData.phone,
+        );
         setUserPhone(customerData.phone);
+        // Store in localStorage for persistence
+        localStorage.setItem("userPhone", customerData.phone);
         return;
       }
 
       // If not found in customers, try drivers table
-      const { data: driverData, error: driverError } = await supabase
+      /* const { data: driverData, error: driverError } = await supabase
         .from("drivers")
         .select("phone")
         .eq("id", userId)
         .single();
 
       if (!driverError && driverData?.phone) {
+        console.log(
+          "[AirportBaggage] Phone found in drivers table:",
+          driverData.phone,
+        );
         setUserPhone(driverData.phone);
+        // Store in localStorage for persistence
+        localStorage.setItem("userPhone", driverData.phone);
         return;
-      }
+      } */
 
       // If not found in drivers, try users table
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("phone")
+        .select("phone_number")
         .eq("id", userId)
         .single();
 
-      if (!userError && userData?.phone) {
-        setUserPhone(userData.phone);
+      if (!userError && userData?.phone_number) {
+        console.log(
+          "[AirportBaggage] Phone found in users table:",
+          userData.phone_number,
+        );
+        setUserPhone(userData.phone_number);
+        // Store in localStorage for persistence
+        localStorage.setItem("userPhone", userData.phone_number);
+        return;
       }
+
+      console.log("[AirportBaggage] No phone number found in any table");
     } catch (error) {
-      console.error("Error fetching user phone:", error);
+      console.error("[AirportBaggage] Error fetching user phone:", error);
     }
   };
 
-  // Load prices on component mount and when auth state changes
-  useEffect(() => {
-    fetchBaggagePrices();
-    if (isAuthenticated && userId) {
-      fetchUserPhone();
+  // Get current user name with fallback to localStorage
+  const getCurrentUserName = () => {
+    // First try to get from AuthContext
+    if (userName && userName.trim() !== "") {
+      console.log(
+        "[AirportBaggage] Using userName from AuthContext:",
+        userName,
+      );
+      return userName;
     }
-  }, [isAuthenticated, userId]); // Re-fetch when auth state changes
+
+    // Fallback to localStorage
+    const storedUserName = localStorage.getItem("userName");
+    if (storedUserName && storedUserName.trim() !== "") {
+      console.log(
+        "[AirportBaggage] Using userName from localStorage:",
+        storedUserName,
+      );
+      return storedUserName;
+    }
+
+    // Try to get from stored auth_user object
+    const storedUser = localStorage.getItem("auth_user");
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData?.name && userData.name.trim() !== "") {
+          console.log(
+            "[AirportBaggage] Using userName from auth_user:",
+            userData.name,
+          );
+          return userData.name;
+        }
+      } catch (error) {
+        console.warn("[AirportBaggage] Error parsing auth_user:", error);
+      }
+    }
+
+    // Final fallback to userEmail prefix if available
+    if (userEmail && userEmail.includes("@")) {
+      const emailPrefix = userEmail.split("@")[0];
+      console.log(
+        "[AirportBaggage] Using email prefix as fallback:",
+        emailPrefix,
+      );
+      return emailPrefix;
+    }
+
+    console.log("[AirportBaggage] No user name found, returning empty string");
+    return "";
+  };
+
+  // Get current user email with fallback to localStorage
+  const getCurrentUserEmail = () => {
+    // First try to get from AuthContext
+    if (userEmail && userEmail.trim() !== "") {
+      console.log(
+        "[AirportBaggage] Using userEmail from AuthContext:",
+        userEmail,
+      );
+      return userEmail;
+    }
+
+    // Fallback to localStorage
+    const storedUserEmail = localStorage.getItem("userEmail");
+    if (storedUserEmail && storedUserEmail.trim() !== "") {
+      console.log(
+        "[AirportBaggage] Using userEmail from localStorage:",
+        storedUserEmail,
+      );
+      return storedUserEmail;
+    }
+
+    // Try to get from stored auth_user object
+    const storedUser = localStorage.getItem("auth_user");
+    if (storedUser) {
+      try {
+        const userData = JSON.parse(storedUser);
+        if (userData?.email && userData.email.trim() !== "") {
+          console.log(
+            "[AirportBaggage] Using userEmail from auth_user:",
+            userData.email,
+          );
+          return userData.email;
+        }
+      } catch (error) {
+        console.warn("[AirportBaggage] Error parsing auth_user:", error);
+      }
+    }
+
+    console.log("[AirportBaggage] No user email found, returning empty string");
+    return "";
+  };
+
+  // Load prices on component mount
+  useEffect(() => {
+    console.log("[AirportBaggage] Initial mount, fetching baggage prices");
+    fetchBaggagePrices();
+  }, []);
+
+  // Handle auth state changes and fetch user data when authenticated
+  useEffect(() => {
+    const handleAuthStateChange = async () => {
+      if (isAuthenticated && userId && !isLoading) {
+        console.log(
+          "[AirportBaggage] User authenticated, fetching user phone for:",
+          userId,
+        );
+
+        // First try to restore from localStorage for immediate display
+        const storedPhone = localStorage.getItem("userPhone");
+        if (storedPhone) {
+          console.log(
+            "[AirportBaggage] Restoring phone from localStorage:",
+            storedPhone,
+          );
+          setUserPhone(storedPhone);
+        }
+
+        // Ensure user name and email are stored in localStorage for persistence
+        const currentUserName = getCurrentUserName();
+        const currentUserEmail = getCurrentUserEmail();
+
+        if (currentUserName) {
+          localStorage.setItem("userName", currentUserName);
+          console.log(
+            "[AirportBaggage] Stored userName in localStorage:",
+            currentUserName,
+          );
+        }
+
+        if (currentUserEmail) {
+          localStorage.setItem("userEmail", currentUserEmail);
+          console.log(
+            "[AirportBaggage] Stored userEmail in localStorage:",
+            currentUserEmail,
+          );
+        }
+
+        // Then fetch fresh data from database
+        await fetchUserPhone();
+
+        // Re-fetch baggage prices to ensure we have the latest data
+        console.log("[AirportBaggage] Re-fetching baggage prices after auth");
+        await fetchBaggagePrices();
+      } else if (!isAuthenticated && !isLoading) {
+        console.log(
+          "[AirportBaggage] User not authenticated, clearing user data",
+        );
+        setUserPhone("");
+        localStorage.removeItem("userPhone");
+      }
+    };
+
+    handleAuthStateChange();
+  }, [isAuthenticated, userId, isLoading, userName, userEmail]);
+
+  // Enhanced visibility change handler with session recovery - AUTO-RESTORE form state on tab switch
+  useEffect(() => {
+    let visibilityTimeout: NodeJS.Timeout;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log(
+          "[AirportBaggage] Tab became visible, restoring cached data",
+        );
+
+        // Clear any existing timeout
+        if (visibilityTimeout) clearTimeout(visibilityTimeout);
+
+        // Check auth state first
+        const storedUser = localStorage.getItem("auth_user");
+        if (storedUser && (!isAuthenticated || !userId)) {
+          try {
+            const userData = JSON.parse(storedUser);
+            if (userData && userData.id && userData.email) {
+              console.log(
+                "[AirportBaggage] Auth state needs restoration, triggering recovery",
+              );
+              window.dispatchEvent(
+                new CustomEvent("forceSessionRestore", { detail: userData }),
+              );
+            }
+          } catch (error) {
+            console.warn("[AirportBaggage] Error parsing stored user:", error);
+          }
+        }
+
+        // Restore phone from localStorage if available and not already set
+        const storedPhone = localStorage.getItem("userPhone");
+        if (storedPhone && !userPhone) {
+          console.log(
+            "[AirportBaggage] Restoring phone from localStorage:",
+            storedPhone,
+          );
+          setUserPhone(storedPhone);
+        }
+
+        // Restore baggage prices from localStorage if not already loaded
+        if (Object.keys(baggagePrices).length === 0) {
+          const cachedPrices = loadPricesFromLocalStorage();
+          if (cachedPrices) {
+            console.log(
+              "[AirportBaggage] Restoring baggage prices from localStorage",
+            );
+            setBaggagePrices(cachedPrices);
+          }
+        }
+
+        // Ensure user data consistency without API calls
+        const currentUserName = getCurrentUserName();
+        const currentUserEmail = getCurrentUserEmail();
+
+        if (currentUserName) {
+          localStorage.setItem("userName", currentUserName);
+        }
+        if (currentUserEmail) {
+          localStorage.setItem("userEmail", currentUserEmail);
+        }
+      }
+    };
+
+    // Listen for session restored events
+    const handleSessionRestored = (event: CustomEvent) => {
+      console.log(
+        "[AirportBaggage] Session restored event received:",
+        event.detail,
+      );
+
+      // Update user data from restored session
+      const userData = event.detail;
+      if (userData.name) {
+        localStorage.setItem("userName", userData.name);
+      }
+      if (userData.email) {
+        localStorage.setItem("userEmail", userData.email);
+      }
+
+      // Restore phone if available
+      const storedPhone = localStorage.getItem("userPhone");
+      if (storedPhone && !userPhone) {
+        setUserPhone(storedPhone);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener(
+      "sessionRestored",
+      handleSessionRestored as EventListener,
+    );
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener(
+        "sessionRestored",
+        handleSessionRestored as EventListener,
+      );
+      if (visibilityTimeout) clearTimeout(visibilityTimeout);
+    };
+  }, [userPhone, baggagePrices, isAuthenticated, userId]);
 
   // Reset loading state when auth loading state changes
   useEffect(() => {
@@ -327,13 +612,15 @@ const AirportBaggage = ({
     }
   }, [isLoading, loading]);
 
-  // Check for forced logout
+  // Check for forced logout and restore user data on component mount
   useEffect(() => {
     const forceLogout = sessionStorage.getItem("forceLogout");
     if (forceLogout) {
       console.log("Force logout detected in AirportBaggage, clearing flag");
       sessionStorage.removeItem("forceLogout");
       setShowAuthModal(false);
+      localStorage.removeItem("userPhone");
+      setUserPhone("");
 
       // When force logout is detected, ensure we have prices from localStorage
       const cachedPrices = loadPricesFromLocalStorage();
@@ -341,8 +628,209 @@ const AirportBaggage = ({
         console.log("🔄 Restoring prices from localStorage after force logout");
         setBaggagePrices(cachedPrices);
       }
+    } else if (isAuthenticated && userId) {
+      // On component mount, restore phone from localStorage if available
+      const storedPhone = localStorage.getItem("userPhone");
+      if (storedPhone) {
+        console.log(
+          "[AirportBaggage] Restoring phone from localStorage on mount:",
+          storedPhone,
+        );
+        setUserPhone(storedPhone);
+      }
+
+      // Ensure user name and email are properly stored on mount
+      const currentUserName = getCurrentUserName();
+      const currentUserEmail = getCurrentUserEmail();
+
+      if (currentUserName) {
+        localStorage.setItem("userName", currentUserName);
+        console.log(
+          "[AirportBaggage] Ensured userName is stored on mount:",
+          currentUserName,
+        );
+      }
+
+      if (currentUserEmail) {
+        localStorage.setItem("userEmail", currentUserEmail);
+        console.log(
+          "[AirportBaggage] Ensured userEmail is stored on mount:",
+          currentUserEmail,
+        );
+      }
     }
-  }, []);
+  }, [isAuthenticated, userId, userName, userEmail]);
+
+  // Enhanced auth state restoration after tab switching with fallback recovery
+  useEffect(() => {
+    let restoreTimeout: NodeJS.Timeout;
+
+    const handleVisibilityAuthRestore = async () => {
+      if (document.visibilityState === "visible") {
+        console.log(
+          "[AirportBaggage] Tab became visible, checking auth state...",
+        );
+
+        // Clear any existing timeout
+        if (restoreTimeout) clearTimeout(restoreTimeout);
+
+        // Immediate check and restore if needed
+        const storedUser = localStorage.getItem("auth_user");
+        const storedUserName = localStorage.getItem("userName");
+        const storedUserEmail = localStorage.getItem("userEmail");
+        const storedPhone = localStorage.getItem("userPhone");
+
+        // Check if auth state is missing or corrupted
+        const needsRestore =
+          !isAuthenticated ||
+          !userId ||
+          !userEmail ||
+          (storedUser && (!userId || !userEmail));
+
+        if (needsRestore && storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            if (parsed && parsed.id && parsed.email) {
+              console.log(
+                "[AirportBaggage] Restoring auth state from localStorage",
+              );
+
+              // Trigger global session restore
+              window.dispatchEvent(
+                new CustomEvent("forceSessionRestore", { detail: parsed }),
+              );
+
+              // Restore local user data immediately
+              if (storedPhone && !userPhone) {
+                setUserPhone(storedPhone);
+              }
+
+              // Re-fetch baggage prices if needed
+              if (Object.keys(baggagePrices).length === 0) {
+                const cachedPrices = loadPricesFromLocalStorage();
+                if (cachedPrices) {
+                  setBaggagePrices(cachedPrices);
+                }
+              }
+            }
+          } catch (error) {
+            console.error(
+              "[AirportBaggage] Error parsing stored user data:",
+              error,
+            );
+          }
+        } else if (isAuthenticated && userId) {
+          // Auth state looks good, just restore cached data
+          console.log(
+            "[AirportBaggage] Auth state is good, restoring cached data",
+          );
+
+          if (storedPhone && !userPhone) {
+            setUserPhone(storedPhone);
+          }
+
+          if (Object.keys(baggagePrices).length === 0) {
+            const cachedPrices = loadPricesFromLocalStorage();
+            if (cachedPrices) {
+              setBaggagePrices(cachedPrices);
+            }
+          }
+        }
+
+        // Debounced additional check
+        restoreTimeout = setTimeout(() => {
+          // Final check after a delay
+          if (!isAuthenticated && storedUser) {
+            console.log(
+              "[AirportBaggage] Final auth check - triggering session restore",
+            );
+            try {
+              const parsed = JSON.parse(storedUser);
+              if (parsed && parsed.id && parsed.email) {
+                window.dispatchEvent(
+                  new CustomEvent("forceSessionRestore", { detail: parsed }),
+                );
+              }
+            } catch (error) {
+              console.warn(
+                "[AirportBaggage] Error in final auth check:",
+                error,
+              );
+            }
+          }
+        }, 1000);
+      }
+    };
+
+    // Listen for auth state refresh events
+    const handleAuthStateRefresh = (event: CustomEvent) => {
+      console.log("[AirportBaggage] Auth state refreshed:", event.detail);
+
+      // Restore user phone if available
+      const storedPhone = localStorage.getItem("userPhone");
+      if (storedPhone && !userPhone) {
+        setUserPhone(storedPhone);
+      }
+
+      // Ensure baggage prices are loaded
+      if (Object.keys(baggagePrices).length === 0) {
+        const cachedPrices = loadPricesFromLocalStorage();
+        if (cachedPrices) {
+          setBaggagePrices(cachedPrices);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityAuthRestore);
+    window.addEventListener(
+      "authStateRefreshed",
+      handleAuthStateRefresh as EventListener,
+    );
+
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityAuthRestore,
+      );
+      window.removeEventListener(
+        "authStateRefreshed",
+        handleAuthStateRefresh as EventListener,
+      );
+      if (restoreTimeout) clearTimeout(restoreTimeout);
+    };
+  }, [isAuthenticated, userId, userName, userEmail, userPhone, baggagePrices]);
+
+  // Additional check for auth state changes during component lifecycle - DISABLED AUTO REFRESH
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      const storedUserName = localStorage.getItem("userName");
+      const storedUser = localStorage.getItem("auth_user");
+
+      if (storedUserName && userName && storedUserName !== userName) {
+        console.log(
+          "[AirportBaggage] Username mismatch detected during render:",
+          {
+            current: userName,
+            stored: storedUserName,
+          },
+        );
+
+        // REMOVED AUTO REFRESH - just log the mismatch
+        try {
+          if (storedUser) {
+            const parsed = JSON.parse(storedUser);
+            if (parsed?.name && parsed.name !== userName) {
+              console.log(
+                "[AirportBaggage] Username mismatch detected but auto-refresh disabled to prevent booking interruption",
+              );
+            }
+          }
+        } catch (error) {
+          console.error("[AirportBaggage] Error during username check:", error);
+        }
+      }
+    }
+  }, [isAuthenticated, isLoading, userName]);
 
   const baggageOptions: BaggageSizeOption[] = [
     {
@@ -395,7 +883,7 @@ const AirportBaggage = ({
       id: "wheelchair",
       size: "Wheel Chair",
       price: baggagePrices.wheelchair_price,
-      icon: <WheelchairIcon className="h-12 w-12" />,
+      icon: <WheelchairIcon />,
       description: "Best for Manual or foldable wheelchairs and mobility aids.",
     },
 
@@ -415,6 +903,12 @@ const AirportBaggage = ({
       currency: "IDR",
       minimumFractionDigits: 0,
     }).format(price);
+
+  // Fallback for unauthenticated users
+  if (!isAuthenticated && !isLoading) {
+    // Don't redirect, just continue with guest experience
+    console.log("[AirportBaggage] User not authenticated, continuing as guest");
+  }
 
   // Show loading state while loading prices or auth
   if (loading || isLoading) {
@@ -561,21 +1055,33 @@ const AirportBaggage = ({
                             | "large"
                             | "extra_large"
                             | "electronic"
-                            | "surfing_board"
+                            | "surfingboard"
                             | "wheelchair"
                             | "stickgolf"
                         }
-                        baggagePrices={baggagePrices}
+                        baggagePrices={{
+                          small: baggagePrices.small_price || 0,
+                          medium: baggagePrices.medium_price || 0,
+                          large: baggagePrices.large_price || 0,
+                          extra_large: baggagePrices.extra_large_price || 0,
+                          electronic: baggagePrices.electronic_price || 0,
+                          surfingboard: baggagePrices.surfingboard_price || 0,
+                          wheelchair: baggagePrices.wheelchair_price || 0,
+                          stickgolf: baggagePrices.stickgolf_price || 0,
+                        }}
                         onComplete={handleBookingComplete}
                         onCancel={() => setShowForm(false)}
                         initialDate={new Date()}
-                        initialTime={bookingData.startTime}
+                        initialTime={bookingData.startTime || ""}
                         prefilledData={
                           isAuthenticated
                             ? {
-                                name: userName || "",
-                                email: userEmail || "",
-                                phone: userPhone || "",
+                                name: getCurrentUserName(),
+                                email: getCurrentUserEmail(),
+                                phone:
+                                  userPhone ||
+                                  localStorage.getItem("userPhone") ||
+                                  "",
                               }
                             : undefined
                         }
@@ -745,8 +1251,8 @@ const AirportBaggage = ({
                     <div>
                       <p className="text-sm text-gray-500">Duration</p>
                       <p className="font-medium">
-                        {bookingData.duration
-                          ? `${bookingData.duration} ${bookingData.durationType === "days" ? "day(s)" : "hour(s)"}`
+                        {bookingData.hours
+                          ? `${bookingData.hours} ${bookingData.durationType === "days" ? "day(s)" : "hour(s)"}`
                           : ""}
                       </p>
                     </div>
@@ -755,7 +1261,7 @@ const AirportBaggage = ({
                         <p className="text-sm text-gray-500">Start Date</p>
                         <p className="font-medium">
                           {format(
-                            new Date(bookingData.date),
+                            new Date(bookingData.date || new Date()),
                             "MMMM d, yyyy - HH:mm",
                           )}
                         </p>

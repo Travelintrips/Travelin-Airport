@@ -65,13 +65,14 @@ interface Driver {
   phone: string | null;
   license_number: string | null;
   license_expiry: string | null;
-  status: string | null;
+  account_status: string | null;
   selfie_url: string | null;
   sim_url: string | null;
   stnk_url: string | null;
   kk_url: string | null;
   stnk_expiry: string | null;
   reference_phone: string | null;
+  is_online: boolean | null;
 }
 
 const DriverManagement = () => {
@@ -88,7 +89,7 @@ const DriverManagement = () => {
     phone: "",
     license_number: "",
     license_expiry: "",
-    status: "active",
+    account_status: "active",
     selfie_url: "",
     sim_url: "",
     stnk_url: "",
@@ -201,7 +202,7 @@ const DriverManagement = () => {
         phone: "",
         license_number: "",
         license_expiry: "",
-        status: "active",
+        account_status: "active",
         selfie_url: "",
         sim_url: "",
         stnk_url: "",
@@ -299,7 +300,7 @@ const DriverManagement = () => {
         phone: "",
         license_number: "",
         license_expiry: "",
-        status: "active",
+        account_status: "active",
         selfie_url: "",
         sim_url: "",
         stnk_url: "",
@@ -351,7 +352,7 @@ const DriverManagement = () => {
       phone: driver.phone || "",
       license_number: driver.license_number || "",
       license_expiry: driver.license_expiry || "",
-      status: driver.status || "active",
+      account_status: driver.account_status || "active",
       selfie_url: driver.selfie_url || "",
       sim_url: driver.sim_url || "",
       stnk_url: driver.stnk_url || "",
@@ -495,13 +496,14 @@ const DriverManagement = () => {
                   <TableHead>Documents</TableHead>
                   <TableHead>Account Status</TableHead>
                   <TableHead>Driver Status</TableHead>
+                  <TableHead>Is Online</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredDrivers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8">
+                    <TableCell colSpan={11} className="text-center py-8">
                       No drivers found
                     </TableCell>
                   </TableRow>
@@ -579,16 +581,23 @@ const DriverManagement = () => {
                       </TableCell>
                       <TableCell>
                         <span
-                          className={`px-2 py-1 rounded-full text-xs ${driver.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                          className={`px-2 py-1 rounded-full text-xs ${driver.account_status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
                         >
-                          {driver.status}
+                          {driver.account_status || "N/A"}
                         </span>
                       </TableCell>
                       <TableCell>
                         <span
-                          className={`px-2 py-1 rounded-full text-xs ${driver.status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                          className={`px-2 py-1 rounded-full text-xs ${driver.account_status === "active" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
                         >
-                          {driver.status}
+                          {driver.account_status || "N/A"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs ${driver.is_online ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                        >
+                          {driver.is_online ? "Online" : "Offline"}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
@@ -756,9 +765,9 @@ const DriverManagement = () => {
               </Label>
               <Select
                 name="status"
-                value={formData.status}
+                value={formData.account_status}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, status: value })
+                  setFormData({ ...formData, account_status: value })
                 }
               >
                 <SelectTrigger id="status" className="col-span-3">
@@ -917,9 +926,9 @@ const DriverManagement = () => {
               </Label>
               <Select
                 name="status"
-                value={formData.status}
+                value={formData.account_status}
                 onValueChange={(value) =>
-                  setFormData({ ...formData, status: value })
+                  setFormData({ ...formData, account_status: value })
                 }
               >
                 <SelectTrigger id="edit-status" className="col-span-3">

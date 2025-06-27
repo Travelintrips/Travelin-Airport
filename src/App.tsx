@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useState, useEffect } from "react";
 import ProfilePage from "./pages/ProfilePage";
 import BookingsPage from "./pages/BookingsPage";
 import ApiSettings from "./components/admin/ApiSettings";
@@ -23,6 +23,7 @@ import TravelPage from "./pages/TravelPage";
 import ModelDetailPage from "./pages/ModelDetailPage";
 import PaymentDetailsPage from "./pages/PaymentDetailsPage";
 import PaymentFormPage from "./pages/PaymentFormPage";
+import CheckoutPage from "./pages/CheckoutPage";
 import ThankYouPage from "./pages/ThankYouPage";
 import BookingPage from "./pages/BookingPage";
 import NewBookingPage from "./pages/NewBookingPage";
@@ -49,11 +50,13 @@ import DriverPerusahaanPage from "./pages/DriverPerusahaanPage";
 import DriverProfile from "./components/DriverProfile";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ShoppingCartProvider } from "@/hooks/useShoppingCart";
+import { supabase } from "@/lib/supabase";
 import HotelsPage from "./pages/HotelsPage";
 import FlightsPage from "./pages/FlightsPage";
 import TrainsPage from "./pages/TrainsPage";
 import BusPage from "./pages/BusPage";
 import ActivitiesPage from "./pages/ActivitiesPage";
+import HandlingPage from "./pages/HandlingPage";
 
 declare global {
   interface Window {
@@ -71,36 +74,231 @@ const ROLES = {
 };
 
 function AppContent() {
-  const { isAuthenticated, userRole, isLoading, userEmail, isAdmin } =
-    useAuth();
+  const {
+    isAuthenticated,
+    userRole,
+    userId,
+    isLoading,
+    userEmail,
+    isAdmin,
+    isHydrated,
+    isSessionReady,
+  } = useAuth();
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const navigate = useNavigate();
 
   console.log("App.tsx - Current auth state:", {
     isAuthenticated,
     userRole,
     isAdmin,
+    isHydrated,
   });
-  const navigate = useNavigate();
 
-  // Check for authentication state
-  React.useEffect(() => {
-    // Check for loggedOut flag to prevent redirect loops
-    const loggedOut = sessionStorage.getItem("loggedOut");
-    if (loggedOut) {
-      console.log("Logged out flag detected, not redirecting");
-      sessionStorage.removeItem("loggedOut");
-
-      // Clear any remaining auth tokens to ensure clean state for next login
-      try {
-        localStorage.removeItem("supabase.auth.token");
-        localStorage.removeItem("sb-refresh-token");
-        localStorage.removeItem("sb-access-token");
-        localStorage.removeItem("sb-auth-token");
-      } catch (e) {
-        console.warn("Error clearing auth tokens:", e);
-      }
-      return;
+  // Set auth ready state when context is hydrated
+  useEffect(() => {
+    if (isHydrated) {
+      setIsAuthReady(true);
     }
-  }, []);
+  }, [isHydrated]);
+
+  // Enhanced session recovery with global trigger and immediate Supabase rehydration
+  React.useEffect(() => {
+    let recoveryTimeout: NodeJS.Timeout;
+    let lastRecoveryTime = 0;
+    const RECOVERY_COOLDOWN = 1000; // Reduced cooldown for faster recovery
+
+    const recoverSession = async () => {
+      const now = Date.now();
+      if (now - lastRecoveryTime < RECOVERY_COOLDOWN) {
+        console.log("[App] Recovery cooldown active, skipping");
+        return;
+      }
+
+      // Check for loggedOut flag to prevent redirect loops
+      const loggedOut = sessionStorage.getItem("loggedOut");
+      if (loggedOut) {
+        console.log("[App] Logged out flag detected, not redirecting");
+        sessionStorage.removeItem("loggedOut");
+        return;
+      }
+
+      lastRecoveryTime = now;
+      console.log("[App] Starting enhanced session recovery...");
+
+      // Priority 1: Try Supabase session first for fresh data
+      try {
+        console.log("[App] Attempting fresh Supabase session recovery...");
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (!error && session?.user) {
+          console.log(
+            "[App] Fresh session found, triggering AuthContext update",
+          );
+
+          // Create consistent user data from fresh session
+          const user = session.user;
+          const userMeta = user.user_metadata || {};
+          const isAdminEmail =
+            user.email?.includes("admin") ||
+            user.email === "divatranssoetta@gmail.com";
+
+          const consistentUserData = {
+            id: user.id,
+            email: user.email || "",
+            role: isAdminEmail ? "Admin" : userMeta.role || "Customer",
+            name:
+              userMeta.full_name ||
+              userMeta.name ||
+              user.email?.split("@")[0] ||
+              "User",
+          };
+
+          // Dispatch event to trigger AuthContext update with fresh data
+          window.dispatchEvent(
+            new CustomEvent("forceSessionRestore", {
+              detail: consistentUserData,
+            }),
+          );
+
+          // Also dispatch session restored event for components
+          window.dispatchEvent(
+            new CustomEvent("sessionRestored", {
+              detail: consistentUserData,
+            }),
+          );
+
+          console.log("[App] Session recovered from fresh Supabase data");
+          return;
+        }
+      } catch (error) {
+        console.warn("[App] Supabase session recovery failed:", error);
+      }
+
+      // Priority 2: Fallback to localStorage for immediate recovery
+      const storedUser = localStorage.getItem("auth_user");
+      const storedUserName = localStorage.getItem("userName");
+      const storedUserRole = localStorage.getItem("userRole");
+
+      if (storedUser && (!isAuthenticated || !userId)) {
+        try {
+          const userData = JSON.parse(storedUser);
+          if (userData && userData.id && userData.email) {
+            console.log("[App] Fallback session recovery from localStorage");
+
+            // Create consistent user data object
+            const consistentUserData = {
+              id: userData.id,
+              email: userData.email,
+              role: storedUserRole || userData.role || "Customer",
+              name:
+                storedUserName ||
+                userData.name ||
+                userData.email?.split("@")[0] ||
+                "User",
+            };
+
+            // Dispatch event to trigger AuthContext update
+            window.dispatchEvent(
+              new CustomEvent("forceSessionRestore", {
+                detail: consistentUserData,
+              }),
+            );
+
+            // Also dispatch session restored event for components
+            window.dispatchEvent(
+              new CustomEvent("sessionRestored", {
+                detail: consistentUserData,
+              }),
+            );
+            return;
+          }
+        } catch (error) {
+          console.warn("[App] Error parsing stored user data:", error);
+        }
+      }
+
+      console.log("[App] No valid session found during recovery");
+    };
+
+    // Enhanced visibility change handler with immediate session rehydration
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        console.log(
+          "[App] Tab became visible, triggering immediate session rehydration",
+        );
+
+        // Clear any existing timeout
+        if (recoveryTimeout) clearTimeout(recoveryTimeout);
+
+        // Immediate session check - prioritize fresh Supabase data
+        const needsRecovery = !isAuthenticated || !userId || !userRole;
+
+        if (needsRecovery) {
+          console.log(
+            "[App] Session state incomplete, triggering immediate recovery",
+            { isAuthenticated, userId: !!userId, userRole: !!userRole },
+          );
+          // Immediate recovery attempt
+          await recoverSession();
+        } else {
+          // Even if we have auth state, refresh from Supabase for consistency
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+            if (session?.user && session.user.id !== userId) {
+              console.log("[App] Session user mismatch detected, updating");
+              await recoverSession();
+            }
+          } catch (error) {
+            console.warn("[App] Error checking session consistency:", error);
+          }
+        }
+
+        // Debounced additional recovery for safety
+        recoveryTimeout = setTimeout(async () => {
+          // Final check if we still don't have valid auth state
+          if (!isAuthenticated || !userRole || !userId) {
+            console.log(
+              "[App] Final auth state check failed, attempting recovery",
+            );
+            await recoverSession();
+          }
+        }, 200); // Reduced timeout for faster recovery
+      }
+    };
+
+    // Listen for custom session restore events
+    const handleForceSessionRestore = (event: CustomEvent) => {
+      console.log("[App] Force session restore event received:", event.detail);
+      // Trigger AuthContext sync
+      window.dispatchEvent(
+        new CustomEvent("authStateRefreshed", { detail: event.detail }),
+      );
+    };
+
+    // Initial recovery attempt
+    recoverSession();
+
+    // Listen for visibility changes and custom events
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener(
+      "forceSessionRestore",
+      handleForceSessionRestore as EventListener,
+    );
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener(
+        "forceSessionRestore",
+        handleForceSessionRestore as EventListener,
+      );
+      if (recoveryTimeout) clearTimeout(recoveryTimeout);
+    };
+  }, [isAuthenticated, isLoading, userRole, userId]);
 
   // Role-based redirects
   React.useEffect(() => {
@@ -141,6 +339,21 @@ function AppContent() {
       }
     }
   }, [isAuthenticated, isLoading, userRole, isAdmin, userEmail, navigate]);
+
+  // Add timeout to prevent infinite loading
+  React.useEffect(() => {
+    if (!isSessionReady) {
+      const timeout = setTimeout(() => {
+        console.warn(
+          "[App] Session loading timeout reached, forcing ready state",
+        );
+        // Force session ready if it takes too long
+        window.dispatchEvent(new CustomEvent("forceSessionReady"));
+      }, 8000); // 8 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [isSessionReady]);
 
   const ProtectedRoute = ({
     children,
@@ -191,6 +404,21 @@ function AppContent() {
     return children;
   };
 
+  // Show loading indicator while session is not ready with timeout
+  if (!isSessionReady) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gradient-to-b from-blue-500 to-blue-700">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-lg">Loading session...</p>
+          <p className="text-sm mt-2 opacity-75">
+            This should only take a moment
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen w-full">
       <Suspense
@@ -209,6 +437,7 @@ function AppContent() {
               <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
               <Route path="/payment/:id" element={<PaymentDetailsPage />} />
               <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
+              <Route path="/checkout" element={<CheckoutPage />} />
               <Route
                 path="/damage-payment/:bookingId"
                 element={<DamagePaymentForm />}
@@ -257,6 +486,7 @@ function AppContent() {
               <Route path="/trains" element={<TrainsPage />} />
               <Route path="/bus-travel" element={<BusPage />} />
               <Route path="/things-to-do" element={<ActivitiesPage />} />
+              <Route path="/handling" element={<HandlingPage />} />
 
               <Route
                 path="/new-booking"
@@ -344,6 +574,7 @@ function AppContent() {
             <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
             <Route path="/payment/:id" element={<PaymentDetailsPage />} />
             <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
             <Route
               path="/damage-payment/:bookingId"
               element={<DamagePaymentForm />}
@@ -382,6 +613,7 @@ function AppContent() {
             <Route path="/trains" element={<TrainsPage />} />
             <Route path="/bus-travel" element={<BusPage />} />
             <Route path="/things-to-do" element={<ActivitiesPage />} />
+            <Route path="/handling" element={<HandlingPage />} />
             <Route
               path="/new-booking"
               element={

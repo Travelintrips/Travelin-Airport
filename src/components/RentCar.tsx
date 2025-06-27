@@ -8,8 +8,6 @@ import {
   CreditCard,
   User,
   Globe,
-  Search,
-  Filter,
   Plane,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -56,8 +54,15 @@ const RentCar = () => {
   const navigate = useNavigate();
   const { modelName } = useParams<{ modelName: string }>();
   const { t, i18n } = useTranslation();
-  const { userRole, userEmail, userName, signOut, isAuthenticated, userId } =
-    useAuth();
+  const {
+    userRole,
+    userEmail,
+    userName,
+    signOut,
+    isAuthenticated,
+    userId,
+    isSessionReady,
+  } = useAuth();
 
   // Add force logout redirect hook
   const { isLoading } = useForceLogoutRedirect(false);
@@ -69,7 +74,65 @@ const RentCar = () => {
     selectedModel,
     setSelectedModel,
     error: vehicleError,
+    refetchVehicleData,
+    hasInitialLoad,
   } = useVehicleData(modelName);
+
+  // Monitor session ready state and trigger refetch only once when session becomes ready
+  const [hasTriggeredSessionRefetch, setHasTriggeredSessionRefetch] =
+    useState(false);
+  const [sessionStableTimeout, setSessionStableTimeout] =
+    useState<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!isSessionReady) {
+      console.log("[RentCar] Waiting for session to be ready...");
+      return;
+    }
+
+    // Clear any existing timeout
+    if (sessionStableTimeout) {
+      clearTimeout(sessionStableTimeout);
+      setSessionStableTimeout(null);
+    }
+
+    // Only trigger refetch if session is ready and we haven't fetched yet
+    if (
+      isSessionReady &&
+      !hasTriggeredSessionRefetch &&
+      carModels.length === 0 &&
+      !isLoadingModels &&
+      hasInitialLoad
+    ) {
+      console.log("[RentCar] Session ready, scheduling vehicle data fetch");
+
+      // Add a small delay to ensure session state is stable
+      const timeout = setTimeout(() => {
+        if (isSessionReady && !hasTriggeredSessionRefetch) {
+          console.log("[RentCar] Triggering one-time vehicle data fetch");
+          setHasTriggeredSessionRefetch(true);
+          if (refetchVehicleData) {
+            refetchVehicleData();
+          }
+        }
+      }, 300);
+
+      setSessionStableTimeout(timeout);
+    }
+
+    return () => {
+      if (sessionStableTimeout) {
+        clearTimeout(sessionStableTimeout);
+      }
+    };
+  }, [
+    isSessionReady,
+    hasTriggeredSessionRefetch,
+    carModels.length,
+    isLoadingModels,
+    hasInitialLoad,
+    refetchVehicleData,
+  ]);
 
   // Set document title based on language
   useEffect(() => {
@@ -105,8 +168,6 @@ const RentCar = () => {
   );
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // New state for search
-  const [searchTerm, setSearchTerm] = useState("");
   const [showModelDetail, setShowModelDetail] = useState(false);
 
   const toggleTheme = () => {
@@ -593,41 +654,14 @@ const RentCar = () => {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
-              <div className="relative flex-1 w-full sm:max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search car models..."
-                  className="pl-10 border-primary/20 focus:border-primary transition-all shadow-sm focus:shadow-md"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 border-primary/20 hover:bg-primary/5 transition-all w-full sm:w-auto"
-                  >
-                    <Filter className="h-4 w-4" />
-                    <span>Filter</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 shadow-lg border border-border/60">
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-lg">Filter Options</h4>
-                    {/* Filter options would go here */}
-                    <p className="text-sm text-muted-foreground">
-                      Filter options coming soon
-                    </p>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {isLoadingModels ? (
+            {(isLoadingModels && !hasInitialLoad) || !isSessionReady ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                <span className="ml-3 text-muted-foreground">
+                  {!isSessionReady
+                    ? "Loading session..."
+                    : "Loading vehicles..."}
+                </span>
               </div>
             ) : vehicleError ? (
               <div className="text-center py-12">
@@ -636,39 +670,42 @@ const RentCar = () => {
                   Error loading vehicles
                 </h3>
                 <p className="text-muted-foreground mt-2">{vehicleError}</p>
+                <Button
+                  onClick={() => {
+                    console.log("[RentCar] Retrying vehicle data fetch");
+                    if (refetchVehicleData) {
+                      refetchVehicleData();
+                    }
+                  }}
+                  className="mt-4"
+                >
+                  Try Again
+                </Button>
               </div>
             ) : carModels.length === 0 ? (
               <div className="text-center py-12">
                 <Car className="h-16 w-16 mx-auto text-muted-foreground opacity-30" />
                 <h3 className="text-xl font-medium mt-4">
-                  No car models found
+                  No vehicles available at the moment
                 </h3>
                 <p className="text-muted-foreground mt-2">
-                  Try adjusting your search criteria
+                  Please check back later or contact support
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-                {carModels
-                  .filter(
-                    (model) =>
-                      searchTerm === "" ||
-                      model.modelName
-                        .toLowerCase()
-                        .includes(searchTerm.toLowerCase()),
-                  )
-                  .map((model) => (
-                    <CarModelCard
-                      key={model.modelName}
-                      modelName={model.modelName}
-                      availableCount={model.availableCount}
-                      imageUrl={model.imageUrl}
-                      vehicles={model.vehicles}
-                      onViewDetail={() => {
-                        handleViewModelDetail(model);
-                      }}
-                    />
-                  ))}
+                {carModels.map((model) => (
+                  <CarModelCard
+                    key={model.modelName}
+                    modelName={model.modelName}
+                    availableCount={model.availableCount}
+                    imageUrl={model.imageUrl}
+                    vehicles={model.vehicles}
+                    onViewDetail={() => {
+                      handleViewModelDetail(model);
+                    }}
+                  />
+                ))}
               </div>
             )}
 

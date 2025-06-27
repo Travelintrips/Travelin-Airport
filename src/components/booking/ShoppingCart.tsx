@@ -27,6 +27,7 @@ import {
   Bus,
   MapPin,
   Compass,
+  HandHeart,
 } from "lucide-react";
 import { useShoppingCart } from "@/hooks/useShoppingCart";
 import { formatCurrency } from "@/lib/utils";
@@ -41,7 +42,16 @@ interface ShoppingCartProps {}
 
 const ShoppingCart: React.FC<ShoppingCartProps> = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, userId, userEmail, userName } = useAuth();
+  const {
+    isAuthenticated,
+    userId,
+    userEmail,
+    userName,
+    userRole,
+    isLoading: authLoading,
+    isHydrated,
+    isCheckingSession,
+  } = useAuth();
   const {
     cartItems,
     addToCart,
@@ -50,18 +60,8 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     totalAmount,
     checkout,
     isLoading,
+    refetchCartData,
   } = useShoppingCart();
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<string>("");
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [selectedBank, setSelectedBank] = useState<any | null>(null);
-  const [manualBanks, setManualBanks] = useState<any[]>([]);
-  const [customerData, setCustomerData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-  });
 
   const handleRemoveItem = async (id: string) => {
     try {
@@ -97,235 +97,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     }
   };
 
-  const handleCheckout = () => {
-    setShowCheckout(true);
-    // Auto-fill customer data if user is authenticated
-    if (isAuthenticated) {
-      setCustomerData({
-        name: userName || "",
-        email: userEmail || "",
-        phone: "", // Will be fetched from customer table
-      });
-      fetchCustomerPhone();
-    }
-  };
-
-  const fetchCustomerPhone = async () => {
-    if (isAuthenticated && userId) {
-      try {
-        const { data, error } = await supabase
-          .from("customers")
-          .select("phone")
-          .eq("id", userId)
-          .single();
-
-        if (!error && data?.phone) {
-          setCustomerData((prev) => ({ ...prev, phone: data.phone }));
-        }
-      } catch (error) {
-        console.error("Error fetching customer data:", error);
-      }
-    }
-  };
-
-  const fetchManualPaymentMethods = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("payment_methods")
-        .select("*")
-        .eq("type", "manual");
-
-      if (error) {
-        console.error("Error fetching manual payment methods:", error);
-        return;
-      }
-
-      setManualBanks(data || []);
-    } catch (error) {
-      console.error("Exception in fetchManualPaymentMethods:", error);
-    }
-  };
-
-  // Fetch manual payment methods when bank transfer is selected
-  React.useEffect(() => {
-    if (selectedPaymentMethod === "bank_transfer") {
-      fetchManualPaymentMethods();
-    }
-  }, [selectedPaymentMethod]);
-
-  const handlePayment = async () => {
-    // Validate customer data
-    if (!customerData.name || !customerData.email || !customerData.phone) {
-      toast({
-        title: "Complete customer data",
-        description: "Please complete name, email, and phone number.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!selectedPaymentMethod) {
-      toast({
-        title: "Select payment method",
-        description: "Please select a payment method first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (selectedPaymentMethod === "bank_transfer" && !selectedBank) {
-      toast({
-        title: "Select bank",
-        description: "Please select a bank for transfer.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessingPayment(true);
-    try {
-      let paymentId = null;
-
-      // Create payment record first
-      const { data: payment, error: paymentError } = await supabase
-        .from("payments")
-        .insert({
-          user_id: userId || null,
-          amount: totalAmount,
-          payment_method: selectedPaymentMethod,
-          status: "pending",
-          is_partial_payment: "false",
-          is_damage_payment: false,
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (paymentError) {
-        console.error("Error creating payment:", paymentError);
-        throw new Error(`Failed to create payment: ${paymentError.message}`);
-      }
-
-      paymentId = payment.id;
-
-      // Process each cart item and move to respective booking tables
-      for (const item of cartItems) {
-        if (item.item_type === "baggage" && item.details) {
-          const bookingId = `BG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-          // Parse details if it's a JSON string, otherwise use as object
-          let parsedDetails = item.details;
-          if (typeof item.details === "string") {
-            try {
-              parsedDetails = JSON.parse(item.details);
-            } catch (error) {
-              console.error("Error parsing item details JSON:", error);
-              parsedDetails = item.details;
-            }
-          }
-
-          const bookingData = {
-            booking_id: bookingId,
-            customer_name: customerData.name,
-            customer_phone: customerData.phone,
-            customer_email: customerData.email,
-            item_name: parsedDetails.item_name || null,
-            flight_number: parsedDetails.flight_number || "-",
-            baggage_size:
-              parsedDetails.baggage_size || item.details?.baggage_size,
-            price: item.price,
-            duration: parsedDetails.duration || item.details?.duration,
-            storage_location:
-              parsedDetails.storage_location ||
-              item.details?.storage_location ||
-              "Terminal 1, Level 1",
-            start_date: parsedDetails.start_date || item.details?.start_date,
-            end_date: parsedDetails.end_date || item.details?.end_date,
-            start_time: parsedDetails.start_time || item.details?.start_time,
-            end_time: "",
-            airport: parsedDetails.airport || item.details?.airport,
-            terminal: parsedDetails.terminal || item.details?.terminal,
-            duration_type:
-              parsedDetails.duration_type || item.details?.duration_type,
-            hours: parsedDetails.hours || item.details?.hours,
-            status: "confirmed",
-            customer_id: userId || null,
-            payment_id: paymentId,
-          };
-
-          const { error: baggageError } = await supabase
-            .from("baggage_booking")
-            .insert(bookingData);
-
-          if (baggageError) {
-            console.error("Error saving baggage booking:", baggageError);
-            throw new Error(
-              `Failed to save baggage booking: ${baggageError.message}`,
-            );
-          }
-        } else if (item.item_type === "car" && item.details) {
-          // Handle car rental bookings
-          const { error: carBookingError } = await supabase
-            .from("bookings")
-            .update({ payment_status: "paid", payment_id: paymentId })
-            .eq("id", item.item_id);
-
-          if (carBookingError) {
-            console.error("Error updating car booking:", carBookingError);
-            throw new Error(
-              `Failed to update car booking: ${carBookingError.message}`,
-            );
-          }
-        }
-
-        // Update shopping_cart status to "paid" or delete the item
-        if (isAuthenticated && userId) {
-          const { error: updateError } = await supabase
-            .from("shopping_cart")
-            .update({ status: "paid" })
-            .eq("id", item.id)
-            .eq("user_id", userId);
-
-          if (updateError) {
-            console.error("Error updating shopping cart status:", updateError);
-            // Continue processing other items even if this fails
-          }
-        }
-      }
-
-      // Clear cart frontend (localStorage/context)
-      await clearCart();
-
-      toast({
-        title: "Payment successful!",
-        description: "Thank you for your order. Redirecting to invoice...",
-      });
-
-      setShowCheckout(false);
-      setSelectedPaymentMethod("");
-      setSelectedBank(null);
-      setCustomerData({ name: "", email: "", phone: "" });
-
-      // Redirect to thank you page with payment ID
-      setTimeout(() => {
-        if (paymentId) {
-          navigate(`/thank-you/${paymentId}`);
-        } else {
-          navigate("/");
-        }
-      }, 1500);
-    } catch (error) {
-      console.error("Error during checkout:", error);
-      toast({
-        title: "Failed to process payment",
-        description: "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
   const getItemTypeLabel = (type: string) => {
     switch (type) {
       case "baggage":
@@ -339,87 +110,199 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     }
   };
 
-  // Load unpaid bookings into cart on component mount
-  React.useEffect(() => {
-    const loadUnpaidBookings = async () => {
-      if (!isAuthenticated || !userId) return;
+  // Function to load unpaid bookings - moved outside useEffect for reusability
+  const loadUnpaidBookings = React.useCallback(async () => {
+    if (!isAuthenticated || !userId || !isHydrated || isLoading) {
+      console.log("[ShoppingCart] Not ready for loading unpaid bookings", {
+        isAuthenticated,
+        userId,
+        isHydrated,
+        isLoading,
+      });
+      return;
+    }
 
-      try {
-        // Fetch unpaid bookings from the bookings table
-        const { data: unpaidBookings, error } = await supabase
-          .from("bookings")
-          .select(
-            `
-            id,
-            vehicle_id,
-            total_amount,
-            start_date,
-            end_date,
-            pickup_time,
-            driver_option,
-            vehicles!bookings_vehicle_id_fkey (
-              make,
-              model,
-              year
-            )
-          `,
+    try {
+      console.log("[ShoppingCart] Loading unpaid bookings for user:", userId);
+      // Fetch unpaid bookings from the bookings table
+      const { data: unpaidBookings, error } = await supabase
+        .from("bookings")
+        .select(
+          `
+          id,
+          vehicle_id,
+          total_amount,
+          start_date,
+          end_date,
+          pickup_time,
+          driver_option,
+          vehicles!bookings_vehicle_id_fkey (
+            make,
+            model,
+            year
           )
-          .eq("user_id", userId)
-          .eq("payment_status", "unpaid")
-          .eq("status", "pending");
+        `,
+        )
+        .eq("user_id", userId)
+        .eq("payment_status", "unpaid")
+        .eq("status", "pending");
 
-        if (error) {
-          console.error("Error fetching unpaid bookings:", error);
-          return;
-        }
+      if (error) {
+        console.error("Error fetching unpaid bookings:", error);
+        return;
+      }
 
-        // Add unpaid bookings to cart if they're not already there
-        if (unpaidBookings && unpaidBookings.length > 0) {
-          for (const booking of unpaidBookings) {
-            // Check if booking is already in cart
-            const existingItem = cartItems.find(
-              (item) =>
-                item.item_id === booking.id.toString() &&
-                item.item_type === "car",
-            );
+      // Add unpaid bookings to cart if they're not already there
+      if (unpaidBookings && unpaidBookings.length > 0) {
+        console.log(
+          "[ShoppingCart] Found",
+          unpaidBookings.length,
+          "unpaid bookings",
+        );
+        for (const booking of unpaidBookings) {
+          // Check if booking is already in cart
+          const existingItem = cartItems.find(
+            (item) =>
+              item.item_id === booking.id.toString() &&
+              item.item_type === "car",
+          );
 
-            if (!existingItem) {
-              const vehicleInfo = booking.vehicles as any;
-              const serviceName = `${vehicleInfo?.make || "Unknown"} ${vehicleInfo?.model || "Vehicle"} ${vehicleInfo?.year ? `(${vehicleInfo.year})` : ""}`;
+          if (!existingItem) {
+            const vehicleInfo = booking.vehicles as any;
+            const serviceName = `${vehicleInfo?.make || "Unknown"} ${vehicleInfo?.model || "Vehicle"} ${vehicleInfo?.year ? `(${vehicleInfo.year})` : ""}`;
 
-              await addToCart({
-                item_type: "car",
-                item_id: booking.id.toString(),
-                service_name: serviceName,
-                price: booking.total_amount,
-                details: {
-                  start_date: booking.start_date,
-                  end_date: booking.end_date,
-                  pickup_time: booking.pickup_time,
-                  driver_option: booking.driver_option,
-                  vehicle_id: booking.vehicle_id,
-                },
-              });
-            }
+            await addToCart({
+              item_type: "car",
+              item_id: booking.id.toString(),
+              service_name: serviceName,
+              price: booking.total_amount,
+              details: {
+                start_date: booking.start_date,
+                end_date: booking.end_date,
+                pickup_time: booking.pickup_time,
+                driver_option: booking.driver_option,
+                vehicle_id: booking.vehicle_id,
+              },
+            });
           }
         }
-      } catch (error) {
-        console.error("Error loading unpaid bookings:", error);
+      } else {
+        console.log("[ShoppingCart] No unpaid bookings found");
+      }
+    } catch (error) {
+      console.error("Error loading unpaid bookings:", error);
+    }
+  }, [isAuthenticated, userId, isHydrated, isLoading, addToCart, cartItems]);
+
+  // Load unpaid bookings into cart on component mount and when auth state changes
+  React.useEffect(() => {
+    // Only load once when auth state is ready
+    if (
+      isAuthenticated &&
+      userId &&
+      isHydrated &&
+      !isCheckingSession &&
+      userRole &&
+      !isLoading
+    ) {
+      console.log(
+        "[ShoppingCart] Auth state ready and hydrated, loading unpaid bookings",
+        { isAuthenticated, userId, isHydrated, userRole },
+      );
+      loadUnpaidBookings();
+    }
+  }, [isAuthenticated, userId, isHydrated, userRole]);
+
+  // Enhanced visibility change handler with auth state recovery
+  React.useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let hasTriggeredRefresh = false;
+
+    const handleVisibilityChange = async () => {
+      if (
+        document.visibilityState === "visible" &&
+        isHydrated &&
+        !hasTriggeredRefresh
+      ) {
+        console.log("[ShoppingCart] Tab became visible, checking auth state", {
+          isAuthenticated,
+          userId,
+          isHydrated,
+          userRole,
+        });
+        hasTriggeredRefresh = true;
+
+        // Clear any existing timeout
+        if (timeoutId) clearTimeout(timeoutId);
+
+        timeoutId = setTimeout(async () => {
+          try {
+            // Check if we have valid auth state
+            if (isAuthenticated && userId && userRole && !isLoading) {
+              console.log(
+                "[ShoppingCart] Valid auth state, refreshing cart data",
+              );
+              await refetchCartData();
+            } else if (!isAuthenticated && cartItems.length === 0) {
+              // Try to recover session if no auth state
+              console.log(
+                "[ShoppingCart] No auth state, attempting session recovery",
+              );
+              const {
+                data: { session },
+              } = await supabase.auth.getSession();
+              if (session?.user) {
+                console.log(
+                  "[ShoppingCart] Session recovered, will refetch cart",
+                );
+                // Wait a bit for auth context to update
+                setTimeout(async () => {
+                  await refetchCartData();
+                }, 1000);
+              }
+            }
+          } catch (error) {
+            console.error(
+              "[ShoppingCart] Error during visibility change handling:",
+              error,
+            );
+          } finally {
+            // Reset flag after delay
+            setTimeout(() => {
+              hasTriggeredRefresh = false;
+            }, 3000);
+          }
+        }, 300);
       }
     };
 
-    // Only attempt to load bookings if authenticated
-    if (isAuthenticated && userId) {
-      loadUnpaidBookings();
-    }
-  }, [isAuthenticated, userId, addToCart]);
+    // Listen for auth state refresh events
+    const handleAuthRefresh = async () => {
+      console.log("[ShoppingCart] Auth state refreshed, refetching cart data");
+      if (!isLoading) {
+        setTimeout(async () => {
+          await refetchCartData();
+        }, 500);
+      }
+    };
 
-  const paymentMethods = [
-    { id: "credit_card", name: "Credit Card", icon: CreditCard },
-    { id: "bank_transfer", name: "Bank Transfer", icon: Banknote },
-    { id: "cash", name: "Cash", icon: DollarSign },
-    { id: "paylabs", name: "Paylabs", icon: Smartphone },
-  ];
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("authStateRefreshed", handleAuthRefresh);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("authStateRefreshed", handleAuthRefresh);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [
+    isAuthenticated,
+    userId,
+    isHydrated,
+    userRole,
+    isLoading,
+    refetchCartData,
+    cartItems.length,
+  ]);
 
   // Product suggestions for empty cart
   const productSuggestions = [
@@ -440,6 +323,12 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
       icon: Car,
       route: "/rentcar",
       description: "Premium vehicle rentals",
+    },
+    {
+      name: "Handling",
+      icon: HandHeart,
+      route: "/handling",
+      description: "Airport handling assistance services",
     },
     {
       name: "Flights",
@@ -473,6 +362,86 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     },
   ];
 
+  // Add debug logs
+  console.log("Cart Page: userRole", userRole);
+  console.log("Cart Page: isAuthenticated", isAuthenticated);
+  console.log("Cart Page: isHydrated", isHydrated);
+  console.log("Cart Page: isCheckingSession", isCheckingSession);
+  console.log("Cart Page: authLoading", authLoading);
+  console.log("Cart Page: userId", userId);
+
+  // Fallback for unauthenticated users
+  if (!isAuthenticated && !authLoading && isHydrated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-4">Please Sign In</h2>
+          <p className="text-gray-600 mb-6">
+            You need to be signed in to view your cart.
+          </p>
+          <Button onClick={() => navigate("/login")}>Sign In</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Enhanced loading state with timeout to prevent infinite loading
+  const [showReloadButton, setShowReloadButton] = React.useState(false);
+
+  React.useEffect(() => {
+    let loadingTimeout: NodeJS.Timeout;
+
+    // Show reload button if loading persists for more than 5 seconds
+    if (
+      (authLoading && !isAuthenticated) ||
+      (!isHydrated && !isAuthenticated) ||
+      (isCheckingSession && !userRole)
+    ) {
+      loadingTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Loading timeout reached, showing reload button",
+        );
+        setShowReloadButton(true);
+      }, 5000);
+    } else {
+      setShowReloadButton(false);
+    }
+
+    return () => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+    };
+  }, [authLoading, isAuthenticated, isHydrated, isCheckingSession, userRole]);
+
+  // Show loading spinner with reload option
+  if (
+    (authLoading && !isAuthenticated) ||
+    (!isHydrated && !isAuthenticated) ||
+    (isCheckingSession && !userRole)
+  ) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <span className="text-lg mb-4">
+            {authLoading ? "Loading authentication..." : "Loading..."}
+          </span>
+          {showReloadButton && (
+            <Button
+              onClick={() => {
+                console.log("[ShoppingCart] Manual reload triggered");
+                window.location.reload();
+              }}
+              variant="outline"
+              className="mt-4"
+            >
+              Reload Data
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Page layout for shopping cart
   return (
     <div className="min-h-screen bg-gray-50">
@@ -497,7 +466,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
             </div>
 
             <div className="space-y-6">
-              {isLoading && isAuthenticated ? (
+              {isLoading && cartItems.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <span className="ml-3 text-lg">Loading cart...</span>
@@ -818,6 +787,61 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                       </p>
                                     )}
 
+                                    {/* Driver Information */}
+                                    {parsedDetails.driverName && (
+                                      <div className="flex justify-between">
+                                        <span className="font-medium text-gray-600">
+                                          Driver:
+                                        </span>
+                                        <span>{parsedDetails.driverName}</span>
+                                      </div>
+                                    )}
+
+                                    {/* Driver ID */}
+                                    {(parsedDetails.id_driver ||
+                                      parsedDetails.driverId) && (
+                                      <div className="flex justify-between">
+                                        <span className="font-medium text-gray-600">
+                                          Driver ID:
+                                        </span>
+                                        <span>
+                                          {parsedDetails.id_driver ||
+                                            parsedDetails.driverId}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {/* Driver Phone */}
+                                    {parsedDetails.driverPhone && (
+                                      <div className="flex justify-between">
+                                        <span className="font-medium text-gray-600">
+                                          Driver Phone:
+                                        </span>
+                                        <span>{parsedDetails.driverPhone}</span>
+                                      </div>
+                                    )}
+
+                                    {/* Vehicle Information */}
+                                    {parsedDetails.vehicleName && (
+                                      <div className="flex justify-between">
+                                        <span className="font-medium text-gray-600">
+                                          Vehicle:
+                                        </span>
+                                        <span>{parsedDetails.vehicleName}</span>
+                                      </div>
+                                    )}
+
+                                    {parsedDetails.vehiclePlate && (
+                                      <div className="flex justify-between">
+                                        <span className="font-medium text-gray-600">
+                                          License Plate:
+                                        </span>
+                                        <span>
+                                          {parsedDetails.vehiclePlate}
+                                        </span>
+                                      </div>
+                                    )}
+
                                     {/* Passengers */}
                                     {parsedDetails.passenger && (
                                       <p className="text-sm text-gray-600">
@@ -896,7 +920,12 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                         </span>{" "}
                                         {new Date(
                                           parsedDetails.start_date,
-                                        ).toLocaleDateString("en-US")}
+                                        ).toLocaleDateString("en-US", {
+                                          weekday: "short",
+                                          year: "numeric",
+                                          month: "short",
+                                          day: "numeric",
+                                        })}
                                       </p>
                                     )}
                                     {parsedDetails.end_date && (
@@ -906,7 +935,12 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                         </span>{" "}
                                         {new Date(
                                           parsedDetails.end_date,
-                                        ).toLocaleDateString("en-US")}
+                                        ).toLocaleDateString("en-US", {
+                                          weekday: "short",
+                                          year: "numeric",
+                                          month: "short",
+                                          day: "numeric",
+                                        })}
                                       </p>
                                     )}
                                     {parsedDetails.pickup_time && (
@@ -946,7 +980,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                             size="icon"
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={() => handleRemoveItem(item.id)}
-                            disabled={isLoading}
+                            disabled={!isAuthenticated || !userId}
                           >
                             <Trash2 className="h-5 w-5" />
                           </Button>
@@ -971,15 +1005,15 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
               <Button
                 variant="outline"
                 onClick={handleClearCart}
-                disabled={cartItems.length === 0 || isLoading}
+                disabled={cartItems.length === 0 || !isAuthenticated || !userId}
                 className="w-full sm:w-auto"
               >
                 Clear Cart
               </Button>
-              {isAuthenticated ? (
+              {isAuthenticated && userId ? (
                 <Button
-                  onClick={handleCheckout}
-                  disabled={cartItems.length === 0 || isLoading}
+                  onClick={() => navigate("/checkout")}
+                  disabled={cartItems.length === 0}
                   className="w-full sm:w-auto"
                 >
                   Checkout ({formatCurrency(totalAmount)})
@@ -996,589 +1030,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
           </div>
         </div>
       </div>
-
-      {/* Checkout Section */}
-      {showCheckout && (
-        <div className="mt-8">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="text-center mb-6">
-              <h2 className="text-xl font-semibold">Checkout</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Complete customer information and select payment method
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {/* Customer Information */}
-              <div className="text-center">
-                <h3 className="font-medium mb-4">Customer Information</h3>
-                <div className="max-w-md mx-auto space-y-4">
-                  <div className="text-left">
-                    <Label htmlFor="customer-name" className="block mb-2">
-                      Full Name
-                    </Label>
-                    <Input
-                      id="customer-name"
-                      value={customerData.name}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          name: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter full name"
-                      disabled={isAuthenticated && !!userName}
-                      className={
-                        isAuthenticated && !!userName
-                          ? "bg-gray-100 cursor-not-allowed"
-                          : ""
-                      }
-                    />
-                  </div>
-                  <div className="text-left">
-                    <Label htmlFor="customer-email" className="block mb-2">
-                      Email
-                    </Label>
-                    <Input
-                      id="customer-email"
-                      type="email"
-                      value={customerData.email}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          email: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter email"
-                      disabled={isAuthenticated && !!userEmail}
-                      className={
-                        isAuthenticated && !!userEmail
-                          ? "bg-gray-100 cursor-not-allowed"
-                          : ""
-                      }
-                    />
-                  </div>
-                  <div className="text-left">
-                    <Label htmlFor="customer-phone" className="block mb-2">
-                      Phone Number
-                    </Label>
-                    <Input
-                      id="customer-phone"
-                      value={customerData.phone}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          phone: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter phone number"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Order Summary - Enhanced with complete booking details */}
-              <div className="max-w-2xl mx-auto">
-                <div className="bg-muted p-4 rounded-lg">
-                  <h3 className="font-medium mb-4 text-center">
-                    Complete Order Summary
-                  </h3>
-                  <div className="space-y-4">
-                    {cartItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="border-b border-gray-200 pb-3 last:border-b-0"
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <span className="font-medium">
-                            {item.service_name}
-                          </span>
-                          <span className="font-semibold">
-                            {formatCurrency(item.price)}
-                          </span>
-                        </div>
-
-                        {/* Detailed booking information */}
-                        {item.item_type === "baggage" && item.details && (
-                          <div className="text-sm text-gray-700 space-y-2 mt-3">
-                            <div className="grid grid-cols-1 gap-2">
-                              {/* Baggage Size */}
-                              {item.details.baggage_size && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Size:
-                                  </span>
-                                  <span>
-                                    {item.details.baggage_size
-                                      .charAt(0)
-                                      .toUpperCase() +
-                                      item.details.baggage_size.slice(1)}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* Airport */}
-                              {item.details.airport && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Airport:
-                                  </span>
-                                  <span>{item.details.airport}</span>
-                                </div>
-                              )}
-
-                              {/* Terminal */}
-                              {item.details.terminal && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Terminal:
-                                  </span>
-                                  <span>{item.details.terminal}</span>
-                                </div>
-                              )}
-
-                              {/* Storage Location */}
-                              {item.details.storage_location && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Storage Location:
-                                  </span>
-                                  <span>{item.details.storage_location}</span>
-                                </div>
-                              )}
-
-                              {/* Start Date */}
-                              {item.details.start_date && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Start Date:
-                                  </span>
-                                  <span>
-                                    {new Date(
-                                      item.details.start_date,
-                                    ).toLocaleDateString("en-US", {
-                                      weekday: "short",
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </span>
-                                </div>
-                              )}
-
-                              {/* End Date - only show if duration is more than 1 hour or duration_type is days */}
-                              {item.details.end_date &&
-                                (item.details.duration_type === "days" ||
-                                  (item.details.duration_type === "hours" &&
-                                    item.details.duration &&
-                                    parseInt(item.details.duration) > 1)) && (
-                                  <div className="flex justify-between">
-                                    <span className="font-medium text-gray-600">
-                                      End Date:
-                                    </span>
-                                    <span>
-                                      {new Date(
-                                        item.details.end_date,
-                                      ).toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                      })}
-                                    </span>
-                                  </div>
-                                )}
-
-                              {/* Start Time */}
-                              {item.details.start_time && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Start Time:
-                                  </span>
-                                  <span>{item.details.start_time}</span>
-                                </div>
-                              )}
-
-                              {/* Duration */}
-                              {item.details.duration && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Duration:
-                                  </span>
-                                  <span>
-                                    {item.details.duration}{" "}
-                                    {item.details.duration_type === "days"
-                                      ? "day(s)"
-                                      : "hour(s)"}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Airport Transfer Information */}
-                        {item.item_type === "airport_transfer" &&
-                          item.details && (
-                            <div className="text-sm text-gray-700 space-y-2 mt-3">
-                              <div className="grid grid-cols-1 gap-2">
-                                {(() => {
-                                  // Parse details if it's a JSON string, otherwise use as object
-                                  let parsedDetails = item.details;
-                                  if (typeof item.details === "string") {
-                                    try {
-                                      parsedDetails = JSON.parse(item.details);
-                                    } catch (error) {
-                                      console.error(
-                                        "Error parsing airport transfer details JSON:",
-                                        error,
-                                      );
-                                      parsedDetails = item.details;
-                                    }
-                                  }
-
-                                  const isInstantBooking =
-                                    parsedDetails.bookingType === "instant";
-                                  const isScheduleBooking =
-                                    parsedDetails.bookingType === "scheduled";
-
-                                  return (
-                                    <>
-                                      {/* Booking Code */}
-                                      {parsedDetails.bookingCode && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Booking Code:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.bookingCode}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Booking Type */}
-                                      {parsedDetails.bookingType && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Booking Type:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.bookingType ===
-                                            "instant"
-                                              ? "Instant Booking"
-                                              : "Schedule Booking"}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Vehicle Type - for both booking types */}
-                                      {parsedDetails.vehicleType && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Vehicle Type:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.vehicleType}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Pickup Date and Time - for both booking types */}
-                                      {parsedDetails.pickupDate && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Pickup Date:
-                                          </span>
-                                          <span>
-                                            {new Date(
-                                              parsedDetails.pickupDate,
-                                            ).toLocaleDateString("en-US", {
-                                              weekday: "short",
-                                              year: "numeric",
-                                              month: "short",
-                                              day: "numeric",
-                                            })}
-                                          </span>
-                                        </div>
-                                      )}
-                                      {parsedDetails.pickupTime && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Pickup Time:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.pickupTime}
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Passengers */}
-                                      {parsedDetails.passenger && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Passengers:
-                                          </span>
-                                          <span>{parsedDetails.passenger}</span>
-                                        </div>
-                                      )}
-
-                                      {/* Pickup and Dropoff Locations */}
-                                      {parsedDetails.fromAddress && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Pickup:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.fromAddress}
-                                          </span>
-                                        </div>
-                                      )}
-                                      {parsedDetails.toAddress && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Dropoff:
-                                          </span>
-                                          <span>{parsedDetails.toAddress}</span>
-                                        </div>
-                                      )}
-
-                                      {/* Distance */}
-                                      {parsedDetails.distance && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Distance:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.distance} km
-                                          </span>
-                                        </div>
-                                      )}
-
-                                      {/* Duration */}
-                                      {parsedDetails.duration && (
-                                        <div className="flex justify-between">
-                                          <span className="font-medium text-gray-600">
-                                            Duration:
-                                          </span>
-                                          <span>
-                                            {parsedDetails.duration} minutes
-                                          </span>
-                                        </div>
-                                      )}
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          )}
-
-                        {/* Car Rental Information */}
-                        {item.item_type === "car" && item.details && (
-                          <div className="text-sm text-gray-700 space-y-2 mt-3">
-                            <div className="grid grid-cols-1 gap-2">
-                              {item.details.start_date && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Pickup Date:
-                                  </span>
-                                  <span>
-                                    {new Date(
-                                      item.details.start_date,
-                                    ).toLocaleDateString("en-US", {
-                                      weekday: "short",
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </span>
-                                </div>
-                              )}
-                              {item.details.end_date && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Return Date:
-                                  </span>
-                                  <span>
-                                    {new Date(
-                                      item.details.end_date,
-                                    ).toLocaleDateString("en-US", {
-                                      weekday: "short",
-                                      year: "numeric",
-                                      month: "short",
-                                      day: "numeric",
-                                    })}
-                                  </span>
-                                </div>
-                              )}
-                              {item.details.pickup_time && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Pickup Time:
-                                  </span>
-                                  <span>{item.details.pickup_time}</span>
-                                </div>
-                              )}
-                              {item.details.driver_option && (
-                                <div className="flex justify-between">
-                                  <span className="font-medium text-gray-600">
-                                    Driver Option:
-                                  </span>
-                                  <span>
-                                    {item.details.driver_option === "self"
-                                      ? "Self-drive"
-                                      : "With Driver"}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <Separator className="my-3" />
-                  <div className="flex justify-between font-semibold text-base">
-                    <span>Total Amount:</span>
-                    <span className="text-primary">
-                      {formatCurrency(totalAmount)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Methods */}
-              <div className="text-center">
-                <h3 className="font-medium mb-4">Payment Method</h3>
-                <div className="max-w-md mx-auto">
-                  <div className="grid grid-cols-2 gap-3">
-                    {paymentMethods.map((method) => {
-                      const Icon = method.icon;
-                      return (
-                        <Button
-                          key={method.id}
-                          variant={
-                            selectedPaymentMethod === method.id
-                              ? "default"
-                              : "outline"
-                          }
-                          className="h-auto p-3 flex flex-col items-center gap-2"
-                          onClick={() => {
-                            setSelectedPaymentMethod(method.id);
-                            setSelectedBank(null); // Reset selected bank
-                          }}
-                        >
-                          <Icon className="h-5 w-5" />
-                          <span className="text-xs">{method.name}</span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Bank Selection for Bank Transfer */}
-                  {selectedPaymentMethod === "bank_transfer" && (
-                    <div className="border rounded-lg p-4 mt-4 text-left">
-                      <h4 className="font-medium mb-3 text-center">
-                        Select Bank
-                      </h4>
-                      {manualBanks.length > 0 ? (
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {manualBanks.map((bank) => (
-                            <div
-                              key={bank.id}
-                              className={`p-3 border rounded-md cursor-pointer transition-colors ${
-                                selectedBank?.id === bank.id
-                                  ? "border-blue-500 bg-blue-50"
-                                  : "hover:bg-gray-50"
-                              }`}
-                              onClick={() => setSelectedBank(bank)}
-                            >
-                              <div className="font-medium">{bank.name}</div>
-                              {selectedBank?.id === bank.id && (
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Holder:
-                                    </span>{" "}
-                                    {bank.account_holder}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Number:
-                                    </span>{" "}
-                                    {bank.account_number}
-                                  </div>
-                                  {bank.swift_code && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Swift Code:
-                                      </span>{" "}
-                                      {bank.swift_code}
-                                    </div>
-                                  )}
-                                  {bank.branch && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Branch:
-                                      </span>{" "}
-                                      {bank.branch}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          No bank accounts found. Please contact support.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center gap-4 mt-8 pt-6 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCheckout(false);
-                  setSelectedPaymentMethod("");
-                  setSelectedBank(null);
-                  setCustomerData({ name: "", email: "", phone: "" });
-                }}
-                disabled={isProcessingPayment}
-                className="px-8"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handlePayment}
-                disabled={
-                  !customerData.name ||
-                  !customerData.email ||
-                  !customerData.phone ||
-                  !selectedPaymentMethod ||
-                  (selectedPaymentMethod === "bank_transfer" &&
-                    !selectedBank) ||
-                  isProcessingPayment
-                }
-                className="px-8"
-              >
-                {isProcessingPayment ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Processing...
-                  </>
-                ) : (
-                  `Pay ${formatCurrency(totalAmount)}`
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

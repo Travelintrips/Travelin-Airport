@@ -24,7 +24,7 @@ const PaymentFormPage: React.FC = () => {
         const bookingTables = [
           {
             table: "bookings",
-            nameField: "customer_name" || "user_name",
+            nameField: "customer_name",
             amountField: "total_amount",
           },
           {

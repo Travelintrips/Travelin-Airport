@@ -89,7 +89,7 @@ export default function SmartMapPicker({
       cleanupInProgressRef.current = true;
 
       // Clean up routing control first
-      if (routingControlRef.current) {
+      if (routingControlRef.current && mapInstanceRef.current) {
         try {
           // Stop any ongoing routing requests
           if (
@@ -97,6 +97,25 @@ export default function SmartMapPicker({
             typeof routingControlRef.current._router.abort === "function"
           ) {
             routingControlRef.current._router.abort();
+          }
+
+          // Clear any existing routes/lines before removing control
+          if (typeof routingControlRef.current._clearLines === "function") {
+            // Override _clearLines to prevent null map errors
+            const originalClearLines = routingControlRef.current._clearLines;
+            routingControlRef.current._clearLines = function () {
+              try {
+                if (
+                  this._map &&
+                  this._map.hasLayer &&
+                  typeof this._map.removeLayer === "function"
+                ) {
+                  originalClearLines.call(this);
+                }
+              } catch (error) {
+                console.warn("Error in _clearLines override:", error);
+              }
+            };
           }
 
           // Remove event listeners
@@ -107,7 +126,8 @@ export default function SmartMapPicker({
           // Remove the control from map if map still exists
           if (
             mapInstanceRef.current &&
-            typeof mapInstanceRef.current.removeControl === "function"
+            typeof mapInstanceRef.current.removeControl === "function" &&
+            typeof mapInstanceRef.current.hasLayer === "function"
           ) {
             mapInstanceRef.current.removeControl(routingControlRef.current);
           }
@@ -136,7 +156,9 @@ export default function SmartMapPicker({
               try {
                 if (
                   mapInstanceRef.current &&
-                  typeof mapInstanceRef.current.removeLayer === "function"
+                  typeof mapInstanceRef.current.removeLayer === "function" &&
+                  typeof mapInstanceRef.current.hasLayer === "function" &&
+                  mapInstanceRef.current.hasLayer(layer)
                 ) {
                   mapInstanceRef.current.removeLayer(layer);
                 }
@@ -249,7 +271,7 @@ export default function SmartMapPicker({
     }
 
     // Clean up existing routing control first
-    if (routingControlRef.current) {
+    if (routingControlRef.current && mapInstanceRef.current) {
       try {
         // Stop any ongoing routing requests
         if (
@@ -257,6 +279,24 @@ export default function SmartMapPicker({
           typeof routingControlRef.current._router.abort === "function"
         ) {
           routingControlRef.current._router.abort();
+        }
+
+        // Override _clearLines to prevent null map errors
+        if (typeof routingControlRef.current._clearLines === "function") {
+          const originalClearLines = routingControlRef.current._clearLines;
+          routingControlRef.current._clearLines = function () {
+            try {
+              if (
+                this._map &&
+                this._map.hasLayer &&
+                typeof this._map.removeLayer === "function"
+              ) {
+                originalClearLines.call(this);
+              }
+            } catch (error) {
+              console.warn("Error in _clearLines override:", error);
+            }
+          };
         }
 
         // Remove event listeners
@@ -390,11 +430,33 @@ export default function SmartMapPicker({
           const originalClearLines = routingControl._clearLines;
           routingControl._clearLines = function () {
             try {
-              if (this._map && this._map.hasLayer) {
+              if (
+                this._map &&
+                this._map.hasLayer &&
+                typeof this._map.removeLayer === "function"
+              ) {
                 originalClearLines.call(this);
               }
             } catch (error) {
               console.warn("Error in _clearLines:", error);
+            }
+          };
+        }
+
+        // Override other methods that might cause issues
+        if (routingControl._removeMarkers) {
+          const originalRemoveMarkers = routingControl._removeMarkers;
+          routingControl._removeMarkers = function () {
+            try {
+              if (
+                this._map &&
+                this._map.hasLayer &&
+                typeof this._map.removeLayer === "function"
+              ) {
+                originalRemoveMarkers.call(this);
+              }
+            } catch (error) {
+              console.warn("Error in _removeMarkers:", error);
             }
           };
         }

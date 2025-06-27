@@ -7,12 +7,7 @@ const ProfilePage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <UserDashboard
-        userEmail={userEmail}
-        userRole={userRole}
-        userName={userName || userEmail?.split("@")[0] || "Customer"}
-        activeTab="profile"
-      />
+      <UserDashboard />
     </div>
   );
 };

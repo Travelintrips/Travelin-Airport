@@ -44,6 +44,7 @@ import {
   CreditCard,
   Headphones,
   ShoppingCart,
+  HandHeart,
 } from "lucide-react";
 import AuthForm from "@/components/auth/AuthForm";
 import UserDropdown from "@/components/UserDropdown";
@@ -620,6 +621,16 @@ const MobileMenu = ({
             }}
           >
             <Luggage className="h-5 w-5 mr-3" /> Baggage
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-lg py-3"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              handleTravelOptionClick("Handling");
+            }}
+          >
+            <HandHeart className="h-5 w-5 mr-3" /> Handling
           </Button>
         </div>
         <div className="border-t pt-4 space-y-2">
@@ -1579,7 +1590,7 @@ const Footer = ({ t }) => {
 const TravelPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const { isAuthenticated, isLoading, isHydrated } = useAuth();
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -1604,135 +1615,17 @@ const TravelPage = () => {
     setCurrentLanguage(i18n.language || "en");
   }, [t]);
 
-  // Check authentication status
+  // Handle auth form visibility based on authentication state
   useEffect(() => {
-    const checkAuth = async () => {
-      // First check localStorage for shared authentication
-      const authUser = localStorage.getItem("auth_user");
-      if (authUser) {
-        setIsAuthenticated(true);
-        // If authenticated, make sure auth form is closed
-        setShowAuthForm(false);
-        return;
-      }
-
-      // If not in localStorage, check Supabase session
-      const { data } = await supabase.auth.getSession();
-      setIsAuthenticated(!!data.session);
-
-      // If authenticated, make sure auth form is closed
-      if (data.session) {
-        setShowAuthForm(false);
-      }
-
-      // If authenticated via Supabase but not in localStorage, store the data
-      if (data.session) {
-        const userId = data.session.user.id;
-        localStorage.setItem("userId", userId);
-
-        // Try to get user role from metadata or default to "Customer"
-        const userRole = data.session.user.user_metadata?.role || "Customer";
-        localStorage.setItem("userRole", userRole);
-
-        // Store email if available
-        if (data.session.user.email) {
-          localStorage.setItem("userEmail", data.session.user.email);
-        }
-
-        // ✅ Fetch nama lengkap dari tabel customers
-        const { data: customerData } = await supabase
-          .from("customers")
-          .select("name")
-          .eq("user_id", userId)
-          .single();
-
-        const authUserObj = authUser ? JSON.parse(authUser) : null;
-        const userName =
-          (authUserObj && "name" in authUserObj ? authUserObj.name : null) ||
-          localStorage.getItem("userName") ||
-          (authUserObj && "email" in authUserObj && authUserObj.email
-            ? authUserObj.email.split("@")[0]
-            : null) ||
-          "User";
-
-        localStorage.setItem("userName", userName);
-
-        // Store in auth_user for shared authentication
-        const userData = {
-          id: userId,
-          role: userRole,
-          email: data.session.user.email || "",
-          name: userName,
-        };
-        localStorage.setItem("auth_user", JSON.stringify(userData));
-      }
-    };
-    checkAuth();
-
-    // Listen for auth changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        const newAuthState = !!session;
-        setIsAuthenticated(newAuthState);
-
-        // If user becomes authenticated, hide the auth form
-        if (newAuthState) {
-          setShowAuthForm(false);
-        }
-      },
-    );
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
+    if (isAuthenticated) {
+      setShowAuthForm(false);
+    }
+  }, [isAuthenticated]);
 
   const handleAuthStateChange = (state: boolean) => {
-    setIsAuthenticated(state);
     if (state) {
       // Always close the auth form when authentication state changes to true
       setShowAuthForm(false);
-
-      // Get user data from localStorage if available
-      const userId = localStorage.getItem("userId");
-      const userRole = localStorage.getItem("userRole");
-      const userEmail = localStorage.getItem("userEmail");
-
-      // Store user data in localStorage for shared authentication
-      if (userId && userRole) {
-        const userData = {
-          id: userId,
-          role: userRole,
-          email: userEmail || "",
-        };
-        localStorage.setItem("auth_user", JSON.stringify(userData));
-      }
-
-      // Check if user is admin and redirect to admin dashboard
-      console.log("TravelPage auth state change - userRole:", userRole);
-      const authUserStr = localStorage.getItem("auth_user");
-      if (authUserStr) {
-        try {
-          const authUser = JSON.parse(authUserStr);
-          console.log("TravelPage auth_user from localStorage:", authUser);
-        } catch (e) {
-          console.error("Error parsing auth_user in TravelPage:", e);
-        }
-      }
-
-      if (userRole === "Admin") {
-        console.log("Redirecting admin to dashboard");
-        navigate("/admin");
-      } else {
-        // Stay on the current page (TravelPage) after successful login
-        // No navigation needed as we're already on the TravelPage
-      }
-    } else {
-      // Remove user data from localStorage on logout
-      localStorage.removeItem("auth_user");
-      localStorage.removeItem("userId");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userEmail");
     }
   };
 
@@ -1763,6 +1656,9 @@ const TravelPage = () => {
         break;
       case "Baggage":
         navigate("/baggage");
+        break;
+      case "Handling":
+        navigate("/handling");
         break;
       case "Car Rental":
         navigate("/rentcar");
@@ -1915,6 +1811,14 @@ const TravelPage = () => {
                     <span>Baggage</span>
                   </TabsTrigger>
                   <TabsTrigger
+                    value="handling"
+                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                    onClick={() => handleTravelOptionClick("Handling")}
+                  >
+                    <HandHeart className="h-5 w-5 mr-2" />
+                    <span>Handling</span>
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="car"
                     className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
                     onClick={() => handleTravelOptionClick("Car Rental")}
@@ -1980,7 +1884,7 @@ const TravelPage = () => {
               <span className="text-xs font-medium">Bus</span>
             </button>
           </div>
-          <div className="grid grid-cols-3 gap-2 px-2 pb-4">
+          <div className="grid grid-cols-4 gap-2 px-2 pb-4">
             <button
               onClick={() => {
                 setActiveTab("airport");
@@ -1997,11 +1901,23 @@ const TravelPage = () => {
                 handleTravelOptionClick("Baggage");
               }}
               className={`flex flex-col items-center justify-center p-2 ${
-                activeTab === "airport" ? "text-green-500" : "text-gray-700"
+                activeTab === "baggage" ? "text-green-500" : "text-gray-700"
               }`}
             >
               <Luggage className="h-6 w-6 mb-1" />
               <span className="text-xs font-medium">Baggage</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("handling");
+                handleTravelOptionClick("Handling");
+              }}
+              className={`flex flex-col items-center justify-center p-2 ${
+                activeTab === "handling" ? "text-green-500" : "text-gray-700"
+              }`}
+            >
+              <HandHeart className="h-6 w-6 mb-1" />
+              <span className="text-xs font-medium">Handling</span>
             </button>
 
             <button

@@ -7,8 +7,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 // FontAwesome Icon
-export const WheelchairIcon = () => (
-  <FontAwesomeIcon icon={faWheelchair} className="text-gray-600 h-8 w-8" />
+export const WheelchairIcon = ({ className }: { className?: string }) => (
+  <FontAwesomeIcon
+    icon={faWheelchair}
+    className={className || "text-gray-600 h-8 w-8"}
+  />
 );
 
 // SVG Custom Icons

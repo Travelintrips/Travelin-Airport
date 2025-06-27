@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShoppingCart } from "@/hooks/useShoppingCart";
@@ -22,7 +23,30 @@ const Header = () => {
       console.log("Force logout detected in Header, clearing flag");
       sessionStorage.removeItem("forceLogout");
     }
+
+    // Listen for storage changes (for cross-tab logout)
+    const handleStorageChange = (e) => {
+      if (e.key === "auth_user" && !e.newValue) {
+        // User logged out in another tab
+        console.log("[Header] Logout detected in another tab");
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
   }, []);
+
+  // Prevent header from disappearing during auth state transitions
+  if (!mounted) {
+    return null;
+  }
+
+  // Show header even during loading to prevent layout shift
+  const showAuthenticatedUI = isAuthenticated && !isLoading;
 
   return (
     <>
@@ -51,7 +75,8 @@ const Header = () => {
             <Link to="/corporates" className="hover:text-green-200">
               For Corporates
             </Link>
-            {mounted && isAuthenticated && (
+            {/* Show auth-dependent UI when authenticated */}
+            {mounted && showAuthenticatedUI && (
               <Link to="/bookings" className="hover:text-green-200">
                 Bookings
               </Link>
@@ -78,7 +103,7 @@ const Header = () => {
               </Button>
             </Link>
 
-            {mounted && isAuthenticated ? (
+            {mounted && showAuthenticatedUI ? (
               <UserDropdown />
             ) : (
               <div className="flex items-center space-x-2">

@@ -47,6 +47,19 @@ interface BookingDetails {
   duration_type?: string;
   hours?: string;
   status: string;
+  // Airport transfer specific fields
+  pickup_location?: string;
+  dropoff_location?: string;
+  pickup_date?: string;
+  pickup_time?: string;
+  vehicle_name?: string;
+  driver_name?: string;
+  license_plate?: string;
+  distance?: string;
+  type?: string;
+  // Car rental specific fields
+  driver_option?: string;
+  booking_type?: "baggage" | "airport_transfer" | "car_rental";
 }
 
 const ThankYouPage: React.FC = () => {
@@ -80,73 +93,449 @@ const ThankYouPage: React.FC = () => {
         }
 
         setPayment(paymentData);
+        console.log("Payment data:", paymentData);
 
-        // Fetch related bookings
-        const { data: baggageBookings, error: baggageError } = await supabase
-          .from("baggage_booking")
-          .select("*")
-          .eq("payment_id", paymentId);
-
-        if (baggageError) {
-          console.error("Error fetching baggage bookings:", baggageError);
-        }
-
-        const { data: carBookings, error: carError } = await supabase
-          .from("bookings")
-          .select(
-            `
-            id,
-            total_amount,
-            start_date,
-            end_date,
-            pickup_time,
-            driver_option,
-            status,
-            vehicles!bookings_vehicle_id_fkey (
-              make,
-              model,
-              year
-            )
-          `,
-          )
-          .eq("payment_id", paymentId);
-
-        if (carError) {
-          console.error("Error fetching car bookings:", carError);
-        }
-
-        // Combine all bookings
+        // Combine all bookings using the new payment_bookings table
         const allBookings: BookingDetails[] = [];
 
-        if (baggageBookings) {
-          allBookings.push(
-            ...baggageBookings.map((booking) => ({
-              ...booking,
-              booking_id: booking.booking_id || booking.id,
-            })),
+        // 1. First, get all booking IDs and types from payment_bookings table
+        console.log("Fetching payment bookings for payment ID:", paymentId);
+
+        const { data: paymentBookings, error: paymentBookingsError } =
+          await supabase
+            .from("payment_bookings")
+            .select("booking_id, booking_type")
+            .eq("payment_id", paymentId);
+
+        console.log("Payment bookings found:", paymentBookings);
+        console.log("Payment bookings error:", paymentBookingsError);
+
+        if (paymentBookingsError) {
+          console.error(
+            "Error fetching payment bookings:",
+            paymentBookingsError,
           );
+        } else if (paymentBookings && paymentBookings.length > 0) {
+          // 2. Fetch details for each booking based on its type
+          for (const paymentBooking of paymentBookings) {
+            const { booking_id, booking_type } = paymentBooking;
+
+            try {
+              if (booking_type === "baggage") {
+                console.log("Fetching baggage booking:", booking_id);
+
+                const { data: baggageBooking, error: baggageError } =
+                  await supabase
+                    .from("baggage_booking")
+                    .select("*")
+                    .eq("id", booking_id)
+                    .single();
+
+                if (!baggageError && baggageBooking) {
+                  allBookings.push({
+                    ...baggageBooking,
+                    booking_id: baggageBooking.booking_id || baggageBooking.id,
+                    booking_type: "baggage" as const,
+                  });
+                } else {
+                  console.error(
+                    "Error fetching baggage booking:",
+                    baggageError,
+                  );
+                }
+              } else if (booking_type === "airport_transfer") {
+                console.log("Fetching airport transfer booking:", booking_id);
+
+                const { data: transferBooking, error: transferError } =
+                  await supabase
+                    .from("airport_transfer")
+                    .select("*")
+                    .eq("id", parseInt(booking_id))
+                    .single();
+
+                if (!transferError && transferBooking) {
+                  allBookings.push({
+                    booking_id: transferBooking.id.toString(),
+                    customer_name: transferBooking.customer_name || "Guest",
+                    customer_email: "",
+                    customer_phone: transferBooking.phone || "",
+                    item_name: "Airport Transfer Service",
+                    price: transferBooking.price || 0,
+                    pickup_location: transferBooking.pickup_location,
+                    dropoff_location: transferBooking.dropoff_location,
+                    pickup_date: transferBooking.pickup_date,
+                    pickup_time: transferBooking.pickup_time,
+                    vehicle_name: transferBooking.vehicle_name,
+                    driver_name: transferBooking.driver_name,
+                    license_plate: transferBooking.license_plate,
+                    distance: transferBooking.distance,
+                    type: transferBooking.type,
+                    status: transferBooking.status || "confirmed",
+                    booking_type: "airport_transfer" as const,
+                  });
+                } else {
+                  console.error(
+                    "Error fetching airport transfer booking:",
+                    transferError,
+                  );
+                }
+              } else if (
+                booking_type === "car" ||
+                booking_type === "car_rental"
+              ) {
+                console.log("Fetching car rental booking:", booking_id);
+
+                const { data: carBooking, error: carError } = await supabase
+                  .from("bookings")
+                  .select(
+                    `
+                    id,
+                    total_amount,
+                    start_date,
+                    end_date,
+                    pickup_time,
+                    driver_option,
+                    status,
+                    vehicles!bookings_vehicle_id_fkey (
+                      make,
+                      model,
+                      year,
+                      license_plate
+                    )
+                  `,
+                  )
+                  .eq("id", booking_id)
+                  .single();
+
+                if (!carError && carBooking) {
+                  const vehicle = carBooking.vehicles as any;
+                  allBookings.push({
+                    booking_id: carBooking.id.toString(),
+                    customer_name: paymentData.user_id ? "Customer" : "Guest",
+                    customer_email: "",
+                    customer_phone: "",
+                    item_name: `${vehicle?.make || "Unknown"} ${vehicle?.model || "Vehicle"} ${vehicle?.year ? `(${vehicle.year})` : ""}`,
+                    price: carBooking.total_amount,
+                    start_date: carBooking.start_date,
+                    end_date: carBooking.end_date,
+                    start_time: carBooking.pickup_time,
+                    driver_option: carBooking.driver_option,
+                    license_plate: vehicle?.license_plate,
+                    status: carBooking.status || "confirmed",
+                    booking_type: "car_rental" as const,
+                  });
+                } else {
+                  console.error("Error fetching car rental booking:", carError);
+                }
+              }
+            } catch (error) {
+              console.error(
+                `Error processing ${booking_type} booking ${booking_id}:`,
+                error,
+              );
+            }
+          }
         }
 
-        if (carBookings) {
-          allBookings.push(
-            ...carBookings.map((booking) => {
-              const vehicle = booking.vehicles as any;
-              return {
-                booking_id: booking.id.toString(),
-                customer_name: paymentData.user_id ? "Customer" : "Guest",
-                customer_email: "",
-                customer_phone: "",
-                item_name: `${vehicle?.make || "Unknown"} ${vehicle?.model || "Vehicle"} ${vehicle?.year ? `(${vehicle.year})` : ""}`,
-                price: booking.total_amount,
-                start_date: booking.start_date,
-                end_date: booking.end_date,
-                start_time: booking.pickup_time,
-                status: booking.status,
-              };
-            }),
+        // Fallback: If no bookings found through payment_bookings, try the old method
+        if (allBookings.length === 0) {
+          console.log(
+            "No bookings found through payment_bookings, trying fallback methods...",
           );
+
+          // 1. Fetch baggage bookings using booking_id from payments table
+          if (paymentData.booking_id) {
+            console.log(
+              "Searching for baggage bookings with booking_id:",
+              paymentData.booking_id,
+            );
+
+            const { data: baggageBookings, error: baggageError } =
+              await supabase
+                .from("baggage_booking")
+                .select("*")
+                .eq("booking_id", paymentData.booking_id);
+
+            console.log("Baggage bookings found:", baggageBookings);
+
+            if (
+              !baggageError &&
+              baggageBookings &&
+              baggageBookings.length > 0
+            ) {
+              allBookings.push(
+                ...baggageBookings.map((booking) => ({
+                  ...booking,
+                  booking_id: booking.booking_id || booking.id,
+                  booking_type: "baggage" as const,
+                })),
+              );
+            }
+          }
+
+          // 2. Fetch airport transfer bookings through airport_transfer_payments table
+          console.log(
+            "Searching for airport transfer payments with payment ID:",
+            paymentId,
+          );
+
+          const {
+            data: airportTransferPayments,
+            error: airportTransferPaymentsError,
+          } = await supabase
+            .from("airport_transfer_payments")
+            .select(
+              `
+              airport_transfer_id,
+              airport_transfer (
+                id,
+                customer_name,
+                phone,
+                pickup_location,
+                dropoff_location,
+                pickup_date,
+                pickup_time,
+                price,
+                vehicle_name,
+                driver_name,
+                license_plate,
+                distance,
+                type,
+                status
+              )
+            `,
+            )
+            .eq("id", paymentId);
+
+          console.log(
+            "Airport transfer payments found:",
+            airportTransferPayments,
+          );
+          console.log(
+            "Airport transfer payments error:",
+            airportTransferPaymentsError,
+          );
+
+          if (
+            !airportTransferPaymentsError &&
+            airportTransferPayments &&
+            airportTransferPayments.length > 0
+          ) {
+            allBookings.push(
+              ...airportTransferPayments.map((payment) => {
+                const transfer = payment.airport_transfer as any;
+                return {
+                  booking_id: transfer.id.toString(),
+                  customer_name: transfer.customer_name || "Guest",
+                  customer_email: "",
+                  customer_phone: transfer.phone || "",
+                  item_name: "Airport Transfer Service",
+                  price: transfer.price || 0,
+                  pickup_location: transfer.pickup_location,
+                  dropoff_location: transfer.dropoff_location,
+                  pickup_date: transfer.pickup_date,
+                  pickup_time: transfer.pickup_time,
+                  vehicle_name: transfer.vehicle_name,
+                  driver_name: transfer.driver_name,
+                  license_plate: transfer.license_plate,
+                  distance: transfer.distance,
+                  type: transfer.type,
+                  status: transfer.status || "pending",
+                  booking_type: "airport_transfer" as const,
+                };
+              }),
+            );
+          } else {
+            console.log(
+              "No airport transfer payments found, trying alternative approach...",
+            );
+
+            // Alternative approach: Look for airport transfers that match the payment amount and recent time
+            const {
+              data: airportTransfersByAmount,
+              error: airportAmountError,
+            } = await supabase
+              .from("airport_transfer")
+              .select("*")
+              .eq("price", paymentData.amount)
+              .gte(
+                "created_at",
+                new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+              )
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            console.log(
+              "Airport transfers by amount found:",
+              airportTransfersByAmount,
+            );
+
+            if (
+              !airportAmountError &&
+              airportTransfersByAmount &&
+              airportTransfersByAmount.length > 0
+            ) {
+              allBookings.push(
+                ...airportTransfersByAmount.map((transfer) => ({
+                  booking_id: transfer.id.toString(),
+                  customer_name: transfer.customer_name || "Guest",
+                  customer_email: "",
+                  customer_phone: transfer.phone || "",
+                  item_name: "Airport Transfer Service",
+                  price: transfer.price || 0,
+                  pickup_location: transfer.pickup_location,
+                  dropoff_location: transfer.dropoff_location,
+                  pickup_date: transfer.pickup_date,
+                  pickup_time: transfer.pickup_time,
+                  vehicle_name: transfer.vehicle_name,
+                  driver_name: transfer.driver_name,
+                  license_plate: transfer.license_plate,
+                  distance: transfer.distance,
+                  type: transfer.type,
+                  status: transfer.status || "pending",
+                  booking_type: "airport_transfer" as const,
+                })),
+              );
+            }
+          }
+
+          // 3. Fetch car rental bookings
+          if (paymentData.booking_id) {
+            const { data: carBookings, error: carError } = await supabase
+              .from("bookings")
+              .select(
+                `
+                id,
+                total_amount,
+                start_date,
+                end_date,
+                pickup_time,
+                driver_option,
+                status,
+                vehicles!bookings_vehicle_id_fkey (
+                  make,
+                  model,
+                  year
+                )
+              `,
+              )
+              .eq("id", paymentData.booking_id);
+
+            console.log("Car bookings found:", carBookings);
+
+            if (!carError && carBookings && carBookings.length > 0) {
+              allBookings.push(
+                ...carBookings.map((booking) => {
+                  const vehicle = booking.vehicles as any;
+                  return {
+                    booking_id: booking.id.toString(),
+                    customer_name: paymentData.user_id ? "Customer" : "Guest",
+                    customer_email: "",
+                    customer_phone: "",
+                    item_name: `${vehicle?.make || "Unknown"} ${vehicle?.model || "Vehicle"} ${vehicle?.year ? `(${vehicle.year})` : ""}`,
+                    price: booking.total_amount,
+                    start_date: booking.start_date,
+                    end_date: booking.end_date,
+                    start_time: booking.pickup_time,
+                    status: booking.status,
+                    booking_type: "car_rental" as const,
+                  };
+                }),
+              );
+            }
+          }
         }
 
+        // 4. If still no bookings found through direct relationships, try alternative approaches
+        if (allBookings.length === 0) {
+          console.log(
+            "No bookings found through direct relationships, trying alternative approaches...",
+          );
+
+          // Try to find baggage bookings by customer and recent time
+          if (paymentData.user_id) {
+            const { data: baggageByCustomer, error: baggageCustomerError } =
+              await supabase
+                .from("baggage_booking")
+                .select("*")
+                .eq("customer_id", paymentData.user_id)
+                .gte(
+                  "created_at",
+                  new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+                ); // Last 2 hours
+
+            if (
+              !baggageCustomerError &&
+              baggageByCustomer &&
+              baggageByCustomer.length > 0
+            ) {
+              console.log(
+                "Found baggage bookings by customer:",
+                baggageByCustomer,
+              );
+              allBookings.push(
+                ...baggageByCustomer.map((booking) => ({
+                  ...booking,
+                  booking_id: booking.booking_id || booking.id,
+                  booking_type: "baggage" as const,
+                })),
+              );
+            }
+          }
+
+          // Try to find airport transfers by amount and recent time (if not already found)
+          if (
+            !allBookings.some(
+              (booking) => booking.booking_type === "airport_transfer",
+            )
+          ) {
+            const { data: airportByAmount, error: airportAmountError } =
+              await supabase
+                .from("airport_transfer")
+                .select("*")
+                .eq("price", paymentData.amount)
+                .gte(
+                  "created_at",
+                  new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+                )
+                .order("created_at", { ascending: false })
+                .limit(3);
+
+            if (
+              !airportAmountError &&
+              airportByAmount &&
+              airportByAmount.length > 0
+            ) {
+              console.log(
+                "Found airport transfers by amount:",
+                airportByAmount,
+              );
+              allBookings.push(
+                ...airportByAmount.map((transfer) => ({
+                  booking_id: transfer.id.toString(),
+                  customer_name: transfer.customer_name || "Guest",
+                  customer_email: "",
+                  customer_phone: transfer.phone || "",
+                  item_name: "Airport Transfer Service",
+                  price: transfer.price || 0,
+                  pickup_location: transfer.pickup_location,
+                  dropoff_location: transfer.dropoff_location,
+                  pickup_date: transfer.pickup_date,
+                  pickup_time: transfer.pickup_time,
+                  vehicle_name: transfer.vehicle_name,
+                  driver_name: transfer.driver_name,
+                  license_plate: transfer.license_plate,
+                  distance: transfer.distance,
+                  type: transfer.type,
+                  status: transfer.status || "pending",
+                  booking_type: "airport_transfer" as const,
+                })),
+              );
+            }
+          }
+        }
+
+        console.log("Final combined bookings:", allBookings);
         setBookings(allBookings);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -368,75 +757,292 @@ const ThankYouPage: React.FC = () => {
 
                       {/* Booking Specific Details */}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {booking.baggage_size && (
-                          <div className="flex items-center gap-2">
-                            <Luggage className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">
-                                Baggage Size
-                              </p>
-                              <p className="text-sm font-medium">
-                                {booking.baggage_size.charAt(0).toUpperCase() +
-                                  booking.baggage_size.slice(1)}
-                              </p>
-                            </div>
-                          </div>
+                        {/* Baggage Booking Details */}
+                        {booking.booking_type === "baggage" && (
+                          <>
+                            {booking.baggage_size && (
+                              <div className="flex items-center gap-2">
+                                <Luggage className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Baggage Size
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.baggage_size
+                                      .charAt(0)
+                                      .toUpperCase() +
+                                      booking.baggage_size.slice(1)}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.airport && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Airport
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.airport}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.terminal && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Terminal
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.terminal}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.storage_location && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Storage Location
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.storage_location}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.flight_number &&
+                              booking.flight_number !== "-" && (
+                                <div className="flex items-center gap-2">
+                                  <Car className="h-4 w-4 text-gray-500" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">
+                                      Flight Number
+                                    </p>
+                                    <p className="text-sm font-medium">
+                                      {booking.flight_number}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                          </>
                         )}
-                        {booking.airport && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">Airport</p>
-                              <p className="text-sm font-medium">
-                                {booking.airport}
-                              </p>
-                            </div>
-                          </div>
+
+                        {/* Airport Transfer Details */}
+                        {booking.booking_type === "airport_transfer" && (
+                          <>
+                            {booking.pickup_location && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Pickup Location
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.pickup_location}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.dropoff_location && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Dropoff Location
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.dropoff_location}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.vehicle_name && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Vehicle
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.vehicle_name}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.driver_name && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Driver
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.driver_name}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.license_plate && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    License Plate
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.license_plate}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.distance && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Distance
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.distance}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
-                        {booking.terminal && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">Terminal</p>
-                              <p className="text-sm font-medium">
-                                {booking.terminal}
-                              </p>
-                            </div>
-                          </div>
+
+                        {/* Car Rental Details */}
+                        {booking.booking_type === "car_rental" && (
+                          <>
+                            {booking.start_date && (
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Rental Start
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {new Date(
+                                      booking.start_date,
+                                    ).toLocaleDateString("en-US", {
+                                      weekday: "short",
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.end_date && (
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Rental End
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {new Date(
+                                      booking.end_date,
+                                    ).toLocaleDateString("en-US", {
+                                      weekday: "short",
+                                      year: "numeric",
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.start_time && (
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Pickup Time
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.start_time}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.driver_option && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Driver Option
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.driver_option === "self"
+                                      ? "Self-drive"
+                                      : "With Driver"}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.license_plate && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    License Plate
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.license_plate}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
-                        {booking.start_date && (
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">
-                                Start Date
-                              </p>
-                              <p className="text-sm font-medium">
-                                {new Date(
-                                  booking.start_date,
-                                ).toLocaleDateString("en-US", {
-                                  weekday: "short",
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })}
-                              </p>
+
+                        {/* Common Date/Time Fields - Only show if not already shown in booking type specific section */}
+                        {(booking.start_date || booking.pickup_date) &&
+                          booking.booking_type !== "airport_transfer" &&
+                          booking.booking_type !== "car_rental" && (
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4 text-gray-500" />
+                              <div>
+                                <p className="text-xs text-gray-600">
+                                  Start Date
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {new Date(
+                                    booking.start_date ||
+                                      booking.pickup_date ||
+                                      "",
+                                  ).toLocaleDateString("en-US", {
+                                    weekday: "short",
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  })}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                        {booking.start_time && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">
-                                Start Time
-                              </p>
-                              <p className="text-sm font-medium">
-                                {booking.start_time}
-                              </p>
+                          )}
+                        {(booking.start_time || booking.pickup_time) &&
+                          booking.booking_type !== "airport_transfer" &&
+                          booking.booking_type !== "car_rental" && (
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4 text-gray-500" />
+                              <div>
+                                <p className="text-xs text-gray-600">
+                                  Start Time
+                                </p>
+                                <p className="text-sm font-medium">
+                                  {booking.start_time || booking.pickup_time}
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
                         {booking.duration && (
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-gray-500" />
@@ -451,33 +1057,6 @@ const ThankYouPage: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        {booking.storage_location && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            <div>
-                              <p className="text-xs text-gray-600">
-                                Storage Location
-                              </p>
-                              <p className="text-sm font-medium">
-                                {booking.storage_location}
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        {booking.flight_number &&
-                          booking.flight_number !== "-" && (
-                            <div className="flex items-center gap-2">
-                              <Car className="h-4 w-4 text-gray-500" />
-                              <div>
-                                <p className="text-xs text-gray-600">
-                                  Flight Number
-                                </p>
-                                <p className="text-sm font-medium">
-                                  {booking.flight_number}
-                                </p>
-                              </div>
-                            </div>
-                          )}
                       </div>
                     </div>
                   ))}

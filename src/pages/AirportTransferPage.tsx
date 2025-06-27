@@ -117,7 +117,17 @@ function AirportTransferPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { userId, userName, userEmail, isAuthenticated, isLoading } = useAuth();
+  const {
+    userId,
+    userName,
+    userEmail,
+    isAuthenticated,
+    isLoading,
+    isHydrated,
+    isSessionReady,
+    refreshAuthState,
+  } = useAuth();
+
   const { addToCart } = useShoppingCart();
   const [showAuthModal, setShowAuthModal] = useState(false);
 
@@ -135,7 +145,7 @@ function AirportTransferPageContent() {
     pickupDate: "",
     pickupTime: "10:00",
     passenger: 1,
-    vehicleType: "Sedan",
+    vehicleType: "MPV",
     fullName: userName || "",
     phoneNumber: "",
     paymentMethod: "cash",
@@ -157,6 +167,194 @@ function AirportTransferPageContent() {
     surcharge: 0,
   });
 
+  // State for available vehicles and drivers for instant booking
+  const [availableVehiclesWithDrivers, setAvailableVehiclesWithDrivers] =
+    useState<
+      {
+        id: string;
+        uuid: string | null; // ✅ Driver UUID from drivers.id
+        id_driver: number | null; // ✅ Driver integer ID from drivers.id_driver
+        make: string;
+        model: string;
+        license_plate: string;
+        driver_name: string;
+        driver_phone: string;
+        vehicle_type: string;
+        price_km: number;
+        basic_price: number;
+        surcharge: number;
+      }[]
+    >([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState<boolean>(false);
+
+  // State to track if both pickup and dropoff locations are selected
+  const [locationsSelected, setLocationsSelected] = useState<boolean>(false);
+
+  // Fetch available vehicles with drivers for instant booking
+  const fetchAvailableVehiclesWithDrivers = async (vehicleType: string) => {
+    if (!vehicleType) return;
+
+    setIsLoadingVehicles(true);
+    try {
+      // First, get the vehicle_type_id from vehicle_types table
+      const { data: vehicleTypeData, error: vehicleTypeError } = await supabase
+        .from("vehicle_types")
+        .select("id")
+        .eq("name", vehicleType)
+        .single();
+
+      if (vehicleTypeError || !vehicleTypeData) {
+        console.error("Error fetching vehicle type ID:", vehicleTypeError);
+        setAvailableVehiclesWithDrivers([]);
+        return;
+      }
+
+      // Query vehicles with assigned drivers
+      const { data: vehiclesData, error: vehiclesError } = await supabase
+        .from("vehicles")
+        .select(
+          `
+          id,
+          make,
+          model,
+          license_plate,
+          type,
+          price_km,
+          basic_price,
+          surcharge,
+          drivers!vehicles_driver_id_fkey (
+            id,
+            id_driver,
+            name,
+            phone
+          )
+        `,
+        )
+        .eq("vehicle_type_id", vehicleTypeData.id)
+        .not("driver_id", "is", null)
+        .eq("is_active", true);
+
+      if (vehiclesError) {
+        console.error("Error fetching vehicles with drivers:", vehiclesError);
+        setAvailableVehiclesWithDrivers([]);
+        return;
+      }
+
+      // Format the data
+      const formattedVehicles =
+        vehiclesData
+          ?.filter((vehicle) => vehicle.drivers) // Ensure driver data exists
+          .map((vehicle) => ({
+            id: vehicle.id, // Vehicle ID
+            uuid: vehicle.drivers?.id || null, // ✅ Driver UUID from drivers.id
+            id_driver: vehicle.drivers?.id_driver || null, // ✅ Driver integer ID from drivers.id_driver
+            make: vehicle.make,
+            model: vehicle.model,
+            license_plate: vehicle.license_plate || "N/A",
+            driver_name: vehicle.drivers?.name || "Unknown Driver",
+            driver_phone: vehicle.drivers?.phone || "N/A",
+            vehicle_type: vehicle.type || vehicleType,
+            price_km: Number(vehicle.price_km) || 3250,
+            basic_price: Number(vehicle.basic_price) || 75000,
+            surcharge: Number(vehicle.surcharge) || 40000,
+          })) || [];
+
+      setAvailableVehiclesWithDrivers(formattedVehicles);
+      console.log(
+        `Found ${formattedVehicles.length} available vehicles with drivers for ${vehicleType}`,
+      );
+    } catch (error) {
+      console.error("Error in fetchAvailableVehiclesWithDrivers:", error);
+      setAvailableVehiclesWithDrivers(null);
+    } finally {
+      setIsLoadingVehicles(false);
+    }
+  };
+
+  // Auth state synchronization for AirportTransfer
+  useEffect(() => {
+    const handleAuthStateChange = (event: CustomEvent) => {
+      console.log("[AirportTransfer] Auth state changed:", event.detail);
+
+      if (event.detail?.loggedOut) {
+        console.log(
+          "[AirportTransfer] User logged out, clearing transfer data",
+        );
+        // Reset form data and states
+        setFormData((prev) => ({
+          ...prev,
+          fullName: "",
+          phoneNumber: "",
+          driverId: null,
+          driverName: "",
+          driverPhone: "",
+        }));
+        setSelectedDriver(null);
+        setSelectedVehicleDriver(null);
+        return;
+      }
+
+      if (event.detail?.recovered && event.detail?.userData) {
+        console.log("[AirportTransfer] Auth recovered, updating form data");
+        const userData = event.detail.userData;
+        setFormData((prev) => ({
+          ...prev,
+          fullName: userData.name || "",
+        }));
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        console.log(
+          "[AirportTransfer] Tab became visible, validating auth state",
+        );
+
+        // Check if auth state is valid for vehicle loading
+        if (!isAuthenticated || !userId) {
+          console.warn(
+            "[AirportTransfer] Invalid auth state, vehicles may not load",
+          );
+          // Trigger auth refresh
+          window.dispatchEvent(new CustomEvent("authStateRefresh"));
+        } else {
+          console.log("[AirportTransfer] Auth state is valid");
+          // Refresh vehicle data if needed
+          if (
+            availableVehiclesWithDrivers.length === 0 &&
+            formData.vehicleType
+          ) {
+            console.log(
+              "[AirportTransfer] Refreshing vehicle data after auth validation",
+            );
+            fetchAvailableVehiclesWithDrivers(formData.vehicleType);
+          }
+        }
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener(
+      "authStateRefreshed",
+      handleAuthStateChange as EventListener,
+    );
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener(
+        "authStateRefreshed",
+        handleAuthStateChange as EventListener,
+      );
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    isAuthenticated,
+    userId,
+    formData.vehicleType,
+    availableVehiclesWithDrivers.length,
+    fetchAvailableVehiclesWithDrivers,
+  ]);
+
   // Booking type state (instant or scheduled)
   const [bookingType, setBookingType] = useState<"instant" | "scheduled">(
     "instant",
@@ -169,6 +367,7 @@ function AirportTransferPageContent() {
   const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
   const [isSearchingDriver, setIsSearchingDriver] = useState<boolean>(false);
+  const [selectedVehicleDriver, setSelectedVehicleDriver] = useState<any>(null);
 
   // Terminal options for airport
   {
@@ -199,53 +398,241 @@ function AirportTransferPageContent() {
     }[]
   >([]);
 
-  // Fetch available vehicle types from price_km table
+  // Fetch available vehicle types from price_km table - wait for session ready with validation
   useEffect(() => {
+    if (!isSessionReady) {
+      console.log("[AirportTransfer] Waiting for session to be ready...");
+      return;
+    }
+
+    console.log(
+      "[AirportTransfer] Session ready, fetching vehicle types with validation",
+    );
+
     const fetchVehicleTypes = async () => {
       try {
+        console.log("🔍 Starting fetchVehicleTypes...");
+        console.log("🔗 Supabase client status:", {
+          client: !!supabase,
+          url: supabase?.supabaseUrl,
+          key: supabase?.supabaseKey ? "[PRESENT]" : "[MISSING]",
+        });
+
+        // Always provide default vehicle types first
+        const defaultTypes = [
+          {
+            name: "MPV",
+            price_per_km: 3500,
+            basic_price: 80000,
+            surcharge: 45000,
+            minimum_distance: 8,
+          },
+          {
+            name: "Electric",
+            price_per_km: 3000,
+            basic_price: 70000,
+            surcharge: 35000,
+            minimum_distance: 8,
+          },
+        ];
+
+        // Set default types immediately to prevent "No pricing data found" error
+        setVehicleTypes(defaultTypes);
+        console.log("✅ Set default vehicle types:", defaultTypes);
+
+        // Set default form data if not already set
+        if (!formData.vehicleType) {
+          setFormData((prev) => ({
+            ...prev,
+            vehicleType: defaultTypes[0].name,
+            vehiclePricePerKm: defaultTypes[0].price_per_km,
+            basicPrice: defaultTypes[0].basic_price,
+            surcharge: defaultTypes[0].surcharge,
+          }));
+          console.log("✅ Set default form data with:", defaultTypes[0]);
+        }
+
+        // Check if we're using a mock Supabase client
+        const isMockClient =
+          !supabase?.supabaseUrl ||
+          supabase?.supabaseUrl === "https://placeholder-project.supabase.co";
+
+        if (isMockClient) {
+          console.warn(
+            "⚠️ Using mock Supabase client - database operations will not work",
+          );
+          console.warn(
+            "⚠️ Please check your VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables",
+          );
+          return; // Exit early with default types already set
+        }
+
+        // Test basic connection first
+        console.log("🧪 Testing basic Supabase connection...");
+        const { data: testData, error: testError } = await supabase
+          .from("price_km")
+          .select("count", { count: "exact", head: true });
+
+        console.log("🧪 Connection test result:", {
+          count: testData,
+          error: testError,
+          errorDetails: testError
+            ? {
+                message: testError.message,
+                details: testError.details,
+                hint: testError.hint,
+                code: testError.code,
+              }
+            : null,
+        });
+
+        if (testError) {
+          console.error("❌ Basic connection test failed:", testError);
+          throw new Error(`Database connection failed: ${testError.message}`);
+        }
+
+        // First, let's check what's in the table
+        console.log("📋 Fetching all data from price_km table...");
+        const { data: allData, error: allError } = await supabase
+          .from("price_km")
+          .select("*")
+          .order("vehicle_type", { ascending: true });
+
+        console.log("📋 All data query result:", {
+          dataCount: allData?.length || 0,
+          data: allData,
+          error: allError,
+          errorDetails: allError
+            ? {
+                message: allError.message,
+                details: allError.details,
+                hint: allError.hint,
+                code: allError.code,
+              }
+            : null,
+        });
+
+        if (allError) {
+          console.error("❌ Error fetching all data:", allError);
+          throw allError;
+        }
+
+        if (!allData || allData.length === 0) {
+          console.warn("⚠️ No data found in price_km table at all!");
+          throw new Error("No data found in price_km table");
+        }
+
+        // Log each record for debugging
+        console.log("📊 Detailed data analysis:");
+        allData.forEach((record, index) => {
+          console.log(`Record ${index + 1}:`, {
+            vehicle_type: record.vehicle_type,
+            price_per_km: record.price_per_km,
+            basic_price: record.basic_price,
+            surcharge: record.surcharge,
+            is_active: record.is_active,
+            minimum_distance: record.minimum_distance,
+          });
+        });
+
+        // Now fetch active vehicle types
+        console.log("🎯 Fetching active vehicle types...");
         const { data, error } = await supabase
           .from("price_km")
           .select(
-            "vehicle_type, price_per_km, basic_price, surcharge, minimum_distance",
+            "vehicle_type, price_per_km, basic_price, surcharge, minimum_distance, is_active",
           )
           .eq("is_active", true)
           .order("vehicle_type", { ascending: true });
 
-        if (error) {
-          console.error("Error fetching vehicle types from price_km:", error);
-          const defaultTypes = [
-            {
-              name: "Sedan",
-              price_per_km: 3250,
-              basic_price: 75000,
-              surcharge: 40000,
-              minimum_distance: 8,
-            },
-            {
-              name: "SUV",
-              price_per_km: 4000,
-              basic_price: 90000,
-              surcharge: 50000,
-              minimum_distance: 8,
-            },
-            {
-              name: "MPV",
-              price_per_km: 3500,
-              basic_price: 80000,
-              surcharge: 45000,
-              minimum_distance: 8,
-            },
-          ];
-          setVehicleTypes(defaultTypes);
+        console.log("📊 Active vehicle types query result:", {
+          dataCount: data?.length || 0,
+          data,
+          error,
+          errorDetails: error
+            ? {
+                message: error.message,
+                details: error.details,
+                hint: error.hint,
+                code: error.code,
+              }
+            : null,
+        });
 
-          if (!formData.vehicleType) {
+        if (error) {
+          console.error("❌ Error fetching active vehicle types:", error);
+          console.log("🔄 Trying fallback query without is_active filter...");
+
+          // Try to fetch without is_active filter as fallback
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("price_km")
+            .select(
+              "vehicle_type, price_per_km, basic_price, surcharge, minimum_distance, is_active",
+            )
+            .order("vehicle_type", { ascending: true });
+
+          console.log("🔄 Fallback query result:", {
+            dataCount: fallbackData?.length || 0,
+            data: fallbackData,
+            error: fallbackError,
+          });
+
+          if (fallbackError || !fallbackData || fallbackData.length === 0) {
+            console.warn(
+              "⚠️ Fallback query also failed, using default vehicle types",
+            );
+            const defaultTypes = [
+              {
+                name: "MPV",
+                price_per_km: 3500,
+                basic_price: 80000,
+                surcharge: 45000,
+                minimum_distance: 8,
+              },
+              {
+                name: "Electric",
+                price_per_km: 3000,
+                basic_price: 70000,
+                surcharge: 35000,
+                minimum_distance: 8,
+              },
+            ];
+            setVehicleTypes(defaultTypes);
+            console.log("✅ Set default vehicle types:", defaultTypes);
+
+            if (!formData.vehicleType) {
+              setFormData((prev) => ({
+                ...prev,
+                vehicleType: defaultTypes[0].name,
+                vehiclePricePerKm: defaultTypes[0].price_per_km,
+                basicPrice: defaultTypes[0].basic_price,
+                surcharge: defaultTypes[0].surcharge,
+              }));
+              console.log("✅ Set default form data with:", defaultTypes[0]);
+            }
+            return;
+          }
+
+          // Use fallback data (all records)
+          const types = fallbackData.map((item) => ({
+            name: item.vehicle_type,
+            price_per_km: Number(item.price_per_km),
+            basic_price: Number(item.basic_price),
+            surcharge: Number(item.surcharge),
+            minimum_distance: Number(item.minimum_distance || 8),
+          }));
+          setVehicleTypes(types);
+          console.log("✅ Using fallback data, found vehicle types:", types);
+
+          if (!formData.vehicleType && types.length > 0) {
             setFormData((prev) => ({
               ...prev,
-              vehicleType: defaultTypes[0].name,
-              vehiclePricePerKm: defaultTypes[0].price_per_km,
-              basicPrice: defaultTypes[0].basic_price,
-              surcharge: defaultTypes[0].surcharge,
+              vehicleType: types[0].name,
+              vehiclePricePerKm: types[0].price_per_km,
+              basicPrice: types[0].basic_price,
+              surcharge: types[0].surcharge,
             }));
+            console.log("✅ Set form data from fallback with:", types[0]);
           }
           return;
         }
@@ -258,94 +645,84 @@ function AirportTransferPageContent() {
             surcharge: Number(item.surcharge),
             minimum_distance: Number(item.minimum_distance || 8),
           }));
-          setVehicleTypes(types);
 
-          if (!formData.vehicleType && types.length > 0) {
+          // Update with database types (overriding defaults)
+          setVehicleTypes(types);
+          console.log(
+            "✅ Successfully fetched active vehicle types from database:",
+            types,
+          );
+
+          const mpvType = types.find((t) => t.name === "MPV");
+          console.log("🎯 MPV found in database results:", mpvType);
+
+          if (!mpvType) {
+            console.warn("⚠️ MPV not found in database vehicle types!");
+            console.log(
+              "Available types from database:",
+              types.map((t) => t.name),
+            );
+          }
+
+          // Update form data with database pricing if current vehicle type exists in database
+          const currentVehicleTypeInDb = types.find(
+            (t) => t.name === formData.vehicleType,
+          );
+          if (currentVehicleTypeInDb) {
             setFormData((prev) => ({
               ...prev,
-              vehicleType: types[0].name,
-              vehiclePricePerKm: types[0].price_per_km,
-              basicPrice: types[0].basic_price,
-              surcharge: types[0].surcharge,
+              vehiclePricePerKm: currentVehicleTypeInDb.price_per_km,
+              basicPrice: currentVehicleTypeInDb.basic_price,
+              surcharge: currentVehicleTypeInDb.surcharge,
             }));
+            console.log(
+              "✅ Updated form data with database pricing for:",
+              currentVehicleTypeInDb.name,
+            );
           }
         } else {
-          const defaultTypes = [
-            {
-              name: "Sedan",
-              price_per_km: 3250,
-              basic_price: 75000,
-              surcharge: 40000,
-              minimum_distance: 8,
-            },
-            {
-              name: "SUV",
-              price_per_km: 4000,
-              basic_price: 90000,
-              surcharge: 50000,
-              minimum_distance: 8,
-            },
-            {
-              name: "MPV",
-              price_per_km: 3500,
-              basic_price: 80000,
-              surcharge: 45000,
-              minimum_distance: 8,
-            },
-          ];
-          setVehicleTypes(defaultTypes);
-
-          if (!formData.vehicleType) {
-            setFormData((prev) => ({
-              ...prev,
-              vehicleType: defaultTypes[0].name,
-              vehiclePricePerKm: defaultTypes[0].price_per_km,
-              basicPrice: defaultTypes[0].basic_price,
-              surcharge: defaultTypes[0].surcharge,
-            }));
-          }
+          console.warn(
+            "⚠️ No active vehicle types found in price_km table, keeping defaults",
+          );
+          // Default types are already set above, so we don't need to set them again
         }
       } catch (err) {
-        console.error("Failed to fetch vehicle types from price_km:", err);
-        const defaultTypes = [
-          {
-            name: "Sedan",
-            price_per_km: 3250,
-            basic_price: 75000,
-            surcharge: 40000,
-            minimum_distance: 8,
-          },
-          {
-            name: "SUV",
-            price_per_km: 4000,
-            basic_price: 90000,
-            surcharge: 50000,
-            minimum_distance: 8,
-          },
-          {
-            name: "MPV",
-            price_per_km: 3500,
-            basic_price: 80000,
-            surcharge: 45000,
-            minimum_distance: 8,
-          },
-        ];
-        setVehicleTypes(defaultTypes);
+        console.error("❌ Failed to fetch vehicle types from price_km:", err);
+        console.error("❌ Error details:", {
+          message: err?.message,
+          stack: err?.stack,
+          name: err?.name,
+          cause: err?.cause,
+        });
 
-        if (!formData.vehicleType) {
-          setFormData((prev) => ({
-            ...prev,
-            vehicleType: defaultTypes[0].name,
-            vehiclePricePerKm: defaultTypes[0].price_per_km,
-            basicPrice: defaultTypes[0].basic_price,
-            surcharge: defaultTypes[0].surcharge,
-          }));
-        }
+        // Default types are already set above, so we don't need to set them again
+        console.log(
+          "✅ Using previously set default vehicle types due to database error",
+        );
+
+        // Show user-friendly error
+        toast({
+          title: "Database Connection Issue",
+          description:
+            "Using default pricing. Please check your internet connection or contact support.",
+          variant: "destructive",
+        });
+
+        // Log environment variable status for debugging
+        console.log("🔧 Environment variables check:", {
+          VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL
+            ? "[SET]"
+            : "[MISSING]",
+          VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY
+            ? "[SET]"
+            : "[MISSING]",
+          actualUrl: import.meta.env.VITE_SUPABASE_URL,
+        });
       }
     };
 
     fetchVehicleTypes();
-  }, []);
+  }, [isSessionReady]);
 
   // Calculate route distance and duration
   useEffect(() => {
@@ -552,9 +929,13 @@ function AirportTransferPageContent() {
       vehicleModel: "",
       vehiclePlate: "",
       vehicleColor: "",
-      vehicleMake: "",
     }));
-  }, [formData.vehicleType, vehicleTypes]);
+
+    // Fetch available vehicles with drivers for instant booking
+    if (bookingType === "instant" && formData.vehicleType) {
+      fetchAvailableVehiclesWithDrivers(formData.vehicleType);
+    }
+  }, [formData.vehicleType, vehicleTypes, bookingType]);
 
   // Helper function to get pricing from price_km table based on vehicle type
   function getPricingFromVehicleTypes(vehicleType: string) {
@@ -563,6 +944,11 @@ function AirportTransferPageContent() {
     );
 
     if (selectedVehicleType) {
+      console.log(`✅ Found pricing data for ${vehicleType}:`, {
+        priceKm: selectedVehicleType.price_per_km,
+        basicPrice: selectedVehicleType.basic_price,
+        surcharge: selectedVehicleType.surcharge,
+      });
       return {
         priceKm: selectedVehicleType.price_per_km,
         basicPrice: selectedVehicleType.basic_price,
@@ -571,45 +957,266 @@ function AirportTransferPageContent() {
     }
 
     // Return default values if not found
-    console.warn(`No pricing data found for ${vehicleType}`);
-    return {
-      priceKm: 3250,
-      basicPrice: 75000,
-      surcharge: 40000,
-    };
+    console.warn(`⚠️ No pricing data found for ${vehicleType}, using defaults`);
+    console.log(
+      `Available vehicle types:`,
+      vehicleTypes.map((t) => t.name),
+    );
+
+    // Use different defaults based on vehicle type
+    const defaultPricing =
+      vehicleType === "Electric"
+        ? {
+            priceKm: 3000,
+            basicPrice: 70000,
+            surcharge: 35000,
+          }
+        : {
+            priceKm: 3500,
+            basicPrice: 80000,
+            surcharge: 45000,
+          };
+
+    console.log(`✅ Using default pricing for ${vehicleType}:`, defaultPricing);
+    return defaultPricing;
   }
 
   // Helper function to get pricing from database
   const getPricingFromDatabase = async (vehicleType: string) => {
     try {
+      console.log(`🔍 Getting pricing for vehicle type: ${vehicleType}`);
+      console.log(`🔗 Supabase client status:`, {
+        client: !!supabase,
+        url: supabase?.supabaseUrl,
+        key: supabase?.supabaseKey ? "[PRESENT]" : "[MISSING]",
+      });
+
+      if (!vehicleType || vehicleType.trim() === "") {
+        console.warn(`⚠️ Empty vehicle type provided`);
+        return {
+          priceKm: 3500,
+          basicPrice: 80000,
+          surcharge: 45000,
+        };
+      }
+
+      // Check if we're using a mock Supabase client
+      const isMockClient =
+        !supabase?.supabaseUrl ||
+        supabase?.supabaseUrl === "https://placeholder-project.supabase.co";
+
+      if (isMockClient) {
+        console.warn(
+          `⚠️ Using mock client - returning default pricing for ${vehicleType}`,
+        );
+        return {
+          priceKm: vehicleType === "MPV" ? 3500 : 3000,
+          basicPrice: vehicleType === "MPV" ? 80000 : 70000,
+          surcharge: vehicleType === "MPV" ? 45000 : 35000,
+        };
+      }
+
+      // First check what's available in the table for this vehicle type
+      console.log(`📋 Checking all data for vehicle type: ${vehicleType}`);
+      const { data: allVehicleData, error: allVehicleError } = await supabase
+        .from("price_km")
+        .select("*")
+        .eq("vehicle_type", vehicleType);
+
+      console.log(`📋 All data for ${vehicleType}:`, {
+        dataCount: allVehicleData?.length || 0,
+        data: allVehicleData,
+        error: allVehicleError,
+        errorDetails: allVehicleError
+          ? {
+              message: allVehicleError.message,
+              details: allVehicleError.details,
+              hint: allVehicleError.hint,
+              code: allVehicleError.code,
+            }
+          : null,
+      });
+
+      if (allVehicleError) {
+        console.error(
+          `❌ Error checking data for ${vehicleType}:`,
+          allVehicleError,
+        );
+        throw allVehicleError;
+      }
+
+      if (!allVehicleData || allVehicleData.length === 0) {
+        console.warn(`⚠️ No data found for vehicle type ${vehicleType}`);
+        console.log(`🔍 Available vehicle types in database:`);
+
+        // Check what vehicle types are actually available
+        const { data: availableTypes } = await supabase
+          .from("price_km")
+          .select("vehicle_type")
+          .order("vehicle_type");
+
+        console.log(
+          `Available types:`,
+          availableTypes?.map((t) => t.vehicle_type) || [],
+        );
+
+        return {
+          priceKm: 3500,
+          basicPrice: 80000,
+          surcharge: 45000,
+        };
+      }
+
+      // Log detailed info about found records
+      allVehicleData.forEach((record, index) => {
+        console.log(`${vehicleType} record ${index + 1}:`, {
+          vehicle_type: record.vehicle_type,
+          price_per_km: record.price_per_km,
+          basic_price: record.basic_price,
+          surcharge: record.surcharge,
+          is_active: record.is_active,
+          minimum_distance: record.minimum_distance,
+        });
+      });
+
+      // Now try to get active pricing
+      console.log(`🎯 Fetching active pricing for ${vehicleType}`);
       const { data, error } = await supabase
         .from("price_km")
-        .select("price_per_km, basic_price, surcharge")
+        .select("price_per_km, basic_price, surcharge, is_active")
         .eq("vehicle_type", vehicleType)
         .eq("is_active", true)
         .limit(1);
 
-      if (error || !data || data.length === 0) {
-        console.warn(`No pricing data found in database for ${vehicleType}`);
-        return {
-          priceKm: 3250,
-          basicPrice: 75000,
-          surcharge: 40000,
+      console.log(`📊 Active pricing query result for ${vehicleType}:`, {
+        dataCount: data?.length || 0,
+        data,
+        error,
+        errorDetails: error
+          ? {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+            }
+          : null,
+        query: {
+          table: "price_km",
+          filters: {
+            vehicle_type: vehicleType,
+            is_active: true,
+          },
+        },
+      });
+
+      if (error) {
+        console.error(`❌ Database error for ${vehicleType}:`, error);
+        console.warn(
+          `⚠️ Database error for ${vehicleType}, trying without is_active filter`,
+        );
+
+        // Try without is_active filter as fallback
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("price_km")
+          .select("price_per_km, basic_price, surcharge, is_active")
+          .eq("vehicle_type", vehicleType)
+          .limit(1);
+
+        console.log(`🔄 Fallback pricing query for ${vehicleType}:`, {
+          dataCount: fallbackData?.length || 0,
+          data: fallbackData,
+          error: fallbackError,
+        });
+
+        if (fallbackError || !fallbackData || fallbackData.length === 0) {
+          console.warn(
+            `❌ No pricing data found in database for ${vehicleType}, using defaults`,
+          );
+          return {
+            priceKm: 3500, // Default for MPV
+            basicPrice: 80000,
+            surcharge: 45000,
+          };
+        }
+
+        const result = {
+          priceKm: Number(fallbackData[0].price_per_km) || 3500,
+          basicPrice: Number(fallbackData[0].basic_price) || 80000,
+          surcharge: Number(fallbackData[0].surcharge) || 45000,
         };
+        console.log(`✅ Found fallback pricing for ${vehicleType}:`, result);
+        return result;
       }
 
-      return {
-        priceKm: Number(data[0].price_per_km) || 3250,
-        basicPrice: Number(data[0].basic_price) || 75000,
-        surcharge: Number(data[0].surcharge) || 40000,
+      if (!data || data.length === 0) {
+        console.warn(
+          `⚠️ No active pricing data found for ${vehicleType}, trying without is_active filter`,
+        );
+
+        // Try without is_active filter as fallback
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from("price_km")
+          .select("price_per_km, basic_price, surcharge, is_active")
+          .eq("vehicle_type", vehicleType)
+          .limit(1);
+
+        console.log(`🔄 Fallback pricing query for ${vehicleType}:`, {
+          dataCount: fallbackData?.length || 0,
+          data: fallbackData,
+          error: fallbackError,
+        });
+
+        if (fallbackError || !fallbackData || fallbackData.length === 0) {
+          console.warn(
+            `❌ No pricing data found in database for ${vehicleType}, using defaults`,
+          );
+          return {
+            priceKm: 3500, // Default for MPV
+            basicPrice: 80000,
+            surcharge: 45000,
+          };
+        }
+
+        const result = {
+          priceKm: Number(fallbackData[0].price_per_km) || 3500,
+          basicPrice: Number(fallbackData[0].basic_price) || 80000,
+          surcharge: Number(fallbackData[0].surcharge) || 45000,
+        };
+        console.log(`✅ Found fallback pricing for ${vehicleType}:`, result);
+        return result;
+      }
+
+      const result = {
+        priceKm: Number(data[0].price_per_km) || 3500,
+        basicPrice: Number(data[0].basic_price) || 80000,
+        surcharge: Number(data[0].surcharge) || 45000,
       };
+
+      console.log(`✅ Found active pricing for ${vehicleType}:`, result);
+      return result;
     } catch (err) {
-      console.error(`Error fetching pricing for ${vehicleType}:`, err);
-      return {
-        priceKm: 3250,
-        basicPrice: 75000,
-        surcharge: 40000,
+      console.error(
+        `❌ Exception while fetching pricing for ${vehicleType}:`,
+        err,
+      );
+      console.error(`❌ Exception details:`, {
+        message: err?.message,
+        stack: err?.stack,
+        name: err?.name,
+        cause: err?.cause,
+      });
+
+      // Always return default values on error
+      const defaultResult = {
+        priceKm: 3500,
+        basicPrice: 80000,
+        surcharge: 45000,
       };
+      console.log(
+        `✅ Returning default pricing for ${vehicleType}:`,
+        defaultResult,
+      );
+      return defaultResult;
     }
   };
 
@@ -620,7 +1227,8 @@ function AirportTransferPageContent() {
         if (bookingType === "instant") {
           return (
             formData.fromAddress.trim() !== "" &&
-            formData.toAddress.trim() !== ""
+            formData.toAddress.trim() !== "" &&
+            selectedVehicleDriver !== null // Require driver selection for instant booking
           );
         } else {
           return (
@@ -1173,7 +1781,7 @@ function AirportTransferPageContent() {
 
       setFormData((prev) => ({
         ...prev,
-        driverId: driverIdToUse,
+        driverId: String(driverIdToUse),
         driverName: driver.driver_name,
         driverPhone: driver.phone_number,
         driverPhoto: driver.photo_url || "",
@@ -1395,6 +2003,13 @@ function AirportTransferPageContent() {
 
   // Handle direct booking without driver selection
   const handleDirectBooking = async () => {
+    // Ensure session is ready before proceeding
+    if (!isSessionReady || !userId || !userEmail) {
+      console.warn("[AirportTransfer] Session not ready for booking");
+      alert("Please wait for session to load...");
+      return;
+    }
+
     setIsLoadingBooking(true);
     try {
       // Calculate price based on vehicle type
@@ -1427,15 +2042,15 @@ function AirportTransferPageContent() {
         type: formData.vehicleType,
         price: calculatedPrice,
         passenger: formData.passenger,
-        driver_id: null, // No driver selected
-        id_driver: null,
-        driver_name: "",
+        driver_id: selectedVehicleDriver?.uuid || null, // ✅ UUID dari drivers.id
+        id_driver: selectedVehicleDriver?.id_driver || null, // ✅ integer dari drivers.id_driver
+        driver_name: selectedVehicleDriver?.driver_name || "",
         payment_method: "pending",
         distance: formData.distance,
         duration: formData.duration,
-        license_plate: "N/A",
-        model: "N/A",
-        make: "N/A",
+        license_plate: selectedVehicleDriver?.license_plate || "N/A",
+        model: selectedVehicleDriver?.model || "N/A",
+        make: selectedVehicleDriver?.make || "N/A",
         vehicle_name: formData.vehicleType,
         status: "pending",
         customer_id: userId,
@@ -1474,6 +2089,17 @@ function AirportTransferPageContent() {
           duration: formData.duration,
           passenger: formData.passenger,
           bookingType: bookingType,
+          // ✅ Correct driver information from drivers table
+          driverId: selectedVehicleDriver?.uuid || null, // ✅ UUID dari drivers.id
+          id_driver: selectedVehicleDriver?.id_driver || null, // ✅ integer dari drivers.id_driver
+          driverName: selectedVehicleDriver?.driver_name || "",
+          driverPhone: selectedVehicleDriver?.driver_phone || "",
+          vehicleName: selectedVehicleDriver
+            ? `${selectedVehicleDriver.make} ${selectedVehicleDriver.model}`
+            : "",
+          vehicleModel: selectedVehicleDriver?.model || "",
+          vehiclePlate: selectedVehicleDriver?.license_plate || "",
+          vehicleMake: selectedVehicleDriver?.make || "",
         },
       });
 
@@ -1512,8 +2138,8 @@ function AirportTransferPageContent() {
         type: formData.vehicleType,
         price: formData.price,
         passenger: formData.passenger,
-        driver_id: formData.driverUUID, // ✅ UUID, foreign key ke drivers.id
-        id_driver: formData.driverId, // ✅ Integer, ke kolom id_driver
+        driver_id: formData.driverId, // ✅ UUID, foreign key ke drivers.id
+        id_driver: null, // ✅ Integer, ke kolom id_driver
         driver_name: formData.driverName,
         payment_method: formData.paymentMethod,
         distance: formData.distance,
@@ -1717,9 +2343,6 @@ Please prepare for the trip!`;
     };
   }, []);
 
-  // State to track if both pickup and dropoff locations are selected
-  const [locationsSelected, setLocationsSelected] = useState<boolean>(false);
-
   // Check if both locations are selected
   useEffect(() => {
     if (
@@ -1765,7 +2388,7 @@ Please prepare for the trip!`;
             </div>
 
             {/* Input field */}
-            <div className="relative z-30">
+            <div className="relative z-50">
               <AddressSearch
                 label=""
                 value={formData.fromAddress}
@@ -1801,7 +2424,7 @@ Please prepare for the trip!`;
               </Button>
             </div>
 
-            <div className="relative z-30">
+            <div className="relative z-50">
               <AddressSearch
                 label=""
                 value={formData.toAddress}
@@ -1828,7 +2451,7 @@ Please prepare for the trip!`;
             <div className="space-y-4">
               <h3 className="text-lg font-medium">Route Preview</h3>
 
-              <div className="bg-white rounded-md overflow-hidden border">
+              <div className="bg-white rounded-md overflow-hidden border relative z-10 mt-4">
                 <MapPicker
                   fromLocation={formData.fromLocation}
                   toLocation={formData.toLocation}
@@ -1932,10 +2555,6 @@ Please prepare for the trip!`;
                     // Get icon based on vehicle type
                     const getVehicleIcon = () => {
                       switch (type.name.toLowerCase()) {
-                        case "sedan":
-                          return <CarFront className="h-8 w-8" />;
-                        case "suv":
-                          return <Car className="h-8 w-8" />;
                         case "mpv":
                         case "mpv premium":
                           return <Car className="h-8 w-8" />;
@@ -1983,7 +2602,12 @@ Please prepare for the trip!`;
                             </div>
                             <div className="text-right">
                               <p className="font-bold text-green-600">
-                                Rp {calculateEstimatedPrice().toLocaleString()}
+                                {(() => {
+                                  const price = calculateEstimatedPrice();
+                                  return isNaN(price) || price <= 0
+                                    ? "Price calculating..."
+                                    : `Rp ${price.toLocaleString()}`;
+                                })()}
                               </p>
                               {isSelected && (
                                 <CheckCircle className="h-5 w-5 text-blue-500 mt-1 ml-auto" />
@@ -1996,6 +2620,154 @@ Please prepare for the trip!`;
                   })}
                 </div>
               </div>
+
+              {/* Show available vehicles with drivers for instant booking */}
+              {bookingType === "instant" && formData.vehicleType && (
+                <div className="space-y-4 mt-6">
+                  <h3 className="text-lg font-medium">
+                    Available Vehicles & Drivers
+                  </h3>
+
+                  {isLoadingVehicles ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                      <span>Loading available vehicles...</span>
+                    </div>
+                  ) : availableVehiclesWithDrivers.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {availableVehiclesWithDrivers.map((vehicle) => {
+                        const calculateVehiclePrice = () => {
+                          if (formData.distance <= 0) return 0;
+                          const baseDistance = 8;
+                          const roundedDistance =
+                            Math.round(formData.distance * 10) / 10;
+
+                          if (roundedDistance <= baseDistance) {
+                            return vehicle.basic_price + vehicle.surcharge;
+                          } else {
+                            const extraDistance =
+                              roundedDistance - baseDistance;
+                            return (
+                              vehicle.basic_price +
+                              extraDistance * vehicle.price_km +
+                              vehicle.surcharge
+                            );
+                          }
+                        };
+
+                        const isSelected =
+                          selectedVehicleDriver?.uuid === vehicle.uuid;
+
+                        return (
+                          <Card
+                            key={vehicle.id}
+                            className={`cursor-pointer transition-all ${
+                              isSelected
+                                ? "border-blue-500 bg-blue-50 shadow-md"
+                                : "hover:shadow-md hover:border-blue-300"
+                            }`}
+                            onClick={() => {
+                              // Set the selected vehicle and driver data
+                              const vehicleData = {
+                                id: vehicle.id, // Vehicle ID
+                                uuid: vehicle.uuid, // ✅ Driver UUID from drivers.id
+                                id_driver: vehicle.id_driver, // ✅ Driver integer ID from drivers.id_driver
+                                driver_name: vehicle.driver_name,
+                                driver_phone: vehicle.driver_phone,
+                                make: vehicle.make,
+                                model: vehicle.model,
+                                license_plate: vehicle.license_plate,
+                                price_km: vehicle.price_km,
+                                basic_price: vehicle.basic_price,
+                                surcharge: vehicle.surcharge,
+                                calculated_price: calculateVehiclePrice(),
+                              };
+
+                              setSelectedVehicleDriver(vehicleData);
+
+                              setFormData((prev) => ({
+                                ...prev,
+                                driverId: vehicle.uuid, // ✅ Use driver UUID instead of vehicle ID
+                                driverName: vehicle.driver_name,
+                                driverPhone: vehicle.driver_phone,
+                                vehicleName: `${vehicle.make} ${vehicle.model}`,
+                                vehicleModel: vehicle.model,
+                                vehiclePlate: vehicle.license_plate,
+                                vehicleMake: vehicle.make,
+                                vehiclePricePerKm: vehicle.price_km,
+                                basicPrice: vehicle.basic_price,
+                                surcharge: vehicle.surcharge,
+                                price: calculateVehiclePrice(),
+                              }));
+                            }}
+                          >
+                            <CardContent className="pt-6">
+                              <div className="space-y-3">
+                                {/* Vehicle Info */}
+                                <div className="flex items-center gap-3">
+                                  <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
+                                    <Car className="h-6 w-6" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <h4 className="font-semibold">
+                                      {vehicle.make} {vehicle.model}
+                                    </h4>
+                                    <p className="text-sm text-gray-500">
+                                      {vehicle.license_plate}
+                                    </p>
+                                  </div>
+                                  {isSelected && (
+                                    <CheckCircle className="h-6 w-6 text-blue-500" />
+                                  )}
+                                </div>
+
+                                {/* Driver Info */}
+                                <div className="flex items-center gap-3 pl-11">
+                                  <UserCheck className="h-4 w-4 text-green-600" />
+                                  <div>
+                                    <p className="font-medium text-sm">
+                                      {vehicle.driver_name}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {vehicle.driver_phone}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Price */}
+                                <div className="flex justify-between items-center pt-2 border-t">
+                                  <span className="text-sm text-gray-600">
+                                    Estimated Price:
+                                  </span>
+                                  <span className="font-bold text-green-600">
+                                    {(() => {
+                                      const price = calculateVehiclePrice();
+                                      return isNaN(price) || price <= 0
+                                        ? "Price calculating..."
+                                        : `Rp ${price.toLocaleString()}`;
+                                    })()}
+                                  </span>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-lg">
+                      <Car className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h4 className="text-lg font-medium text-gray-600 mb-2">
+                        No Available Vehicles
+                      </h4>
+                      <p className="text-gray-500">
+                        No {formData.vehicleType.toLowerCase()} vehicles with
+                        assigned drivers are currently available.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2080,7 +2852,7 @@ Please prepare for the trip!`;
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Route Preview</h3>
 
-          <div className="bg-white rounded-md overflow-hidden border">
+          <div className="bg-white rounded-md overflow-hidden border relative z-10">
             <MapPicker
               fromLocation={formData.fromLocation}
               toLocation={formData.toLocation}
@@ -2119,7 +2891,9 @@ Please prepare for the trip!`;
                     Estimated Price
                   </h4>
                   <p className="text-2xl font-bold text-green-600">
-                    Rp {formData.price.toLocaleString()}
+                    {isNaN(formData.price) || formData.price <= 0
+                      ? "Price calculating..."
+                      : `Rp ${formData.price.toLocaleString()}`}
                   </p>
                 </div>
               </CardContent>
@@ -2159,7 +2933,9 @@ Please prepare for the trip!`;
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span>Vehicle Type:</span>
-                <span className="font-medium">{formData.vehicleType}</span>
+                <span className="font-medium text-right">
+                  {formData.vehicleType}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span>Date & Time:</span>
@@ -2173,6 +2949,28 @@ Please prepare for the trip!`;
                 <span>Passengers:</span>
                 <span className="font-medium">{formData.passenger}</span>
               </div>
+              {selectedVehicleDriver && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Selected Driver:</span>
+                    <span className="font-medium">
+                      {selectedVehicleDriver.driver_name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Vehicle:</span>
+                    <span className="font-medium">
+                      {selectedVehicleDriver.make} {selectedVehicleDriver.model}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>License Plate:</span>
+                    <span className="font-medium">
+                      {selectedVehicleDriver.license_plate}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between">
                 <span>Distance:</span>
                 <span className="font-medium">
@@ -2185,8 +2983,10 @@ Please prepare for the trip!`;
               </div>
               <div className="flex justify-between pt-2 border-t">
                 <span className="font-medium">Total Price:</span>
-                <span className="font-bold text-green-600">
-                  Rp {formData.price.toLocaleString()}
+                <span className="font-bold text-lg">
+                  {isNaN(formData.price) || formData.price <= 0
+                    ? "Price calculating..."
+                    : `Rp ${formData.price.toLocaleString()}`}
                 </span>
               </div>
             </div>
@@ -2450,7 +3250,9 @@ Please prepare for the trip!`;
                   <div className="flex justify-between">
                     <span className="font-medium">Total Price</span>
                     <span className="font-bold text-lg">
-                      Rp {formData.price.toLocaleString()}
+                      {isNaN(formData.price) || formData.price <= 0
+                        ? "Price calculating..."
+                        : `Rp ${formData.price.toLocaleString()}`}
                     </span>
                   </div>
                 </div>
@@ -2543,8 +3345,17 @@ Please prepare for the trip!`;
 
             <div className="flex justify-between">
               <span className="text-gray-500">Driver</span>
-              <span className="font-medium">{formData.driverName}</span>
+              <span className="font-medium">
+                {formData.driverName || "Not selected"}
+              </span>
             </div>
+
+            {formData.driverPhone && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Driver Phone</span>
+                <span className="font-medium">{formData.driverPhone}</span>
+              </div>
+            )}
 
             <div className="flex justify-between">
               <span className="text-gray-500">Vehicle</span>

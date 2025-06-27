@@ -32,12 +32,7 @@ const BookingsPage = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <UserDashboard
-        userEmail={userEmail}
-        userRole={userRole}
-        userName={userName || "Customer"}
-        activeTab="bookings"
-      />
+      <UserDashboard />
     </div>
   );
 };

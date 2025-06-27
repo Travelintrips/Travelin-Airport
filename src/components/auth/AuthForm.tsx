@@ -97,15 +97,19 @@ const AuthForm: React.FC<AuthFormProps> = ({
       !!authData.session,
     );
 
-    const userMeta = authData.user?.user_metadata || {};
+    const user = authData.user;
+    const userMeta = user?.user_metadata || {};
     console.log("📋 User metadata:", userMeta);
+
+    // Determine role from metadata or default to Customer
+    const userRole = userMeta.role || "Customer";
 
     // Try to get name from users table first
     console.log("🔍 Fetching user name from users table...");
     const { data: userData, error: userError } = await supabase
       .from("users")
       .select("full_name")
-      .eq("id", authData.user.id)
+      .eq("id", user.id)
       .single();
 
     let userFullName = "";
@@ -119,7 +123,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
       const { data: customerData, error: customerError } = await supabase
         .from("customers")
         .select("full_name, name")
-        .eq("id", authData.user.id)
+        .eq("id", user.id)
         .single();
 
       if (!customerError && (customerData?.full_name || customerData?.name)) {
@@ -134,7 +138,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
         userFullName =
           (userMeta.full_name && userMeta.full_name.trim()) ||
           (userMeta.name && userMeta.name.trim()) ||
-          authData.user.email?.split("@")[0] ||
+          user.email?.split("@")[0] ||
           "Guest";
         console.log("📝 Using fallback name during login:", userFullName);
       }
@@ -142,29 +146,31 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
     // Make sure we never use "Customer" as the name
     if (!userFullName || userFullName === "Customer") {
-      userFullName = authData.user.email?.split("@")[0] || "User";
+      userFullName = user.email?.split("@")[0] || "User";
       console.log(
         "🔄 Replaced empty/Customer name with email username:",
         userFullName,
       );
     }
 
+    // Force save metadata to localStorage after successful login
+    console.log("💾 Force saving fresh metadata to localStorage:");
+    localStorage.setItem("userName", userFullName);
+    localStorage.setItem("userRole", userRole);
+    localStorage.setItem("userId", user.id);
+    if (user.email) {
+      localStorage.setItem("userEmail", user.email);
+    }
+
     const userDataObj = {
-      id: authData.user.id,
-      role: userMeta.role || "", // Kalau ada userMeta.role
-      email: authData.user.email || "",
+      id: user.id,
+      role: userRole,
+      email: user.email || "",
       name: userFullName,
     };
 
-    console.log("💾 Saving user data to localStorage:", userDataObj);
     localStorage.setItem("auth_user", JSON.stringify(userDataObj));
-    localStorage.setItem("userName", userFullName);
-    localStorage.setItem("userId", authData.user.id);
-    if (authData.user.email) {
-      localStorage.setItem("userEmail", authData.user.email);
-    }
-
-    console.log("✅ User logged in successfully:", userDataObj);
+    console.log("✅ User logged in successfully with fresh data:", userDataObj);
 
     if (onAuthStateChange) {
       console.log("🔄 Calling onAuthStateChange(true)...");
