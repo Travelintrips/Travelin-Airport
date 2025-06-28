@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { v4 as uuidv4 } from "uuid";
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -74,6 +75,42 @@ const CheckoutPage: React.FC = () => {
       });
       fetchCustomerPhone();
     }
+  }, [isAuthenticated, userName, userEmail]);
+
+  // Add useEffect to validate cart and redirect if empty
+  useEffect(() => {
+    if (!userId || cartItems.length === 0) {
+      console.log("[CheckoutPage] Cart validation: redirecting to home", {
+        userId: !!userId,
+        cartItemsLength: cartItems.length,
+      });
+      // Small delay to allow for cart loading
+      const timer = setTimeout(() => {
+        if (cartItems.length === 0) {
+          navigate("/");
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [userId, cartItems.length, navigate]);
+
+  // Listen for form reset events
+  useEffect(() => {
+    const handleFormReset = () => {
+      console.log("[CheckoutPage] Received form reset event");
+      setCustomerData({
+        name: isAuthenticated ? userName || "" : "",
+        email: isAuthenticated ? userEmail || "" : "",
+        phone: "",
+      });
+      setSelectedPaymentMethod("");
+      setSelectedBank(null);
+    };
+
+    window.addEventListener("resetBookingForms", handleFormReset);
+    return () => {
+      window.removeEventListener("resetBookingForms", handleFormReset);
+    };
   }, [isAuthenticated, userName, userEmail]);
 
   const fetchCustomerPhone = async () => {
@@ -291,6 +328,7 @@ const CheckoutPage: React.FC = () => {
 
           // Create airport transfer booking
           const transferBookingData = {
+            id: uuidv4(),
             customer_name: customerData.name,
             phone: customerData.phone,
             pickup_location:
@@ -367,33 +405,101 @@ const CheckoutPage: React.FC = () => {
         } else if (item.item_type === "car" && item.details) {
           // Handle car rental bookings
           try {
-            const { data: carBookings, error: carBookingError } = await supabase
-              .from("bookings")
-              .update({ payment_status: "paid", payment_id: paymentId })
-              .eq("id", item.item_id)
-              .select();
+            // Check if this is an existing booking (has item_id) or new booking
+            if (item.item_id && !isNaN(Number(item.item_id))) {
+              // Update existing booking
+              const { data: carBookings, error: carBookingError } =
+                await supabase
+                  .from("bookings")
+                  .update({ payment_status: "paid", payment_id: paymentId })
+                  .eq("id", item.item_id)
+                  .select();
 
-            if (carBookingError) {
-              console.error("❌ Error updating car booking:", carBookingError);
-              // Log the error but continue processing other items
-              console.warn(
-                `⚠️ Continuing with other items despite car booking error for ID: ${item.item_id}`,
-              );
-              continue;
+              if (carBookingError) {
+                console.error(
+                  "❌ Error updating car booking:",
+                  carBookingError,
+                );
+                // Log the error but continue processing other items
+                console.warn(
+                  `⚠️ Continuing with other items despite car booking error for ID: ${item.item_id}`,
+                );
+                continue;
+              }
+
+              // Check if any rows were updated
+              if (!carBookings || carBookings.length === 0) {
+                console.warn(
+                  `⚠️ No car booking found with ID: ${item.item_id}`,
+                );
+                // Continue processing other items instead of throwing error
+                continue;
+              }
+
+              const carBooking = carBookings[0];
+              console.log("✅ Car booking updated:", carBooking.id);
+
+              // Link to payment_bookings table
+              await linkPaymentBooking(paymentId, carBooking.id, "car");
+            } else {
+              // Create new car rental booking
+              let parsedDetails = item.details;
+              if (typeof item.details === "string") {
+                try {
+                  parsedDetails = JSON.parse(item.details);
+                } catch (error) {
+                  console.error("Error parsing car rental details:", error);
+                  parsedDetails = item.details;
+                }
+              }
+
+              const bookingData = {
+                customer_id: userId || null,
+                vehicle_id: parsedDetails?.vehicle_id || item.item_id || null,
+                total_amount: item.price,
+                start_date:
+                  parsedDetails?.start_date ||
+                  new Date().toISOString().split("T")[0],
+                end_date:
+                  parsedDetails?.end_date ||
+                  new Date(Date.now() + 24 * 60 * 60 * 1000)
+                    .toISOString()
+                    .split("T")[0],
+                pickup_time: parsedDetails?.pickup_time || "09:00",
+                driver_option: parsedDetails?.driver_option || "self",
+                status: "confirmed",
+                payment_status: "paid",
+                payment_id: paymentId,
+                vehicle_name: parsedDetails?.vehicle_name || item.service_name,
+                vehicle_type: parsedDetails?.vehicle_type || null,
+                make: parsedDetails?.make || null,
+                model: parsedDetails?.model || null,
+                license_plate: parsedDetails?.license_plate || null,
+                with_driver: parsedDetails?.with_driver || false,
+                created_at: new Date().toISOString(),
+              };
+
+              const { data: carBooking, error: carBookingError } =
+                await supabase
+                  .from("bookings")
+                  .insert(bookingData)
+                  .select()
+                  .single();
+
+              if (carBookingError) {
+                console.error(
+                  "❌ Error creating car booking:",
+                  carBookingError,
+                );
+                // Continue processing other items
+                continue;
+              }
+
+              console.log("✅ Car booking created:", carBooking.id);
+
+              // Link to payment_bookings table
+              await linkPaymentBooking(paymentId, carBooking.id, "car");
             }
-
-            // Check if any rows were updated
-            if (!carBookings || carBookings.length === 0) {
-              console.warn(`⚠️ No car booking found with ID: ${item.item_id}`);
-              // Continue processing other items instead of throwing error
-              continue;
-            }
-
-            const carBooking = carBookings[0];
-            console.log("✅ Car booking updated:", carBooking.id);
-
-            // Link to payment_bookings table
-            await linkPaymentBooking(paymentId, carBooking.id, "car");
           } catch (linkError) {
             console.error("❌ Error processing car booking:", linkError);
             // Continue processing other items
@@ -427,6 +533,30 @@ const CheckoutPage: React.FC = () => {
       // Clear cart frontend (localStorage/context)
       await clearCart();
       console.log("🧹 Cart cleared successfully");
+
+      // Reset customer data form (preserve authenticated user data)
+      if (isAuthenticated) {
+        setCustomerData({
+          name: userName || "",
+          email: userEmail || "",
+          phone: "", // Reset phone but keep name/email for authenticated users
+        });
+      } else {
+        setCustomerData({
+          name: "",
+          email: "",
+          phone: "",
+        });
+      }
+
+      // Reset payment method selection
+      setSelectedPaymentMethod("");
+      setSelectedBank(null);
+
+      // Dispatch event to reset any cached form states
+      window.dispatchEvent(new CustomEvent("resetBookingForms"));
+      window.dispatchEvent(new CustomEvent("checkoutCompleted"));
+      console.log("✅ Checkout form states reset");
 
       toast({
         title: "Payment successful!",

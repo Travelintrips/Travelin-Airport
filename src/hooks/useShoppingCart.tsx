@@ -67,16 +67,27 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 
     initializeCart();
 
-    // Listen for auth changes
+    // Listen for auth changes - only on initial session to reduce duplication
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
 
-      if (event === "SIGNED_IN" && session?.user) {
-        setCurrentUserId(session.user.id);
-        await migrateLocalStorageToSupabase(session.user.id);
-        await loadCartItems();
+      // Only handle INITIAL_SESSION to reduce duplication
+      if (event === "INITIAL_SESSION" && session?.user) {
+        // Check if user data has actually changed before updating state
+        if (session.user.id !== currentUserId) {
+          setCurrentUserId(session.user.id);
+          await migrateLocalStorageToSupabase(session.user.id);
+          await loadCartItems();
+        }
+      } else if (event === "SIGNED_IN" && session?.user) {
+        // Check if user data has actually changed before updating state
+        if (session.user.id !== currentUserId) {
+          setCurrentUserId(session.user.id);
+          await migrateLocalStorageToSupabase(session.user.id);
+          await loadCartItems();
+        }
       } else if (event === "SIGNED_OUT") {
         setCurrentUserId(null);
         setCartItems([]); // Clear cart items in state immediately
@@ -133,16 +144,27 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     await loadCartItems(true); // Force reload
   }, []);
 
-  // Add visibility change listener for refetching when tab becomes active
+  // Add throttled visibility change listener for refetching when tab becomes active
   useEffect(() => {
-    let hasFetched = false;
+    let lastSyncTime = 0;
+    const SYNC_THROTTLE = 2000; // Maximum 1 sync per 2 seconds
 
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible" && !isLoading && !hasFetched) {
+      if (document.visibilityState === "visible" && !isLoading) {
+        const now = Date.now();
+
+        // Throttle to prevent excessive syncing
+        if (now - lastSyncTime < SYNC_THROTTLE) {
+          console.log(
+            "[useShoppingCart] Sync throttled, skipping visibility change sync",
+          );
+          return;
+        }
+
+        lastSyncTime = now;
         console.log(
           "[useShoppingCart] Tab became visible, checking for cart updates",
         );
-        hasFetched = true;
 
         // Check auth state first
         const storedUser = localStorage.getItem("auth_user");
@@ -172,7 +194,10 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             console.log(
               "[useShoppingCart] User authenticated with valid ID, loading cart items",
             );
-            setCurrentUserId(session.user.id);
+            // Only update if user ID has changed
+            if (session.user.id !== currentUserId) {
+              setCurrentUserId(session.user.id);
+            }
             await loadCartItems();
           } else if (!session?.user && cartItems.length === 0) {
             console.log(
@@ -180,23 +205,19 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             );
             await loadCartItems();
           }
-
-          // Reset flag after a delay to allow future visibility changes
-          setTimeout(() => {
-            hasFetched = false;
-          }, 2000);
         }, 100);
       }
     };
 
-    // Listen for session restored events
+    // Listen for session restored events with throttling
     const handleSessionRestored = (event: CustomEvent) => {
       console.log(
         "[useShoppingCart] Session restored event received:",
         event.detail,
       );
       const userData = event.detail;
-      if (userData.id && userData.id !== currentUserId) {
+      // Only update if user ID has actually changed and email is present
+      if (userData.id && userData.email && userData.id !== currentUserId) {
         console.log(
           "[useShoppingCart] Updating current user ID from restored session",
         );
@@ -224,22 +245,6 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
   }, [isLoading, cartItems.length, currentUserId]);
 
   const loadCartItems = async (forceReload = false) => {
-    // Check if auth context is ready before loading cart
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    // For authenticated users, wait for userId and userEmail to be available
-    if (
-      session?.user &&
-      (!currentUserId || !localStorage.getItem("userEmail"))
-    ) {
-      console.log(
-        "[useShoppingCart] Auth context not ready, delaying cart load",
-      );
-      return;
-    }
-
     // Prevent multiple simultaneous loads unless forced
     if (isLoading && !forceReload) {
       console.log(
@@ -263,15 +268,17 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       });
 
       if (session?.user) {
-        // Load from Supabase for logged-in users
+        // Load from Supabase for authenticated users
         console.log(
           "[useShoppingCart] Loading from Supabase for user:",
           session.user.id,
         );
+
         const { data, error } = await supabase
           .from("shopping_cart")
           .select("*")
           .eq("user_id", session.user.id)
+          .eq("status", "active")
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -279,12 +286,46 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             "[useShoppingCart] Error loading cart from Supabase:",
             error,
           );
-          setCartItems([]);
+          // Fallback to localStorage on error
+          const localCart = localStorage.getItem(CART_STORAGE_KEY);
+          if (localCart) {
+            try {
+              const parsedCart = JSON.parse(localCart);
+              setCartItems(Array.isArray(parsedCart) ? parsedCart : []);
+            } catch (parseError) {
+              console.error(
+                "[useShoppingCart] Error parsing localStorage:",
+                parseError,
+              );
+              setCartItems([]);
+            }
+          } else {
+            setCartItems([]);
+          }
           return;
         }
 
-        console.log("[useShoppingCart] Loaded cart items:", data?.length || 0);
-        setCartItems(data || []);
+        console.log(
+          "[useShoppingCart] Loaded cart items from Supabase:",
+          data?.length || 0,
+        );
+
+        // Transform data to match CartItem interface
+        const transformedItems = (data || []).map((item) => ({
+          id: item.id,
+          item_type: item.item_type,
+          item_id: item.item_id,
+          service_name: item.service_name,
+          price: item.price,
+          details: item.details
+            ? typeof item.details === "string"
+              ? JSON.parse(item.details)
+              : item.details
+            : null,
+          created_at: item.created_at,
+        }));
+
+        setCartItems(transformedItems);
       } else {
         // Load from localStorage for guests
         console.log("[useShoppingCart] Loading from localStorage for guest");
@@ -313,7 +354,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("[useShoppingCart] Error loading cart items:", error);
-      setCartItems([]); // Reset cart items on error
+      setCartItems([]);
     } finally {
       console.log("[useShoppingCart] Finished loading cart items");
       setIsLoading(false);
@@ -328,15 +369,24 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       const parsedCart = JSON.parse(localCart);
       if (!Array.isArray(parsedCart) || parsedCart.length === 0) return;
 
+      console.log(
+        `[useShoppingCart] Migrating ${parsedCart.length} items to Supabase for user:`,
+        userId,
+      );
+
       // Insert items to Supabase
       const itemsToInsert = parsedCart.map((item) => ({
         user_id: userId,
         item_type: item.item_type,
-        item_id: item.item_id,
+        item_id: item.item_id || null,
         service_name: item.service_name,
         price: item.price,
-        details: item.details, // Include details field
-        created_at: new Date().toISOString(),
+        details:
+          typeof item.details === "string"
+            ? item.details
+            : JSON.stringify(item.details),
+        status: "active",
+        created_at: item.created_at || new Date().toISOString(),
       }));
 
       const { error } = await supabase
@@ -344,196 +394,76 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         .insert(itemsToInsert);
 
       if (error) {
-        console.error("Error migrating cart to Supabase:", error);
+        console.error(
+          "[useShoppingCart] Error migrating cart to Supabase:",
+          error,
+        );
         return;
       }
 
       // Clear localStorage after successful migration
       localStorage.removeItem(CART_STORAGE_KEY);
-      console.log("Cart migrated successfully from localStorage to Supabase");
+      console.log(
+        "[useShoppingCart] Cart migrated successfully from localStorage to Supabase",
+      );
     } catch (error) {
-      console.error("Error during cart migration:", error);
+      console.error("[useShoppingCart] Error during cart migration:", error);
     }
   };
 
   const addToCart = async (item: Omit<CartItem, "id" | "created_at">) => {
     console.log("[useShoppingCart] Starting addToCart operation");
-
-    // Enhanced session validation with retry
-    let sessionValidated = false;
-    let validationAttempts = 0;
-    const maxValidationAttempts = 3;
-    let validSession = null;
-
-    while (validationAttempts < maxValidationAttempts && !sessionValidated) {
-      validationAttempts++;
-      console.log(
-        `[useShoppingCart] Session validation attempt ${validationAttempts}`,
-      );
-
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.warn(
-            `[useShoppingCart] Session error on attempt ${validationAttempts}:`,
-            error,
-          );
-        } else if (session?.user) {
-          validSession = session;
-          sessionValidated = true;
-          console.log(
-            `[useShoppingCart] Valid session found on attempt ${validationAttempts}`,
-          );
-          break;
-        } else {
-          console.log(
-            `[useShoppingCart] No session on attempt ${validationAttempts}, checking localStorage`,
-          );
-          // Check if we have localStorage auth for guest operations
-          const storedUser = localStorage.getItem("auth_user");
-          if (storedUser) {
-            try {
-              const userData = JSON.parse(storedUser);
-              if (userData && userData.id && userData.email) {
-                console.log(
-                  `[useShoppingCart] Found valid localStorage auth on attempt ${validationAttempts}`,
-                );
-                sessionValidated = true;
-                break;
-              }
-            } catch (parseError) {
-              console.warn(
-                `[useShoppingCart] Error parsing localStorage on attempt ${validationAttempts}:`,
-                parseError,
-              );
-            }
-          }
-        }
-
-        // Wait before retry
-        if (validationAttempts < maxValidationAttempts && !sessionValidated) {
-          console.log(`[useShoppingCart] Waiting 800ms before retry...`);
-          await new Promise((resolve) => setTimeout(resolve, 800));
-        }
-      } catch (sessionError) {
-        console.error(
-          `[useShoppingCart] Session check attempt ${validationAttempts} failed:`,
-          sessionError,
-        );
-        if (validationAttempts < maxValidationAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 800));
-        }
-      }
-    }
-
-    if (!sessionValidated) {
-      console.error(
-        "[useShoppingCart] Session validation failed after all attempts",
-      );
-      throw new Error(
-        "Unable to validate session. Please refresh the page and try again.",
-      );
-    }
-
-    console.log(
-      `[useShoppingCart] Session validated after ${validationAttempts} attempts`,
-    );
     setIsLoading(true);
+
     try {
+      // Get current session
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
       const newItem: CartItem = {
         ...item,
         id: uuidv4(),
         created_at: new Date().toISOString(),
       };
 
-      if (validSession?.user) {
+      if (session?.user) {
+        // User is authenticated - save to Supabase
         console.log(
           "[useShoppingCart] Adding to Supabase for authenticated user:",
-          validSession.user.id,
+          session.user.id,
         );
 
-        // Generate a UUID for item_id if it's not already a valid UUID
-        let validItemId = null;
-        if (item.item_id) {
-          // Check if item_id is already a valid UUID format
-          const uuidRegex =
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-          if (uuidRegex.test(item.item_id)) {
-            validItemId = item.item_id;
-          } else {
-            // Generate a new UUID if item_id is not a valid UUID
-            validItemId = uuidv4();
-          }
-        }
-
         const insertData = {
-          user_id: validSession.user.id,
+          user_id: session.user.id,
           item_type: item.item_type,
-          item_id: validItemId,
+          item_id: item.item_id || null,
           service_name: item.service_name,
           price: item.price,
-          details: item.details,
+          details:
+            typeof item.details === "string"
+              ? item.details
+              : JSON.stringify(item.details),
+          status: "active",
+          created_at: new Date().toISOString(),
         };
 
-        console.log("[useShoppingCart] Inserting cart data:", insertData);
+        const { data, error } = await supabase
+          .from("shopping_cart")
+          .insert(insertData)
+          .select()
+          .single();
 
-        // Enhanced database operation with retry
-        let dbSuccess = false;
-        let dbAttempts = 0;
-        const maxDbAttempts = 2;
-        let insertedData = null;
-
-        while (dbAttempts < maxDbAttempts && !dbSuccess) {
-          dbAttempts++;
-          console.log(
-            `[useShoppingCart] Database insert attempt ${dbAttempts}`,
-          );
-
-          try {
-            const { data, error } = await supabase
-              .from("shopping_cart")
-              .insert(insertData)
-              .select()
-              .single();
-
-            if (error) {
-              console.error(
-                `[useShoppingCart] Database error on attempt ${dbAttempts}:`,
-                error,
-              );
-              if (dbAttempts < maxDbAttempts) {
-                console.log(
-                  "[useShoppingCart] Retrying database operation in 1 second...",
-                );
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-                continue;
-              }
-              throw error;
-            }
-
-            insertedData = data;
-            dbSuccess = true;
-            console.log(
-              `[useShoppingCart] Database insert successful on attempt ${dbAttempts}`,
-            );
-          } catch (dbError) {
-            console.error(
-              `[useShoppingCart] Database attempt ${dbAttempts} failed:`,
-              dbError,
-            );
-            if (dbAttempts >= maxDbAttempts) {
-              throw dbError;
-            }
-          }
+        if (error) {
+          console.error("[useShoppingCart] Database error:", error);
+          throw error;
         }
 
-        setCartItems((prev) => [insertedData, ...prev]);
+        console.log("[useShoppingCart] Successfully added to Supabase");
+        setCartItems((prev) => [data, ...prev]);
       } else {
-        // Add to localStorage for guests
+        // Guest user - save to localStorage
+        console.log("[useShoppingCart] Adding to localStorage for guest user");
         const updatedCart = [newItem, ...cartItems];
         localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
         setCartItems(updatedCart);
@@ -545,13 +475,32 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         description: `${item.service_name} berhasil ditambahkan ke keranjang belanja.`,
       });
     } catch (error) {
-      console.error("Error adding item to cart:", error);
-      toast({
-        title: "Gagal menambahkan item",
-        description: "Terjadi kesalahan saat menambahkan item ke keranjang.",
-        variant: "destructive",
-      });
-      // Don't throw error to prevent UI crashes
+      console.error("[useShoppingCart] Error adding item to cart:", error);
+
+      // Fallback to localStorage if Supabase fails
+      try {
+        console.log("[useShoppingCart] Falling back to localStorage");
+        const newItem: CartItem = {
+          ...item,
+          id: uuidv4(),
+          created_at: new Date().toISOString(),
+        };
+        const updatedCart = [newItem, ...cartItems];
+        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+        setCartItems(updatedCart);
+
+        toast({
+          title: "Item ditambahkan ke keranjang",
+          description: `${item.service_name} berhasil ditambahkan ke keranjang belanja (mode offline).`,
+        });
+      } catch (fallbackError) {
+        console.error("[useShoppingCart] Fallback also failed:", fallbackError);
+        toast({
+          title: "Gagal menambahkan item",
+          description: "Terjadi kesalahan saat menambahkan item ke keranjang.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -565,7 +514,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       } = await supabase.auth.getSession();
 
       if (session?.user) {
-        // Remove from Supabase for logged-in users
+        // Remove from Supabase for authenticated users
         const { error } = await supabase
           .from("shopping_cart")
           .delete()
@@ -573,8 +522,11 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
           .eq("user_id", session.user.id);
 
         if (error) {
-          console.error("Error removing from cart:", error);
-          throw error;
+          console.error(
+            "[useShoppingCart] Error removing from Supabase:",
+            error,
+          );
+          // Continue with local removal even if Supabase fails
         }
       } else {
         // Remove from localStorage for guests
@@ -582,10 +534,20 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
       }
 
+      // Always update local state
       setCartItems((prev) => prev.filter((item) => item.id !== id));
+
+      toast({
+        title: "Item dihapus",
+        description: "Item berhasil dihapus dari keranjang.",
+      });
     } catch (error) {
-      console.error("Error removing item from cart:", error);
-      throw error;
+      console.error("[useShoppingCart] Error removing item from cart:", error);
+      toast({
+        title: "Gagal menghapus item",
+        description: "Terjadi kesalahan saat menghapus item dari keranjang.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -599,25 +561,35 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       } = await supabase.auth.getSession();
 
       if (session?.user) {
-        // Clear from Supabase for logged-in users
+        // Clear from Supabase for authenticated users
         const { error } = await supabase
           .from("shopping_cart")
           .delete()
           .eq("user_id", session.user.id);
 
         if (error) {
-          console.error("Error clearing cart:", error);
-          throw error;
+          console.error(
+            "[useShoppingCart] Error clearing cart from Supabase:",
+            error,
+          );
+          // Continue with local clearing even if Supabase fails
         }
       } else {
         // Clear localStorage for guests
         localStorage.removeItem(CART_STORAGE_KEY);
       }
 
+      // Always clear local state
       setCartItems([]);
+
+      // Dispatch event to notify other components that cart has been cleared
+      window.dispatchEvent(new CustomEvent("cartCleared"));
+      console.log("✅ Cart cleared successfully");
     } catch (error) {
-      console.error("Error clearing cart:", error);
-      throw error;
+      console.error("[useShoppingCart] Error clearing cart:", error);
+      // Still clear local state even if there's an error
+      setCartItems([]);
+      localStorage.removeItem(CART_STORAGE_KEY);
     } finally {
       setIsLoading(false);
     }
@@ -863,6 +835,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
               .update({
                 payment_status: "paid",
                 status: "confirmed",
+                payment_id: payment.id,
               })
               .eq("id", item.item_id)
               .select()
@@ -886,22 +859,39 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             bookingPromises.push(carPromise);
           } else {
             // Create new car rental booking
+            let parsedDetails = item.details;
+            if (typeof item.details === "string") {
+              try {
+                parsedDetails = JSON.parse(item.details);
+              } catch (error) {
+                console.error("Error parsing car rental details:", error);
+                parsedDetails = item.details;
+              }
+            }
+
             const carBookingData = {
               customer_id: session?.user?.id || null,
-              vehicle_id: item.item_id || null,
+              vehicle_id: parsedDetails?.vehicle_id || item.item_id || null,
               total_amount: item.price,
               start_date:
-                item.details?.start_date ||
+                parsedDetails?.start_date ||
                 new Date().toISOString().split("T")[0],
               end_date:
-                item.details?.end_date ||
+                parsedDetails?.end_date ||
                 new Date(Date.now() + 24 * 60 * 60 * 1000)
                   .toISOString()
                   .split("T")[0],
-              pickup_time: item.details?.pickup_time || "09:00",
-              driver_option: item.details?.driver_option || "self",
-              status: "pending",
-              payment_status: "pending",
+              pickup_time: parsedDetails?.pickup_time || "09:00",
+              driver_option: parsedDetails?.driver_option || "self",
+              status: "confirmed",
+              payment_status: "paid",
+              payment_id: payment.id,
+              vehicle_name: parsedDetails?.vehicle_name || item.service_name,
+              vehicle_type: parsedDetails?.vehicle_type || null,
+              make: parsedDetails?.make || null,
+              model: parsedDetails?.model || null,
+              license_plate: parsedDetails?.license_plate || null,
+              with_driver: parsedDetails?.with_driver || false,
               created_at: new Date().toISOString(),
             };
 
@@ -944,6 +934,15 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       console.log("🧹 Clearing cart...");
       await clearCart();
       console.log("✅ Cart cleared successfully");
+
+      // Reset any form states that might be cached
+      try {
+        // Dispatch event to reset forms
+        window.dispatchEvent(new CustomEvent("resetBookingForms"));
+        console.log("✅ Booking forms reset event dispatched");
+      } catch (error) {
+        console.warn("⚠️ Error dispatching form reset event:", error);
+      }
 
       console.log(
         "🎉 Checkout completed successfully! Payment ID:",

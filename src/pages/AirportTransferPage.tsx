@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShoppingCart } from "@/hooks/useShoppingCart";
 import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
+import { v4 as uuidv4 } from "uuid";
 
 // UI Components
 import { ArrowRightCircle, UserCheck, CarFront } from "lucide-react";
@@ -125,7 +126,6 @@ function AirportTransferPageContent() {
     isLoading,
     isHydrated,
     isSessionReady,
-    refreshAuthState,
   } = useAuth();
 
   const { addToCart } = useShoppingCart();
@@ -2032,6 +2032,7 @@ function AirportTransferPageContent() {
 
       // Create booking data for Supabase
       const bookingData = {
+        id: uuidv4(), // Generate UUID for the id field
         booking_code: formData.bookingCode,
         customer_name: formData.fullName || "Guest Customer",
         phone: formData.phoneNumber || "",
@@ -2046,7 +2047,7 @@ function AirportTransferPageContent() {
         id_driver: selectedVehicleDriver?.id_driver || null, // ✅ integer dari drivers.id_driver
         driver_name: selectedVehicleDriver?.driver_name || "",
         payment_method: "pending",
-        distance: formData.distance,
+        distance: formData.distance.toString(),
         duration: formData.duration,
         license_plate: selectedVehicleDriver?.license_plate || "N/A",
         model: selectedVehicleDriver?.model || "N/A",
@@ -2085,7 +2086,7 @@ function AirportTransferPageContent() {
           toAddress: formData.toAddress,
           pickupDate: formData.pickupDate,
           pickupTime: formData.pickupTime,
-          distance: formData.distance,
+          distance: formData.distance.toString(),
           duration: formData.duration,
           passenger: formData.passenger,
           bookingType: bookingType,
@@ -2128,6 +2129,7 @@ function AirportTransferPageContent() {
     setIsLoadingBooking(true);
     try {
       const bookingData = {
+        id: uuidv4(), // Generate UUID for the id field
         booking_code: formData.bookingCode,
         customer_name: formData.fullName,
         phone: formData.phoneNumber,
@@ -2142,7 +2144,7 @@ function AirportTransferPageContent() {
         id_driver: null, // ✅ Integer, ke kolom id_driver
         driver_name: formData.driverName,
         payment_method: formData.paymentMethod,
-        distance: formData.distance,
+        distance: formData.distance.toString(),
         duration: formData.duration,
         license_plate: formData.vehiclePlate || "N/A",
         model: formData.vehicleModel || "N/A",

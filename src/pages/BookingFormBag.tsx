@@ -307,6 +307,9 @@ const BookingForm = ({
 
     setIsSubmitting(true);
 
+    // Declare freshSession in broader scope
+    let freshSession = null;
+
     try {
       // Ensure session is ready before proceeding
       console.log("[BookingForm] Ensuring session is ready...");
@@ -344,11 +347,11 @@ const BookingForm = ({
       // Get fresh session to ensure Supabase client uses latest token
       console.log("[BookingForm] Getting fresh session to sync token...");
       const {
-        data: { session: freshSession },
+        data: { session: sessionResult },
         error: getSessionError,
       } = await supabase.auth.getSession();
 
-      if (getSessionError || !freshSession?.user) {
+      if (getSessionError || !sessionResult?.user) {
         console.error(
           "[BookingForm] Failed to get fresh session:",
           getSessionError,
@@ -358,6 +361,8 @@ const BookingForm = ({
         return;
       }
 
+      // Assign to the broader scope variable
+      freshSession = sessionResult;
       console.log("[BookingForm] ✅ Fresh session obtained, token synced");
     } catch (refreshError) {
       console.error("[BookingForm] Error refreshing session:", refreshError);

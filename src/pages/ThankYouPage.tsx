@@ -273,88 +273,14 @@ const ThankYouPage: React.FC = () => {
             }
           }
 
-          // 2. Fetch airport transfer bookings through airport_transfer_payments table
+          // 2. Fetch airport transfer bookings by matching payment amount and recent time
           console.log(
-            "Searching for airport transfer payments with payment ID:",
-            paymentId,
+            "Searching for airport transfers with payment amount:",
+            paymentData.amount,
           );
 
-          const {
-            data: airportTransferPayments,
-            error: airportTransferPaymentsError,
-          } = await supabase
-            .from("airport_transfer_payments")
-            .select(
-              `
-              airport_transfer_id,
-              airport_transfer (
-                id,
-                customer_name,
-                phone,
-                pickup_location,
-                dropoff_location,
-                pickup_date,
-                pickup_time,
-                price,
-                vehicle_name,
-                driver_name,
-                license_plate,
-                distance,
-                type,
-                status
-              )
-            `,
-            )
-            .eq("id", paymentId);
-
-          console.log(
-            "Airport transfer payments found:",
-            airportTransferPayments,
-          );
-          console.log(
-            "Airport transfer payments error:",
-            airportTransferPaymentsError,
-          );
-
-          if (
-            !airportTransferPaymentsError &&
-            airportTransferPayments &&
-            airportTransferPayments.length > 0
-          ) {
-            allBookings.push(
-              ...airportTransferPayments.map((payment) => {
-                const transfer = payment.airport_transfer as any;
-                return {
-                  booking_id: transfer.id.toString(),
-                  customer_name: transfer.customer_name || "Guest",
-                  customer_email: "",
-                  customer_phone: transfer.phone || "",
-                  item_name: "Airport Transfer Service",
-                  price: transfer.price || 0,
-                  pickup_location: transfer.pickup_location,
-                  dropoff_location: transfer.dropoff_location,
-                  pickup_date: transfer.pickup_date,
-                  pickup_time: transfer.pickup_time,
-                  vehicle_name: transfer.vehicle_name,
-                  driver_name: transfer.driver_name,
-                  license_plate: transfer.license_plate,
-                  distance: transfer.distance,
-                  type: transfer.type,
-                  status: transfer.status || "pending",
-                  booking_type: "airport_transfer" as const,
-                };
-              }),
-            );
-          } else {
-            console.log(
-              "No airport transfer payments found, trying alternative approach...",
-            );
-
-            // Alternative approach: Look for airport transfers that match the payment amount and recent time
-            const {
-              data: airportTransfersByAmount,
-              error: airportAmountError,
-            } = await supabase
+          const { data: airportTransfersByAmount, error: airportAmountError } =
+            await supabase
               .from("airport_transfer")
               .select("*")
               .eq("price", paymentData.amount)
@@ -365,38 +291,37 @@ const ThankYouPage: React.FC = () => {
               .order("created_at", { ascending: false })
               .limit(5);
 
-            console.log(
-              "Airport transfers by amount found:",
-              airportTransfersByAmount,
-            );
+          console.log(
+            "Airport transfers by amount found:",
+            airportTransfersByAmount,
+          );
 
-            if (
-              !airportAmountError &&
-              airportTransfersByAmount &&
-              airportTransfersByAmount.length > 0
-            ) {
-              allBookings.push(
-                ...airportTransfersByAmount.map((transfer) => ({
-                  booking_id: transfer.id.toString(),
-                  customer_name: transfer.customer_name || "Guest",
-                  customer_email: "",
-                  customer_phone: transfer.phone || "",
-                  item_name: "Airport Transfer Service",
-                  price: transfer.price || 0,
-                  pickup_location: transfer.pickup_location,
-                  dropoff_location: transfer.dropoff_location,
-                  pickup_date: transfer.pickup_date,
-                  pickup_time: transfer.pickup_time,
-                  vehicle_name: transfer.vehicle_name,
-                  driver_name: transfer.driver_name,
-                  license_plate: transfer.license_plate,
-                  distance: transfer.distance,
-                  type: transfer.type,
-                  status: transfer.status || "pending",
-                  booking_type: "airport_transfer" as const,
-                })),
-              );
-            }
+          if (
+            !airportAmountError &&
+            airportTransfersByAmount &&
+            airportTransfersByAmount.length > 0
+          ) {
+            allBookings.push(
+              ...airportTransfersByAmount.map((transfer) => ({
+                booking_id: transfer.id.toString(),
+                customer_name: transfer.customer_name || "Guest",
+                customer_email: "",
+                customer_phone: transfer.phone || "",
+                item_name: "Airport Transfer Service",
+                price: transfer.price || 0,
+                pickup_location: transfer.pickup_location,
+                dropoff_location: transfer.dropoff_location,
+                pickup_date: transfer.pickup_date,
+                pickup_time: transfer.pickup_time,
+                vehicle_name: transfer.vehicle_name,
+                driver_name: transfer.driver_name,
+                license_plate: transfer.license_plate,
+                distance: transfer.distance,
+                type: transfer.type,
+                status: transfer.status || "pending",
+                booking_type: "airport_transfer" as const,
+              })),
+            );
           }
 
           // 3. Fetch car rental bookings

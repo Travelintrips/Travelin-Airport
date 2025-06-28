@@ -326,13 +326,14 @@ function AppContent() {
           navigate("/admin", { replace: true });
         }
       } else if (userRole === ROLES.STAFF_TRIPS || userRole === ROLES.STAFF) {
-        // Hanya block redirect kalau sekarang sudah di home page ("/")
-        if (currentPath === "/" || currentPath === "/home") {
-          // ✅ Stay di TravelPage, tidak redirect
-        } else {
-          // ✅ Kalau login di /auth atau dimanapun selain "/" atau "/home", langsung redirect ke sub-account
-          window.location.href =
-            "https://priceless-moore1-lbkq9.view-3.tempo-dev.app/sub-account";
+        // ✅ Staff users tetap berada di TravelPage, tidak redirect ke sub-account
+        if (
+          currentPath !== "/" &&
+          currentPath !== "/home" &&
+          currentPath !== "/sub-account"
+        ) {
+          // Redirect staff ke TravelPage jika mereka tidak berada di halaman utama
+          navigate("/", { replace: true });
         }
       } else if (userRole === ROLES.DRIVER_PERUSAHAAN) {
         navigate("/driver-profile");
