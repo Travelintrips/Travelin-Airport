@@ -430,7 +430,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
           .from("shopping_cart")
           .select("*")
           .eq("user_id", session.user.id)
-          .eq("status", "active")
+          .eq("status_cart", "active")
           .order("created_at", { ascending: false });
 
         if (error) {
@@ -534,14 +534,20 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         user_id: userId,
         item_type: item.item_type,
         item_id:
-          item.item_id && isValidUUID(item.item_id) ? item.item_id : null,
+          item.item_id &&
+          item.item_id !== "small" &&
+          item.item_id !== "medium" &&
+          item.item_id !== "large" &&
+          isValidUUID(item.item_id)
+            ? item.item_id
+            : null,
         service_name: item.service_name,
         price: item.price,
         details:
           typeof item.details === "string"
             ? item.details
             : JSON.stringify(item.details),
-        status: "active",
+        status_cart: "active",
         created_at: item.created_at || new Date().toISOString(),
       }));
 
@@ -687,7 +693,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
             typeof item.details === "string"
               ? item.details
               : JSON.stringify(item.details),
-          status: "active",
+          status_cart: "active",
           created_at: new Date().toISOString(),
         };
 
@@ -696,7 +702,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
           item_type: insertData.item_type,
           service_name: insertData.service_name,
           price: insertData.price,
-          status: insertData.status,
+          status_cart: insertData.status_cart,
         });
 
         // Add timeout protection for database insert
@@ -955,7 +961,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
               .from("shopping_cart")
               .delete()
               .eq("user_id", session.user.id)
-              .eq("status", "active")
+              .eq("status_cart", "active")
               .select(); // Add select to see what was deleted
 
             if (error) {
