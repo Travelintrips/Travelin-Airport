@@ -68,7 +68,7 @@ const HandlingPage = () => {
         phone: userPhone || prev.phone,
       }));
       console.log("[HandlingPage] Auto-filled form with user data:", {
-        name: userName,
+        display_name: userName,
         email: userEmail,
         phone: userPhone,
       });

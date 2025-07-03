@@ -253,32 +253,6 @@ const BookingsPage = () => {
   const hasStoredAuth =
     localStorage.getItem("auth_user") && localStorage.getItem("userId");
 
-  // Show auth modal if not authenticated and no stored data
-  if (!shouldShowDashboard && !hasStoredAuth) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-auto p-6">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              Authentication Required
-            </h2>
-            <p className="text-gray-600">
-              Please sign in to view your bookings
-            </p>
-          </div>
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
-          </div>
-        </div>
-        <AuthRequiredModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-        />
-      </div>
-    );
-  }
-
   // Show dashboard if authenticated or has stored auth
   if (shouldShowDashboard || hasStoredAuth) {
     return (

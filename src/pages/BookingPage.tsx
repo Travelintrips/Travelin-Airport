@@ -16,22 +16,46 @@ export default function BookingPage() {
   const navigate = useNavigate();
   const params = useParams();
   const { selectedVehicle } = location.state || {};
-  const { isAuthenticated, userId } = useAuth();
+  const { isAuthenticated, userId, isSessionReady } = useAuth();
 
   const [vehicle, setVehicle] = useState(selectedVehicle || null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Check if user is authenticated
+  // ✅ Tampilkan modal login hanya jika session sudah siap
   useEffect(() => {
-    if (!isAuthenticated || !userId) {
+    if (isSessionReady && (!isAuthenticated || !userId)) {
       setShowAuthModal(true);
     }
-    setIsLoading(false);
-  }, [isAuthenticated, userId]);
+  }, [isAuthenticated, userId, isSessionReady]);
 
-  // Fetch vehicle data if not provided in location state
+  // ✅ Sambil tunggu session siap (supabase.auth.getSession selesai)
+  if (!isSessionReady) {
+    return (
+      <div className="container mx-auto py-8 px-4 text-center">
+        <div className="text-lg font-semibold">Checking session...</div>
+      </div>
+    );
+  }
+
+  // ✅ Tampilkan modal auth jika belum login
+  if (isSessionReady && (!isAuthenticated || !userId)) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
+          <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
+        </div>
+        <AuthRequiredModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+        />
+      </div>
+    );
+  }
+
+  // ✅ Fetch vehicle jika tidak dikirim via state
   useEffect(() => {
     const fetchVehicle = async () => {
       if (!selectedVehicle && (params.vehicle_id || params.model_name)) {
@@ -60,31 +84,15 @@ export default function BookingPage() {
         } finally {
           setIsLoading(false);
         }
+      } else {
+        setIsLoading(false);
       }
     };
 
     fetchVehicle();
   }, [params.vehicle_id, params.model_name, selectedVehicle]);
 
-  // Show auth modal if not authenticated
-  if (!isAuthenticated || !userId) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
-          </div>
-        </div>
-        <AuthRequiredModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-        />
-      </div>
-    );
-  }
-
-  // Show loading state
+  // ✅ Loading state
   if (isLoading) {
     return (
       <div className="container mx-auto py-8 px-4 text-center">
@@ -96,7 +104,7 @@ export default function BookingPage() {
     );
   }
 
-  // Show error state
+  // ✅ Error state
   if (error) {
     return (
       <div className="container mx-auto py-8 px-4">
@@ -116,11 +124,12 @@ export default function BookingPage() {
     );
   }
 
+  // ✅ Render Booking Form
   return (
     <div className="container mx-auto py-8 px-4">
       <h1 className="text-3xl font-bold mb-6">Book a Car</h1>
       <Card className="p-6 bg-white shadow-md">
-        {vehicle ? <BookingForm selectedVehicle={vehicle} /> : <BookingForm />}
+        <BookingForm selectedVehicle={vehicle} />
       </Card>
     </div>
   );

@@ -54,6 +54,47 @@ const RentCar = () => {
   const navigate = useNavigate();
   const { modelName } = useParams<{ modelName: string }>();
   const { t, i18n } = useTranslation();
+  // Safely get auth context with error handling
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.warn("Failed to get auth context in RentCar:", error);
+    authContext = {
+      userRole: null,
+      userEmail: null,
+      userName: null,
+      signOut: async () => {
+        console.warn("signOut called from fallback auth context");
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.warn("Error in fallback signOut:", signOutError);
+        }
+      },
+      isAuthenticated: false,
+      userId: null,
+      isSessionReady: true,
+      userPhone: null,
+      isAdmin: false,
+      isLoading: false,
+      isHydrated: true,
+      isCheckingSession: false,
+      forceRefreshSession: async () => {
+        console.warn("forceRefreshSession called from fallback auth context");
+        try {
+          await supabase.auth.refreshSession();
+        } catch (refreshError) {
+          console.warn("Error in fallback refresh:", refreshError);
+        }
+      },
+      ensureSessionReady: async () => {
+        console.warn("ensureSessionReady called from fallback auth context");
+        return Promise.resolve();
+      },
+    };
+  }
+
   const {
     userRole,
     userEmail,
@@ -62,7 +103,7 @@ const RentCar = () => {
     isAuthenticated,
     userId,
     isSessionReady,
-  } = useAuth();
+  } = authContext;
 
   // Add force logout redirect hook
   const { isLoading } = useForceLogoutRedirect(false);
@@ -83,6 +124,7 @@ const RentCar = () => {
     useState(false);
   const [sessionStableTimeout, setSessionStableTimeout] =
     useState<NodeJS.Timeout | null>(null);
+  const [lastRefetchTime, setLastRefetchTime] = useState(0);
 
   useEffect(() => {
     if (!isSessionReady) {
@@ -96,26 +138,30 @@ const RentCar = () => {
       setSessionStableTimeout(null);
     }
 
-    // Only trigger refetch if session is ready and we haven't fetched yet
+    const now = Date.now();
+    const REFETCH_COOLDOWN = 5000; // 5 second cooldown between refetches
+
+    // Only trigger refetch if session is ready and we haven't fetched recently
     if (
       isSessionReady &&
-      !hasTriggeredSessionRefetch &&
-      carModels.length === 0 &&
-      !isLoadingModels &&
-      hasInitialLoad
+      (!hasTriggeredSessionRefetch ||
+        now - lastRefetchTime > REFETCH_COOLDOWN) &&
+      (carModels.length === 0 || !hasInitialLoad) &&
+      !isLoadingModels
     ) {
       console.log("[RentCar] Session ready, scheduling vehicle data fetch");
 
       // Add a small delay to ensure session state is stable
       const timeout = setTimeout(() => {
-        if (isSessionReady && !hasTriggeredSessionRefetch) {
-          console.log("[RentCar] Triggering one-time vehicle data fetch");
+        if (isSessionReady && now - lastRefetchTime > REFETCH_COOLDOWN) {
+          console.log("[RentCar] Triggering vehicle data fetch");
           setHasTriggeredSessionRefetch(true);
+          setLastRefetchTime(Date.now());
           if (refetchVehicleData) {
             refetchVehicleData();
           }
         }
-      }, 300);
+      }, 200); // Reduced delay for faster response
 
       setSessionStableTimeout(timeout);
     }
@@ -132,7 +178,48 @@ const RentCar = () => {
     isLoadingModels,
     hasInitialLoad,
     refetchVehicleData,
+    lastRefetchTime,
   ]);
+
+  // Listen for session restored events to trigger vehicle refetch
+  useEffect(() => {
+    const handleSessionRestored = (event: CustomEvent) => {
+      console.log("[RentCar] Session restored event received:", event.detail);
+      const userData = event.detail;
+
+      if (userData && userData.id && userData.email) {
+        console.log(
+          "[RentCar] Valid session restored, triggering vehicle refetch",
+        );
+
+        // Reset refetch state to allow new fetch
+        setHasTriggeredSessionRefetch(false);
+
+        // Trigger vehicle data refetch after a short delay
+        setTimeout(() => {
+          if (refetchVehicleData) {
+            console.log(
+              "[RentCar] Refetching vehicle data after session restore",
+            );
+            refetchVehicleData();
+            setLastRefetchTime(Date.now());
+          }
+        }, 500);
+      }
+    };
+
+    window.addEventListener(
+      "sessionRestored",
+      handleSessionRestored as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "sessionRestored",
+        handleSessionRestored as EventListener,
+      );
+    };
+  }, [refetchVehicleData]);
 
   // Set document title based on language
   useEffect(() => {
@@ -628,7 +715,7 @@ const RentCar = () => {
                       disabled={!vehicle.available}
                       onClick={() => {
                         if (vehicle.available) {
-                          handleSelectVehicle(vehicle);
+                          handleSelectVehicle(vehicle as any);
                         }
                       }}
                     >
@@ -700,7 +787,6 @@ const RentCar = () => {
                     modelName={model.modelName}
                     availableCount={model.availableCount}
                     imageUrl={model.imageUrl}
-                    vehicles={model.vehicles}
                     onViewDetail={() => {
                       handleViewModelDetail(model);
                     }}

@@ -19,10 +19,10 @@ export default defineConfig({
   },
   define: {
     "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(
-      process.env.VITE_SUPABASE_URL || ""
+      process.env.VITE_SUPABASE_URL || "",
     ),
     "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(
-      process.env.VITE_SUPABASE_ANON_KEY || ""
+      process.env.VITE_SUPABASE_ANON_KEY || "",
     ),
   },
   server: {
@@ -40,18 +40,53 @@ export default defineConfig({
         middlewares.use(
           history.default({
             rewrites: [{ from: /^\/.*$/, to: "/index.html" }],
-          })
+          }),
         );
       } catch (err) {
-        console.warn("⚠️ 'connect-history-api-fallback' not found, skipping fallback middleware.");
+        console.warn(
+          "⚠️ 'connect-history-api-fallback' not found, skipping fallback middleware.",
+        );
       }
       return middlewares;
     },
   },
   build: {
     outDir: "dist",
+    chunkSizeWarningLimit: 1000,
     commonjsOptions: {
       transformMixedEsModules: true,
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core
+          react: ["react", "react-dom"],
+          // Router
+          router: ["react-router", "react-router-dom"],
+          // UI libraries
+          ui: [
+            "lucide-react",
+            "@radix-ui/react-dialog",
+            "@radix-ui/react-dropdown-menu",
+            "@radix-ui/react-select",
+          ],
+          // Form libraries
+          forms: ["react-hook-form", "@hookform/resolvers", "zod"],
+          // Supabase
+          supabase: ["@supabase/supabase-js"],
+          // Maps and external APIs
+          maps: ["@react-google-maps/api"],
+          // Utilities
+          utils: [
+            "axios",
+            "date-fns",
+            "dayjs",
+            "uuid",
+            "clsx",
+            "tailwind-merge",
+          ],
+        },
+      },
     },
   },
 });

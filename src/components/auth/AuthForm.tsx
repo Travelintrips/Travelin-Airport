@@ -8,7 +8,7 @@ import RegistrationForm, { RegisterFormValues } from "./RegistrationForm";
 import { uploadDocumentImages } from "@/lib/edgeFunctions";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthModal from "./AuthModal";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 
 import {
   Card,
@@ -168,6 +168,21 @@ const AuthForm: React.FC<AuthFormProps> = ({
       email: user.email || "",
       name: userFullName,
     };
+
+    // Update user metadata to ensure consistency between UI and stored data
+    const { error: updateMetadataError } = await supabase.auth.updateUser({
+      data: {
+        ...user.user_metadata,
+        name: userFullName,
+        full_name: userFullName,
+      },
+    });
+
+    if (updateMetadataError) {
+      console.warn("⚠️ Failed to update user metadata:", updateMetadataError);
+    } else {
+      console.log("✅ Updated user metadata with name:", userFullName);
+    }
 
     localStorage.setItem("auth_user", JSON.stringify(userDataObj));
     console.log("✅ User logged in successfully with fresh data:", userDataObj);
@@ -336,6 +351,21 @@ const AuthForm: React.FC<AuthFormProps> = ({
         email: authData.user.email || "",
         name: userFullName,
       };
+
+      // Update user metadata to ensure consistency between UI and stored data
+      const { error: updateMetadataError } = await supabase.auth.updateUser({
+        data: {
+          ...authData.user.user_metadata,
+          name: userFullName,
+          full_name: userFullName,
+        },
+      });
+
+      if (updateMetadataError) {
+        console.warn("⚠️ Failed to update user metadata:", updateMetadataError);
+      } else {
+        console.log("✅ Updated user metadata with name:", userFullName);
+      }
 
       localStorage.setItem("auth_user", JSON.stringify(userDataObj));
       localStorage.setItem("userName", userFullName);

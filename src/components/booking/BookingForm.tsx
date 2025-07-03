@@ -663,7 +663,12 @@ const BookingForm: React.FC<BookingFormProps> = ({
                       <FormItem className="w-full">
                         <FormLabel>Pickup Time</FormLabel>
                         <FormControl>
-                          <Input type="time" {...field} />
+                          <Input
+                            type="time"
+                            id="pickupTime"
+                            name="pickupTime"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -677,7 +682,12 @@ const BookingForm: React.FC<BookingFormProps> = ({
                       <FormItem className="w-full">
                         <FormLabel>Return Time</FormLabel>
                         <FormControl>
-                          <Input type="time" {...field} />
+                          <Input
+                            type="time"
+                            id="returnTime"
+                            name="returnTime"
+                            {...field}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -714,7 +724,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
                             onValueChange={field.onChange}
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger
+                                id="assignedDriver"
+                                name="assignedDriver"
+                              >
                                 <SelectValue placeholder="Driver Assigned" />
                               </SelectTrigger>
                             </FormControl>
@@ -792,7 +805,10 @@ const BookingForm: React.FC<BookingFormProps> = ({
                             defaultValue={field.value || ""}
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger
+                                id="selectDriver"
+                                name="selectDriver"
+                              >
                                 <SelectValue placeholder="Select a driver" />
                               </SelectTrigger>
                             </FormControl>

@@ -25,15 +25,53 @@ const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, userId, userEmail, userName } = useAuth();
   const { cartItems, totalAmount, clearCart } = useShoppingCart();
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<string>("");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(
+    () => {
+      // Try to restore from sessionStorage
+      return sessionStorage.getItem("checkout-payment-method") || "";
+    },
+  );
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [selectedBank, setSelectedBank] = useState<any | null>(null);
-  const [manualBanks, setManualBanks] = useState<any[]>([]);
-  const [customerData, setCustomerData] = useState({
-    name: "",
-    email: "",
-    phone: "",
+  const [selectedBank, setSelectedBank] = useState<any | null>(() => {
+    // Try to restore from sessionStorage
+    const saved = sessionStorage.getItem("checkout-selected-bank");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error("Error parsing saved bank data:", error);
+      }
+    }
+    return null;
+  });
+  const [manualBanks, setManualBanks] = useState<any[]>(() => {
+    // Try to restore from sessionStorage
+    const saved = sessionStorage.getItem("checkout-manual-banks");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error("Error parsing saved banks data:", error);
+      }
+    }
+    return [];
+  });
+  const [isFetchingBanks, setIsFetchingBanks] = useState(false);
+  const [customerData, setCustomerData] = useState(() => {
+    // Try to restore from sessionStorage first
+    const saved = sessionStorage.getItem("checkout-customer-data");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (error) {
+        console.error("Error parsing saved customer data:", error);
+      }
+    }
+    return {
+      name: "",
+      email: "",
+      phone: "",
+    };
   });
 
   // WhatsApp message sending function
@@ -68,10 +106,18 @@ const CheckoutPage: React.FC = () => {
   useEffect(() => {
     // Auto-fill customer data if user is authenticated
     if (isAuthenticated) {
-      setCustomerData({
-        name: userName || "",
-        email: userEmail || "",
-        phone: "", // Will be fetched from customer table
+      setCustomerData((prev) => {
+        const newData = {
+          name: userName || prev.name || "",
+          email: userEmail || prev.email || "",
+          phone: prev.phone || "", // Keep existing phone or will be fetched
+        };
+        // Save to sessionStorage
+        sessionStorage.setItem(
+          "checkout-customer-data",
+          JSON.stringify(newData),
+        );
+        return newData;
       });
       fetchCustomerPhone();
     }
@@ -98,13 +144,20 @@ const CheckoutPage: React.FC = () => {
   useEffect(() => {
     const handleFormReset = () => {
       console.log("[CheckoutPage] Received form reset event");
-      setCustomerData({
+      const resetData = {
         name: isAuthenticated ? userName || "" : "",
         email: isAuthenticated ? userEmail || "" : "",
         phone: "",
-      });
+      };
+      setCustomerData(resetData);
       setSelectedPaymentMethod("");
       setSelectedBank(null);
+
+      // Clear sessionStorage
+      sessionStorage.removeItem("checkout-customer-data");
+      sessionStorage.removeItem("checkout-payment-method");
+      sessionStorage.removeItem("checkout-selected-bank");
+      sessionStorage.removeItem("checkout-manual-banks");
     };
 
     window.addEventListener("resetBookingForms", handleFormReset);
@@ -123,7 +176,15 @@ const CheckoutPage: React.FC = () => {
           .single();
 
         if (!error && data?.phone) {
-          setCustomerData((prev) => ({ ...prev, phone: data.phone }));
+          setCustomerData((prev) => {
+            const newData = { ...prev, phone: data.phone };
+            // Save to sessionStorage
+            sessionStorage.setItem(
+              "checkout-customer-data",
+              JSON.stringify(newData),
+            );
+            return newData;
+          });
         }
       } catch (error) {
         console.error("Error fetching customer data:", error);
@@ -131,30 +192,116 @@ const CheckoutPage: React.FC = () => {
     }
   };
 
-  const fetchManualPaymentMethods = async () => {
+  const fetchManualPaymentMethods = async (force = false) => {
+    // Prevent multiple simultaneous fetches unless forced
+    if (isFetchingBanks && !force) {
+      console.log("🏦 Already fetching payment methods, skipping...");
+      return;
+    }
+
+    setIsFetchingBanks(true);
     try {
+      console.log("🏦 Fetching manual payment methods...");
       const { data, error } = await supabase
         .from("payment_methods")
         .select("*")
-        .eq("type", "manual");
+        .eq("type", "manual")
+        .eq("is_active", true)
+        .order("name", { ascending: true });
 
       if (error) {
-        console.error("Error fetching manual payment methods:", error);
+        console.error("❌ Error fetching manual payment methods:", error);
         return;
       }
 
-      setManualBanks(data || []);
+      console.log("✅ Fetched payment methods:", data?.length || 0, "banks");
+      console.log("📋 Bank details:", data);
+
+      // Always update state, even if data is empty
+      const banksData = data || [];
+      setManualBanks(banksData);
+      // Save to sessionStorage
+      sessionStorage.setItem(
+        "checkout-manual-banks",
+        JSON.stringify(banksData),
+      );
+
+      // Force a re-render by updating a timestamp
+      console.log(
+        "🔄 Manual banks state updated at:",
+        new Date().toISOString(),
+      );
     } catch (error) {
-      console.error("Exception in fetchManualPaymentMethods:", error);
+      console.error("❌ Exception in fetchManualPaymentMethods:", error);
+      // Don't clear existing banks on error, keep what we have
+    } finally {
+      setIsFetchingBanks(false);
     }
   };
 
   // Fetch manual payment methods when bank transfer is selected
   useEffect(() => {
     if (selectedPaymentMethod === "bank_transfer") {
-      fetchManualPaymentMethods();
+      console.log("💳 Bank transfer selected, fetching payment methods...");
+      fetchManualPaymentMethods(true); // Force fetch when payment method changes
+    } else {
+      // Clear banks when other payment method is selected
+      setManualBanks([]);
+      setSelectedBank(null);
     }
   }, [selectedPaymentMethod]);
+
+  // Refetch payment methods when component mounts or becomes visible
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && selectedPaymentMethod === "bank_transfer") {
+        console.log("🔄 Tab became visible, refetching payment methods...");
+        // Reset loading state and refetch
+        setIsFetchingBanks(false);
+        timeoutId = setTimeout(() => {
+          fetchManualPaymentMethods(true);
+        }, 100);
+      }
+    };
+
+    const handleFocus = () => {
+      if (selectedPaymentMethod === "bank_transfer") {
+        console.log("🔄 Window focused, refetching payment methods...");
+        // Reset loading state and refetch
+        setIsFetchingBanks(false);
+        timeoutId = setTimeout(() => {
+          fetchManualPaymentMethods(true);
+        }, 100);
+      }
+    };
+
+    // Also fetch on component mount if bank transfer is already selected
+    if (
+      selectedPaymentMethod === "bank_transfer" &&
+      manualBanks.length === 0 &&
+      !isFetchingBanks
+    ) {
+      console.log(
+        "🔄 Component mounted with bank transfer selected, fetching...",
+      );
+      fetchManualPaymentMethods(true);
+    }
+
+    // Add event listeners
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
+
+    // Cleanup
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [selectedPaymentMethod, manualBanks.length, isFetchingBanks]);
 
   // Helper function to link payment with booking
   const linkPaymentBooking = async (
@@ -535,23 +682,27 @@ const CheckoutPage: React.FC = () => {
       console.log("🧹 Cart cleared successfully");
 
       // Reset customer data form (preserve authenticated user data)
-      if (isAuthenticated) {
-        setCustomerData({
-          name: userName || "",
-          email: userEmail || "",
-          phone: "", // Reset phone but keep name/email for authenticated users
-        });
-      } else {
-        setCustomerData({
-          name: "",
-          email: "",
-          phone: "",
-        });
-      }
+      const resetData = isAuthenticated
+        ? {
+            name: userName || "",
+            email: userEmail || "",
+            phone: "", // Reset phone but keep name/email for authenticated users
+          }
+        : {
+            name: "",
+            email: "",
+            phone: "",
+          };
 
-      // Reset payment method selection
+      setCustomerData(resetData);
       setSelectedPaymentMethod("");
       setSelectedBank(null);
+
+      // Clear sessionStorage
+      sessionStorage.removeItem("checkout-customer-data");
+      sessionStorage.removeItem("checkout-payment-method");
+      sessionStorage.removeItem("checkout-selected-bank");
+      sessionStorage.removeItem("checkout-manual-banks");
 
       // Dispatch event to reset any cached form states
       window.dispatchEvent(new CustomEvent("resetBookingForms"));
@@ -664,10 +815,18 @@ const CheckoutPage: React.FC = () => {
                       id="customer-name"
                       value={customerData.name}
                       onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          name: e.target.value,
-                        }))
+                        setCustomerData((prev) => {
+                          const newData = {
+                            ...prev,
+                            name: e.target.value,
+                          };
+                          // Save to sessionStorage
+                          sessionStorage.setItem(
+                            "checkout-customer-data",
+                            JSON.stringify(newData),
+                          );
+                          return newData;
+                        })
                       }
                       placeholder="Enter full name"
                       disabled={isAuthenticated && !!userName}
@@ -687,10 +846,18 @@ const CheckoutPage: React.FC = () => {
                       type="email"
                       value={customerData.email}
                       onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          email: e.target.value,
-                        }))
+                        setCustomerData((prev) => {
+                          const newData = {
+                            ...prev,
+                            email: e.target.value,
+                          };
+                          // Save to sessionStorage
+                          sessionStorage.setItem(
+                            "checkout-customer-data",
+                            JSON.stringify(newData),
+                          );
+                          return newData;
+                        })
                       }
                       placeholder="Enter email"
                       disabled={isAuthenticated && !!userEmail}
@@ -709,10 +876,18 @@ const CheckoutPage: React.FC = () => {
                       id="customer-phone"
                       value={customerData.phone}
                       onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          phone: e.target.value,
-                        }))
+                        setCustomerData((prev) => {
+                          const newData = {
+                            ...prev,
+                            phone: e.target.value,
+                          };
+                          // Save to sessionStorage
+                          sessionStorage.setItem(
+                            "checkout-customer-data",
+                            JSON.stringify(newData),
+                          );
+                          return newData;
+                        })
                       }
                       placeholder="Enter phone number"
                     />
@@ -776,8 +951,25 @@ const CheckoutPage: React.FC = () => {
                           }
                           className="h-auto p-3 flex flex-col items-center gap-2"
                           onClick={() => {
+                            console.log(
+                              "💳 Payment method selected:",
+                              method.id,
+                            );
                             setSelectedPaymentMethod(method.id);
                             setSelectedBank(null); // Reset selected bank
+                            // Save to sessionStorage
+                            sessionStorage.setItem(
+                              "checkout-payment-method",
+                              method.id,
+                            );
+                            sessionStorage.removeItem("checkout-selected-bank");
+                            // Immediately fetch payment methods for bank transfer
+                            if (method.id === "bank_transfer") {
+                              console.log(
+                                "🏦 Immediately fetching banks for bank transfer...",
+                              );
+                              fetchManualPaymentMethods(true);
+                            }
                           }}
                         >
                           <Icon className="h-5 w-5" />
@@ -793,7 +985,14 @@ const CheckoutPage: React.FC = () => {
                       <h4 className="font-medium mb-3 text-center">
                         Select Bank
                       </h4>
-                      {manualBanks.length > 0 ? (
+                      {isFetchingBanks ? (
+                        <div className="text-center py-4">
+                          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2" />
+                          <p className="text-sm text-gray-500">
+                            Loading banks...
+                          </p>
+                        </div>
+                      ) : manualBanks.length > 0 ? (
                         <div className="space-y-2 max-h-48 overflow-y-auto">
                           {manualBanks.map((bank) => (
                             <div
@@ -803,29 +1002,46 @@ const CheckoutPage: React.FC = () => {
                                   ? "border-blue-500 bg-blue-50"
                                   : "hover:bg-gray-50"
                               }`}
-                              onClick={() => setSelectedBank(bank)}
+                              onClick={() => {
+                                console.log("🏦 Bank selected:", bank.name);
+                                setSelectedBank(bank);
+                                // Save to sessionStorage
+                                sessionStorage.setItem(
+                                  "checkout-selected-bank",
+                                  JSON.stringify(bank),
+                                );
+                              }}
                             >
                               <div className="font-medium">{bank.name}</div>
+                              {bank.bank_name && (
+                                <div className="text-sm text-gray-600">
+                                  {bank.bank_name}
+                                </div>
+                              )}
                               {selectedBank?.id === bank.id && (
                                 <div className="mt-2 text-sm space-y-1">
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Holder:
-                                    </span>{" "}
-                                    {bank.account_holder}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Number:
-                                    </span>{" "}
-                                    {bank.account_number}
-                                  </div>
-                                  {bank.swift_code && (
+                                  {bank.account_holder && (
                                     <div>
                                       <span className="font-medium">
-                                        Swift Code:
+                                        Account Holder:
                                       </span>{" "}
-                                      {bank.swift_code}
+                                      {bank.account_holder}
+                                    </div>
+                                  )}
+                                  {bank.account_number && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Account Number:
+                                      </span>{" "}
+                                      {bank.account_number}
+                                    </div>
+                                  )}
+                                  {bank.bank_code && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Bank Code:
+                                      </span>{" "}
+                                      {bank.bank_code}
                                     </div>
                                   )}
                                   {bank.branch && (
@@ -842,8 +1058,30 @@ const CheckoutPage: React.FC = () => {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          No bank accounts found. Please contact support.
+                        <div className="text-center py-4">
+                          <p className="text-gray-500 mb-2">
+                            No bank accounts found.
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              console.log(
+                                "🔄 Retry button clicked, refetching banks...",
+                              );
+                              fetchManualPaymentMethods(true);
+                            }}
+                            disabled={isFetchingBanks}
+                          >
+                            {isFetchingBanks ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                Loading...
+                              </>
+                            ) : (
+                              "Retry"
+                            )}
+                          </Button>
                         </div>
                       )}
                     </div>

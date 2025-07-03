@@ -59,6 +59,12 @@ interface Booking {
   driver?: {
     id: number;
     driver_name: string;
+    name?: string;
+  };
+  vehicle?: {
+    make: string;
+    model: string;
+    license_plate: string;
   };
 }
 
@@ -69,6 +75,9 @@ interface Payment {
   payment_method: string;
   status: string;
   created_at: string;
+  damage_payment?: {
+    damage_description: string;
+  };
 }
 
 export default function BookingManagement() {

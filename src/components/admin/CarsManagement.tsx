@@ -78,6 +78,7 @@ interface CarData {
   is_active: boolean;
   vehicle_type_id?: number | null;
   vehicle_type_name?: string;
+  type?: string;
 }
 
 const CarsManagement = () => {

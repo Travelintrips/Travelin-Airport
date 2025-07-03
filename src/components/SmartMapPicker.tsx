@@ -71,7 +71,7 @@ export default function SmartMapPicker({
   useEffect(() => {
     if (forceMode) {
       setMapMode(forceMode);
-    } else if (navigator.connection?.saveData) {
+    } else if ((navigator as any).connection?.saveData) {
       setMapMode("static");
     } else {
       setMapMode("osm");

@@ -155,7 +155,7 @@ export function useVehicleData(modelNameParam?: string) {
         return acc;
       }, {});
 
-      const modelsArray = Object.values(groupedByModel);
+      const modelsArray = Object.values(groupedByModel) as CarModel[];
       setCarModels(modelsArray);
       setHasInitialLoad(true);
 

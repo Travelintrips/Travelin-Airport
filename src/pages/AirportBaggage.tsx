@@ -65,10 +65,13 @@ const AirportBaggage = ({
     startTime: "",
     duration: 0,
     startDate: "",
+    storageLocation: "",
   });
   const [baggagePrices, setBaggagePrices] = useState<Record<string, number>>(
     {},
   );
+  const [persistentStorageLocation, setPersistentStorageLocation] =
+    useState<string>("");
 
   const handleViewMap = () => {
     setShowMap(true);
@@ -85,12 +88,16 @@ const AirportBaggage = ({
     const minutes = String(now.getMinutes()).padStart(2, "0");
     const currentTime = `${hours}:${minutes}`;
 
+    // Generate or get persistent storage location
+    const storageLocation = getOrCreateStorageLocation();
+
     setBookingData({
       ...bookingData,
       size,
       price,
       date: new Date().toISOString().split("T")[0],
       startTime: currentTime,
+      storageLocation,
     });
     setShowForm(true);
     onSelectSize(size, price);
@@ -102,6 +109,11 @@ const AirportBaggage = ({
       ...bookingData,
       ...data,
       is_guest: !isAuthenticated || !userId, // Set is_guest flag based on auth status
+      bookingCode: data.bookingCode, // Ensure booking code is preserved
+      storageLocation:
+        data.storageLocation ||
+        persistentStorageLocation ||
+        getOrCreateStorageLocation(), // Ensure storage location is preserved
     };
     setBookingData(updatedBookingData);
     // Only show receipt after booking is complete
@@ -122,14 +134,14 @@ const AirportBaggage = ({
 
   // Default prices to use as fallback
   const DEFAULT_PRICES = {
-    small_price: 50000,
-    medium_price: 75000,
-    large_price: 100000,
-    extra_large_price: 125000,
-    electronic_price: 80000,
-    surfingboard_price: 150000,
-    wheelchair_price: 60000,
-    stickgolf_price: 120000,
+    small_price: 70000,
+    medium_price: 80000,
+    large_price: 90000,
+    extra_large_price: 100000,
+    electronic_price: 90000,
+    surfingboard_price: 100000,
+    wheelchair_price: 110000,
+    stickgolf_price: 110000,
   };
 
   // Save prices to localStorage for persistence across sessions
@@ -193,6 +205,8 @@ const AirportBaggage = ({
           setBaggagePrices(DEFAULT_PRICES);
           savePricesToLocalStorage(DEFAULT_PRICES);
         }
+        // Ensure loading state is cleared even on error
+        setLoading(false);
         return;
       }
 
@@ -233,6 +247,8 @@ const AirportBaggage = ({
         console.log("💰 Final validated baggage prices:", validPrices);
         setBaggagePrices(validPrices);
         savePricesToLocalStorage(validPrices);
+        // Ensure loading state is cleared when prices are set
+        setLoading(false);
       } else {
         console.warn(
           "⚠️ No data found in baggage_price table. Using default prices.",
@@ -258,6 +274,7 @@ const AirportBaggage = ({
         savePricesToLocalStorage(DEFAULT_PRICES);
       }
     } finally {
+      // Always clear loading state
       setLoading(false);
     }
   };
@@ -429,10 +446,80 @@ const AirportBaggage = ({
     return "";
   };
 
+  // Generate or get persistent storage location
+  const getOrCreateStorageLocation = () => {
+    // First check if we already have a persistent storage location
+    if (persistentStorageLocation) {
+      console.log(
+        "[AirportBaggage] Using existing persistent storage location:",
+        persistentStorageLocation,
+      );
+      return persistentStorageLocation;
+    }
+
+    // Try to get from localStorage
+    const storedLocation = localStorage.getItem("baggage_storage_location");
+    if (storedLocation) {
+      console.log(
+        "[AirportBaggage] Restoring storage location from localStorage:",
+        storedLocation,
+      );
+      setPersistentStorageLocation(storedLocation);
+      return storedLocation;
+    }
+
+    // Generate new storage location
+    const terminals = [1, 2, 3];
+    const levels = [1, 2];
+    const randomTerminal =
+      terminals[Math.floor(Math.random() * terminals.length)];
+    const randomLevel = levels[Math.floor(Math.random() * levels.length)];
+    const newLocation = `Terminal ${randomTerminal}, Level ${randomLevel}`;
+
+    console.log(
+      "[AirportBaggage] Generated new storage location:",
+      newLocation,
+    );
+
+    // Store in state and localStorage
+    setPersistentStorageLocation(newLocation);
+    localStorage.setItem("baggage_storage_location", newLocation);
+
+    return newLocation;
+  };
+
   // Load prices on component mount
   useEffect(() => {
     console.log("[AirportBaggage] Initial mount, fetching baggage prices");
-    fetchBaggagePrices();
+
+    // Initialize persistent storage location on mount
+    const storedLocation = localStorage.getItem("baggage_storage_location");
+    if (storedLocation) {
+      console.log(
+        "[AirportBaggage] Restoring storage location on mount:",
+        storedLocation,
+      );
+      setPersistentStorageLocation(storedLocation);
+    }
+
+    // First try to load from localStorage immediately
+    const cachedPrices = loadPricesFromLocalStorage();
+    if (cachedPrices && Object.keys(cachedPrices).length > 0) {
+      console.log("[AirportBaggage] Using cached prices on mount");
+      setBaggagePrices(cachedPrices);
+      setLoading(false);
+      // Still fetch fresh prices in background
+      fetchBaggagePrices();
+    } else {
+      console.log(
+        "[AirportBaggage] No cached prices, using defaults and fetching from database",
+      );
+      // Use default prices immediately to prevent loading state
+      setBaggagePrices(DEFAULT_PRICES);
+      setLoading(false);
+      // Then fetch from database
+      fetchBaggagePrices();
+    }
   }, []);
 
   // Handle auth state changes and fetch user data when authenticated
@@ -477,9 +564,17 @@ const AirportBaggage = ({
         // Then fetch fresh data from database
         await fetchUserPhone();
 
-        // Re-fetch baggage prices to ensure we have the latest data
-        console.log("[AirportBaggage] Re-fetching baggage prices after auth");
-        await fetchBaggagePrices();
+        // Only re-fetch baggage prices if we don't have them or they're empty
+        if (Object.keys(baggagePrices).length === 0) {
+          console.log(
+            "[AirportBaggage] No baggage prices available, fetching from database",
+          );
+          await fetchBaggagePrices();
+        } else {
+          console.log(
+            "[AirportBaggage] Baggage prices already available, skipping fetch",
+          );
+        }
       } else if (!isAuthenticated && !isLoading) {
         console.log(
           "[AirportBaggage] User not authenticated, clearing user data",
@@ -496,7 +591,7 @@ const AirportBaggage = ({
   useEffect(() => {
     let visibilityTimeout: NodeJS.Timeout;
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
         console.log(
           "[AirportBaggage] Tab became visible, restoring cached data",
@@ -505,18 +600,92 @@ const AirportBaggage = ({
         // Clear any existing timeout
         if (visibilityTimeout) clearTimeout(visibilityTimeout);
 
-        // Check auth state first
+        // Force clear loading state when tab becomes visible
+        if (loading) {
+          console.log("[AirportBaggage] Tab visible - clearing loading state");
+          // Ensure we have prices when clearing loading state
+          if (Object.keys(baggagePrices).length === 0) {
+            const cachedPrices = loadPricesFromLocalStorage();
+            if (cachedPrices && Object.keys(cachedPrices).length > 0) {
+              setBaggagePrices(cachedPrices);
+            } else {
+              setBaggagePrices(DEFAULT_PRICES);
+            }
+          }
+          setLoading(false);
+        }
+
+        // Enhanced session restoration with global trigger and immediate Supabase rehydration
         const storedUser = localStorage.getItem("auth_user");
         if (storedUser && (!isAuthenticated || !userId)) {
           try {
             const userData = JSON.parse(storedUser);
             if (userData && userData.id && userData.email) {
               console.log(
-                "[AirportBaggage] Auth state needs restoration, triggering recovery",
+                "[AirportBaggage] Auth state needs restoration, refreshing Supabase session first",
               );
-              window.dispatchEvent(
-                new CustomEvent("forceSessionRestore", { detail: userData }),
-              );
+
+              // Try to refresh Supabase session first
+              try {
+                const { data: sessionData, error: sessionError } =
+                  await supabase.auth.refreshSession();
+
+                if (!sessionError && sessionData?.session?.user) {
+                  console.log(
+                    "[AirportBaggage] ✅ Supabase session refreshed successfully",
+                  );
+
+                  // Update localStorage with fresh session data
+                  const freshUserData = {
+                    id: sessionData.session.user.id,
+                    email: sessionData.session.user.email,
+                    role:
+                      localStorage.getItem("userRole") ||
+                      userData.role ||
+                      "Customer",
+                    name:
+                      localStorage.getItem("userName") ||
+                      sessionData.session.user.user_metadata?.full_name ||
+                      sessionData.session.user.user_metadata?.name ||
+                      sessionData.session.user.email?.split("@")[0] ||
+                      "User",
+                  };
+
+                  localStorage.setItem(
+                    "auth_user",
+                    JSON.stringify(freshUserData),
+                  );
+                  localStorage.setItem("userId", freshUserData.id);
+                  localStorage.setItem("userEmail", freshUserData.email);
+                  localStorage.setItem("userName", freshUserData.name);
+
+                  // Trigger AuthContext update with fresh data
+                  window.dispatchEvent(
+                    new CustomEvent("forceSessionRestore", {
+                      detail: freshUserData,
+                    }),
+                  );
+                } else {
+                  console.log(
+                    "[AirportBaggage] Supabase session refresh failed, using cached data",
+                  );
+                  // Fallback to cached data
+                  window.dispatchEvent(
+                    new CustomEvent("forceSessionRestore", {
+                      detail: userData,
+                    }),
+                  );
+                }
+              } catch (refreshError) {
+                console.warn(
+                  "[AirportBaggage] Session refresh error, using cached data:",
+                  refreshError,
+                );
+                // Fallback to cached data
+                window.dispatchEvent(
+                  new CustomEvent("forceSessionRestore", { detail: userData }),
+                );
+              }
             }
           } catch (error) {
             console.warn("[AirportBaggage] Error parsing stored user:", error);
@@ -536,12 +705,24 @@ const AirportBaggage = ({
         // Restore baggage prices from localStorage if not already loaded
         if (Object.keys(baggagePrices).length === 0) {
           const cachedPrices = loadPricesFromLocalStorage();
-          if (cachedPrices) {
+          if (cachedPrices && Object.keys(cachedPrices).length > 0) {
             console.log(
               "[AirportBaggage] Restoring baggage prices from localStorage",
             );
             setBaggagePrices(cachedPrices);
+          } else {
+            // If no cached prices, use defaults
+            console.log("[AirportBaggage] No cached prices, using defaults");
+            setBaggagePrices(DEFAULT_PRICES);
           }
+          // Always clear loading state when we set prices
+          setLoading(false);
+        } else if (loading) {
+          // If we already have prices but still loading, clear loading state
+          console.log(
+            "[AirportBaggage] Already have prices, clearing loading state",
+          );
+          setLoading(false);
         }
 
         // Ensure user data consistency without API calls
@@ -596,21 +777,31 @@ const AirportBaggage = ({
     };
   }, [userPhone, baggagePrices, isAuthenticated, userId]);
 
-  // Reset loading state when auth loading state changes
+  // Reset loading state when auth loading state changes or when we have prices
   useEffect(() => {
+    // If we have baggage prices, we're no longer loading
+    if (Object.keys(baggagePrices).length > 0 && loading) {
+      console.log("🔄 Baggage prices loaded, clearing loading state");
+      setLoading(false);
+    }
+
+    // If auth is no longer loading but component is still loading,
+    // ensure we're not stuck in loading state
     if (!isLoading && loading) {
-      // If auth is no longer loading but component is still loading,
-      // ensure we're not stuck in loading state
       const timer = setTimeout(() => {
         if (loading) {
           console.log("🔄 Resetting stuck loading state in AirportBaggage");
+          // Use default prices if still loading
+          if (Object.keys(baggagePrices).length === 0) {
+            setBaggagePrices(DEFAULT_PRICES);
+          }
           setLoading(false);
         }
-      }, 1000);
+      }, 1000); // Reduced timeout to 1 second
 
       return () => clearTimeout(timer);
     }
-  }, [isLoading, loading]);
+  }, [isLoading, loading, baggagePrices]);
 
   // Check for forced logout and restore user data on component mount
   useEffect(() => {
@@ -692,24 +883,88 @@ const AirportBaggage = ({
             const parsed = JSON.parse(storedUser);
             if (parsed && parsed.id && parsed.email) {
               console.log(
-                "[AirportBaggage] Restoring auth state from localStorage",
+                "[AirportBaggage] Restoring auth state from localStorage with Supabase refresh",
               );
 
-              // Trigger global session restore
-              window.dispatchEvent(
-                new CustomEvent("forceSessionRestore", { detail: parsed }),
-              );
+              // Try to refresh Supabase session to ensure token validity
+              try {
+                const { data: sessionData, error: sessionError } =
+                  await supabase.auth.refreshSession();
+
+                if (!sessionError && sessionData?.session?.user) {
+                  console.log(
+                    "[AirportBaggage] ✅ Session refresh successful during restore",
+                  );
+
+                  // Update with fresh session data
+                  const freshUserData = {
+                    id: sessionData.session.user.id,
+                    email: sessionData.session.user.email,
+                    role:
+                      localStorage.getItem("userRole") ||
+                      parsed.role ||
+                      "Customer",
+                    name:
+                      storedUserName ||
+                      sessionData.session.user.user_metadata?.full_name ||
+                      sessionData.session.user.user_metadata?.name ||
+                      sessionData.session.user.email?.split("@")[0] ||
+                      "User",
+                  };
+
+                  // Update localStorage with fresh data
+                  localStorage.setItem(
+                    "auth_user",
+                    JSON.stringify(freshUserData),
+                  );
+                  localStorage.setItem("userId", freshUserData.id);
+                  localStorage.setItem("userEmail", freshUserData.email);
+                  localStorage.setItem("userName", freshUserData.name);
+
+                  // Trigger global session restore with fresh data
+                  window.dispatchEvent(
+                    new CustomEvent("forceSessionRestore", {
+                      detail: freshUserData,
+                    }),
+                  );
+                } else {
+                  console.log(
+                    "[AirportBaggage] Session refresh failed, using cached data",
+                  );
+                  // Fallback to cached data
+                  window.dispatchEvent(
+                    new CustomEvent("forceSessionRestore", { detail: parsed }),
+                  );
+                }
+              } catch (refreshError) {
+                console.warn(
+                  "[AirportBaggage] Session refresh error during restore:",
+                  refreshError,
+                );
+                // Fallback to cached data
+                window.dispatchEvent(
+                  new CustomEvent("forceSessionRestore", { detail: parsed }),
+                );
+              }
 
               // Restore local user data immediately
               if (storedPhone && !userPhone) {
                 setUserPhone(storedPhone);
               }
 
-              // Re-fetch baggage prices if needed
+              // Only re-fetch baggage prices if we don't have them
               if (Object.keys(baggagePrices).length === 0) {
                 const cachedPrices = loadPricesFromLocalStorage();
                 if (cachedPrices) {
+                  console.log(
+                    "[AirportBaggage] Using cached prices during auth restore",
+                  );
                   setBaggagePrices(cachedPrices);
+                } else {
+                  console.log(
+                    "[AirportBaggage] No cached prices, using defaults during auth restore",
+                  );
+                  setBaggagePrices(DEFAULT_PRICES);
                 }
               }
             }
@@ -729,27 +984,85 @@ const AirportBaggage = ({
             setUserPhone(storedPhone);
           }
 
+          // Only load prices if we don't have them
           if (Object.keys(baggagePrices).length === 0) {
             const cachedPrices = loadPricesFromLocalStorage();
             if (cachedPrices) {
+              console.log(
+                "[AirportBaggage] Using cached prices during auth refresh",
+              );
               setBaggagePrices(cachedPrices);
+            } else {
+              console.log(
+                "[AirportBaggage] No cached prices, using defaults during auth refresh",
+              );
+              setBaggagePrices(DEFAULT_PRICES);
             }
           }
         }
 
-        // Debounced additional check
-        restoreTimeout = setTimeout(() => {
+        // Debounced additional check with session refresh
+        restoreTimeout = setTimeout(async () => {
           // Final check after a delay
           if (!isAuthenticated && storedUser) {
             console.log(
-              "[AirportBaggage] Final auth check - triggering session restore",
+              "[AirportBaggage] Final auth check - triggering session restore with refresh",
             );
             try {
               const parsed = JSON.parse(storedUser);
               if (parsed && parsed.id && parsed.email) {
-                window.dispatchEvent(
-                  new CustomEvent("forceSessionRestore", { detail: parsed }),
-                );
+                // Try one more session refresh before final restore
+                try {
+                  const { data: sessionData, error: sessionError } =
+                    await supabase.auth.refreshSession();
+
+                  if (!sessionError && sessionData?.session?.user) {
+                    console.log(
+                      "[AirportBaggage] ✅ Final session refresh successful",
+                    );
+
+                    const freshUserData = {
+                      id: sessionData.session.user.id,
+                      email: sessionData.session.user.email,
+                      role:
+                        localStorage.getItem("userRole") ||
+                        parsed.role ||
+                        "Customer",
+                      name:
+                        localStorage.getItem("userName") ||
+                        sessionData.session.user.user_metadata?.full_name ||
+                        sessionData.session.user.user_metadata?.name ||
+                        sessionData.session.user.email?.split("@")[0] ||
+                        "User",
+                    };
+
+                    localStorage.setItem(
+                      "auth_user",
+                      JSON.stringify(freshUserData),
+                    );
+                    window.dispatchEvent(
+                      new CustomEvent("forceSessionRestore", {
+                        detail: freshUserData,
+                      }),
+                    );
+                  } else {
+                    // Final fallback to cached data
+                    window.dispatchEvent(
+                      new CustomEvent("forceSessionRestore", {
+                        detail: parsed,
+                      }),
+                    );
+                  }
+                } catch (finalRefreshError) {
+                  console.warn(
+                    "[AirportBaggage] Final session refresh failed:",
+                    finalRefreshError,
+                  );
+                  // Final fallback to cached data
+                  window.dispatchEvent(
+                    new CustomEvent("forceSessionRestore", { detail: parsed }),
+                  );
+                }
               }
             } catch (error) {
               console.warn(
@@ -819,7 +1132,7 @@ const AirportBaggage = ({
         try {
           if (storedUser) {
             const parsed = JSON.parse(storedUser);
-            if (parsed?.name && parsed.name !== userName) {
+            if (parsed && parsed.name && parsed.name !== userName) {
               console.log(
                 "[AirportBaggage] Username mismatch detected but auto-refresh disabled to prevent booking interruption",
               );
@@ -910,8 +1223,9 @@ const AirportBaggage = ({
     console.log("[AirportBaggage] User not authenticated, continuing as guest");
   }
 
-  // Show loading state while loading prices or auth
-  if (loading || isLoading) {
+  // Show loading state only when actually loading prices AND we don't have any prices (cached or default)
+  // Always show content if we have any prices available
+  if (loading && Object.keys(baggagePrices).length === 0 && isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -919,14 +1233,19 @@ const AirportBaggage = ({
             <div className="h-8 bg-gray-200 rounded w-48 mx-auto mb-4"></div>
             <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
           </div>
-          <p className="mt-4 text-gray-600">
-            {isLoading
-              ? "Checking authentication..."
-              : "Loading baggage prices..."}
-          </p>
+          <p className="mt-4 text-gray-600">Loading baggage prices...</p>
         </div>
       </div>
     );
+  }
+
+  // If we don't have prices but auth is ready, use defaults immediately
+  if (Object.keys(baggagePrices).length === 0 && !isLoading) {
+    console.log(
+      "[AirportBaggage] No prices available, using defaults immediately",
+    );
+    setBaggagePrices(DEFAULT_PRICES);
+    setLoading(false);
   }
 
   return (
@@ -1114,7 +1433,7 @@ const AirportBaggage = ({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
                         />
                       </svg>
                     </div>
@@ -1293,16 +1612,17 @@ const AirportBaggage = ({
 
                     <div>
                       <p className="text-sm text-gray-500">Booking ID</p>
-                      <p className="font-medium">
-                        {Math.random()
-                          .toString(36)
-                          .substring(2, 10)
-                          .toUpperCase()}
+                      <p className="font-medium font-mono text-blue-600">
+                        {bookingData.bookingCode || "GENERATING..."}
                       </p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Storage Location</p>
-                      <p className="font-medium">{`Terminal ${Math.floor(Math.random() * 3) + 1}, Level ${Math.floor(Math.random() * 2) + 1}`}</p>
+                      <p className="font-medium">
+                        {bookingData.storageLocation ||
+                          persistentStorageLocation ||
+                          getOrCreateStorageLocation()}
+                      </p>
                     </div>
                     <div className="flex justify-center">
                       <div className="text-center">
@@ -1351,7 +1671,9 @@ const AirportBaggage = ({
                       {bookingData.size && (
                         <p className="mt-2 font-medium text-blue-600">
                           Your baggage is stored at:{" "}
-                          {`Terminal ${Math.floor(Math.random() * 3) + 1}, Level ${Math.floor(Math.random() * 2) + 1}`}
+                          {bookingData.storageLocation ||
+                            persistentStorageLocation ||
+                            getOrCreateStorageLocation()}
                         </p>
                       )}
                     </div>

@@ -42,7 +42,16 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const { toast } = useToast();
+
+  // Helper function to validate UUID
+  const isValidUUID = (str: string) => {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
 
   // Load cart items on mount
   useEffect(() => {
@@ -51,17 +60,75 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     const initializeCart = async () => {
       if (!isMounted) return;
 
-      // Check current session first
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user && isMounted) {
-        setCurrentUserId(session.user.id);
-        await migrateLocalStorageToSupabase(session.user.id);
-      }
+      try {
+        console.log("[useShoppingCart] Initializing cart...");
 
-      if (isMounted) {
-        await loadCartItems();
+        // First check localStorage for user data
+        const storedUserId = localStorage.getItem("userId");
+        const storedUser = localStorage.getItem("auth_user");
+
+        if (storedUserId && storedUser) {
+          console.log(
+            "[useShoppingCart] Found stored user, setting current user ID:",
+            storedUserId,
+          );
+          setCurrentUserId(storedUserId);
+
+          // Try to migrate localStorage cart to Supabase for this user
+          try {
+            await migrateLocalStorageToSupabase(storedUserId);
+          } catch (migrateError) {
+            console.warn(
+              "[useShoppingCart] Migration failed, continuing:",
+              migrateError,
+            );
+          }
+        }
+
+        // Check current session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user && isMounted) {
+          console.log(
+            "[useShoppingCart] Found Supabase session:",
+            session.user.email,
+          );
+          if (session.user.id !== currentUserId) {
+            setCurrentUserId(session.user.id);
+            await migrateLocalStorageToSupabase(session.user.id);
+          }
+        }
+
+        if (isMounted) {
+          await loadCartItems();
+        }
+      } catch (error) {
+        console.error("[useShoppingCart] Error initializing cart:", error);
+        // Load from localStorage as fallback
+        try {
+          const localCart = localStorage.getItem("shopping_cart");
+          if (localCart) {
+            const parsedCart = JSON.parse(localCart);
+            setCartItems(Array.isArray(parsedCart) ? parsedCart : []);
+            console.log(
+              "[useShoppingCart] Loaded cart from localStorage fallback:",
+              parsedCart.length,
+              "items",
+            );
+          }
+        } catch (storageError) {
+          console.error(
+            "[useShoppingCart] Error loading from localStorage:",
+            storageError,
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsInitialized(true);
+          console.log("[useShoppingCart] Cart initialization completed");
+        }
       }
     };
 
@@ -147,65 +214,97 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
   // Add throttled visibility change listener for refetching when tab becomes active
   useEffect(() => {
     let lastSyncTime = 0;
-    const SYNC_THROTTLE = 2000; // Maximum 1 sync per 2 seconds
+    const SYNC_THROTTLE = 15000; // Increased throttle time to prevent conflicts with AuthContext
+    let syncTimeout: NodeJS.Timeout;
+    let isSyncing = false; // Add syncing flag
 
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible" && !isLoading) {
+      if (document.visibilityState === "visible") {
         const now = Date.now();
 
-        // Throttle to prevent excessive syncing
-        if (now - lastSyncTime < SYNC_THROTTLE) {
+        // Enhanced throttling with syncing flag
+        if (now - lastSyncTime < SYNC_THROTTLE || isSyncing) {
           console.log(
-            "[useShoppingCart] Sync throttled, skipping visibility change sync",
+            "[useShoppingCart] Sync throttled or already syncing, skipping visibility change sync",
           );
           return;
         }
 
+        // Clear any existing timeout
+        if (syncTimeout) clearTimeout(syncTimeout);
+
+        isSyncing = true;
         lastSyncTime = now;
         console.log(
-          "[useShoppingCart] Tab became visible, checking for cart updates",
+          "[useShoppingCart] Tab became visible, prioritizing localStorage for cart sync",
         );
 
-        // Check auth state first
-        const storedUser = localStorage.getItem("auth_user");
-        if (storedUser && !currentUserId) {
+        // Prioritize localStorage for immediate cart restoration
+        syncTimeout = setTimeout(async () => {
           try {
-            const userData = JSON.parse(storedUser);
-            if (userData && userData.id && userData.email) {
+            console.log(
+              "[useShoppingCart] Starting localStorage-first cart sync...",
+            );
+
+            // Wait longer for AuthContext session restoration to complete
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+
+            // Prioritize localStorage for user identification
+            const storedUser = localStorage.getItem("auth_user");
+            const storedUserId = localStorage.getItem("userId");
+
+            if (storedUser && storedUserId) {
+              try {
+                const userData = JSON.parse(storedUser);
+                console.log(
+                  "[useShoppingCart] Found stored user, syncing cart:",
+                  userData.email,
+                );
+
+                // Update user ID if different
+                if (userData.id !== currentUserId) {
+                  setCurrentUserId(userData.id);
+                }
+
+                // Load cart items with localStorage priority
+                await loadCartItems(true);
+              } catch (parseError) {
+                console.warn(
+                  "[useShoppingCart] Error parsing stored user:",
+                  parseError,
+                );
+                // Still try to load cart
+                await loadCartItems(true);
+              }
+            } else {
+              // Load guest cart from localStorage
               console.log(
-                "[useShoppingCart] Auth state needs restoration, triggering recovery",
+                "[useShoppingCart] No user data, loading guest cart from localStorage",
               );
-              setCurrentUserId(userData.id);
-              window.dispatchEvent(
-                new CustomEvent("forceSessionRestore", { detail: userData }),
-              );
+              try {
+                const localCart = localStorage.getItem("shopping_cart");
+                if (localCart) {
+                  const parsedCart = JSON.parse(localCart);
+                  setCartItems(Array.isArray(parsedCart) ? parsedCart : []);
+                  console.log(
+                    "[useShoppingCart] Loaded guest cart from localStorage:",
+                    parsedCart.length,
+                    "items",
+                  );
+                }
+              } catch (error) {
+                console.warn(
+                  "[useShoppingCart] Error loading guest cart:",
+                  error,
+                );
+              }
             }
           } catch (error) {
-            console.warn("[useShoppingCart] Error parsing stored user:", error);
+            console.error("[useShoppingCart] Error during cart sync:", error);
+          } finally {
+            isSyncing = false; // Reset syncing flag
           }
-        }
-
-        // Small delay to ensure auth context is stable
-        setTimeout(async () => {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-          if (session?.user?.id) {
-            console.log(
-              "[useShoppingCart] User authenticated with valid ID, loading cart items",
-            );
-            // Only update if user ID has changed
-            if (session.user.id !== currentUserId) {
-              setCurrentUserId(session.user.id);
-            }
-            await loadCartItems();
-          } else if (!session?.user && cartItems.length === 0) {
-            console.log(
-              "[useShoppingCart] No user session, loading guest cart",
-            );
-            await loadCartItems();
-          }
-        }, 100);
+        }, 4000); // Increased debounce time to avoid conflicts with AuthContext
       }
     };
 
@@ -216,16 +315,64 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         event.detail,
       );
       const userData = event.detail;
-      // Only update if user ID has actually changed and email is present
-      if (userData.id && userData.email && userData.id !== currentUserId) {
+
+      // Always update user ID and reload cart when session is restored
+      if (userData.id && userData.email) {
         console.log(
-          "[useShoppingCart] Updating current user ID from restored session",
+          "[useShoppingCart] Updating current user ID from restored session:",
+          userData.email,
         );
+
+        // Update current user ID immediately
         setCurrentUserId(userData.id);
-        // Reload cart items for the restored user
-        setTimeout(() => {
-          loadCartItems(true);
-        }, 100);
+
+        // Reload cart items for the restored user with timeout protection
+        setTimeout(async () => {
+          try {
+            console.log(
+              "[useShoppingCart] Loading cart items for restored user:",
+              userData.email,
+            );
+
+            // Try to migrate any localStorage cart data first
+            try {
+              await migrateLocalStorageToSupabase(userData.id);
+            } catch (migrateError) {
+              console.warn(
+                "[useShoppingCart] Migration failed during session restore:",
+                migrateError,
+              );
+            }
+
+            // Then load cart items
+            await loadCartItems(true);
+            console.log(
+              "[useShoppingCart] Cart successfully loaded for restored session",
+            );
+          } catch (error) {
+            console.error(
+              "[useShoppingCart] Error loading cart for restored user:",
+              error,
+            );
+
+            // Fallback to localStorage if Supabase fails
+            try {
+              const localCart = localStorage.getItem("shopping_cart");
+              if (localCart) {
+                const parsedCart = JSON.parse(localCart);
+                setCartItems(Array.isArray(parsedCart) ? parsedCart : []);
+                console.log(
+                  "[useShoppingCart] Used localStorage fallback for restored session",
+                );
+              }
+            } catch (fallbackError) {
+              console.error(
+                "[useShoppingCart] Fallback also failed:",
+                fallbackError,
+              );
+            }
+          }
+        }, 300); // Increased delay to prevent race conditions
       }
     };
 
@@ -241,8 +388,9 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         "sessionRestored",
         handleSessionRestored as EventListener,
       );
+      if (syncTimeout) clearTimeout(syncTimeout);
     };
-  }, [isLoading, cartItems.length, currentUserId]);
+  }, [currentUserId]);
 
   const loadCartItems = async (forceReload = false) => {
     // Prevent multiple simultaneous loads unless forced
@@ -254,7 +402,11 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     }
 
     console.log("[useShoppingCart] Loading cart items...", { forceReload });
-    setIsLoading(true);
+
+    // Only set loading if not already loading or if forced
+    if (!isLoading || forceReload) {
+      setIsLoading(true);
+    }
 
     try {
       const {
@@ -354,7 +506,10 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("[useShoppingCart] Error loading cart items:", error);
-      setCartItems([]);
+      // Don't clear cart items on error, keep existing items
+      if (cartItems.length === 0) {
+        setCartItems([]);
+      }
     } finally {
       console.log("[useShoppingCart] Finished loading cart items");
       setIsLoading(false);
@@ -378,7 +533,8 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       const itemsToInsert = parsedCart.map((item) => ({
         user_id: userId,
         item_type: item.item_type,
-        item_id: item.item_id || null,
+        item_id:
+          item.item_id && isValidUUID(item.item_id) ? item.item_id : null,
         service_name: item.service_name,
         price: item.price,
         details:
@@ -416,28 +572,115 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     setIsLoading(true);
 
     try {
-      // Get current session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      console.log("[useShoppingCart] Getting current session...");
+
+      // Enhanced session check with multiple fallbacks and timeout protection
+      let session = null;
+      let userId = null;
+      let userEmail = null;
+
+      // 1. Try localStorage first for immediate validation
+      const storedUserId = localStorage.getItem("userId");
+      const storedUserEmail = localStorage.getItem("userEmail");
+      const storedUser = localStorage.getItem("auth_user");
+
+      if (storedUserId && storedUserEmail && storedUser) {
+        try {
+          const userData = JSON.parse(storedUser);
+          session = { user: { id: storedUserId, email: storedUserEmail } };
+          userId = storedUserId;
+          userEmail = storedUserEmail;
+          console.log(
+            "[useShoppingCart] Using localStorage session:",
+            userEmail,
+          );
+
+          // Update current user ID if different
+          if (userId !== currentUserId) {
+            console.log(
+              "[useShoppingCart] Updating current user ID from localStorage:",
+              userId,
+            );
+            setCurrentUserId(userId);
+          }
+        } catch (parseError) {
+          console.warn(
+            "[useShoppingCart] Error parsing stored user:",
+            parseError,
+          );
+        }
+      }
+
+      // 2. Only try Supabase if localStorage failed
+      if (!userId) {
+        try {
+          const sessionPromise = supabase.auth.getSession();
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Session check timeout")), 8000); // Increased timeout
+          });
+
+          const {
+            data: { session: currentSession },
+            error,
+          } = (await Promise.race([sessionPromise, timeoutPromise])) as any;
+
+          if (!error && currentSession?.user) {
+            session = currentSession;
+            userId = currentSession.user.id;
+            userEmail = currentSession.user.email;
+            console.log("[useShoppingCart] Using Supabase session:", userEmail);
+
+            // Update current user ID if different
+            if (userId !== currentUserId) {
+              console.log(
+                "[useShoppingCart] Updating current user ID from Supabase:",
+                userId,
+              );
+              setCurrentUserId(userId);
+            }
+          }
+        } catch (error) {
+          console.log(
+            "[useShoppingCart] Supabase session check failed:",
+            error.message,
+          );
+        }
+      }
+
+      // 3. Fallback to context user ID
+      if (!userId && currentUserId) {
+        userId = currentUserId;
+        session = { user: { id: currentUserId } };
+        console.log("[useShoppingCart] Using context user ID:", userId);
+      }
+
+      // Use booking_code from details if available, otherwise generate new ID
+      const itemId = item.details?.booking_code || uuidv4();
 
       const newItem: CartItem = {
         ...item,
-        id: uuidv4(),
+        id: itemId,
         created_at: new Date().toISOString(),
       };
 
-      if (session?.user) {
+      if (userId && session?.user) {
         // User is authenticated - save to Supabase
         console.log(
           "[useShoppingCart] Adding to Supabase for authenticated user:",
-          session.user.id,
+          userId,
         );
 
         const insertData = {
-          user_id: session.user.id,
+          user_id: userId,
           item_type: item.item_type,
-          item_id: item.item_id || null,
+          item_id:
+            item.item_id &&
+            item.item_id !== "small" &&
+            item.item_id !== "medium" &&
+            item.item_id !== "large" &&
+            isValidUUID(item.item_id)
+              ? item.item_id
+              : null,
           service_name: item.service_name,
           price: item.price,
           details:
@@ -448,11 +691,29 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
           created_at: new Date().toISOString(),
         };
 
-        const { data, error } = await supabase
+        console.log("[useShoppingCart] Inserting data to Supabase:", {
+          user_id: insertData.user_id,
+          item_type: insertData.item_type,
+          service_name: insertData.service_name,
+          price: insertData.price,
+          status: insertData.status,
+        });
+
+        // Add timeout protection for database insert
+        const insertPromise = supabase
           .from("shopping_cart")
           .insert(insertData)
           .select()
           .single();
+
+        const insertTimeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error("Database insert timeout")), 10000);
+        });
+
+        const { data, error } = (await Promise.race([
+          insertPromise,
+          insertTimeoutPromise,
+        ])) as any;
 
         if (error) {
           console.error("[useShoppingCart] Database error:", error);
@@ -469,128 +730,286 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         setCartItems(updatedCart);
       }
 
-      // Show success toast
-      toast({
-        title: "Item ditambahkan ke keranjang",
-        description: `${item.service_name} berhasil ditambahkan ke keranjang belanja.`,
-      });
+      console.log("[useShoppingCart] Showing success toast...");
+      // Show success toast with timeout protection
+      try {
+        toast({
+          title: "Item ditambahkan ke keranjang",
+          description: `${item.service_name} berhasil ditambahkan ke keranjang belanja.`,
+        });
+      } catch (toastError) {
+        console.warn(
+          "[useShoppingCart] Toast error (non-critical):",
+          toastError,
+        );
+      }
+      console.log(
+        "[useShoppingCart] AddToCart operation completed successfully",
+      );
     } catch (error) {
       console.error("[useShoppingCart] Error adding item to cart:", error);
 
-      // Fallback to localStorage if Supabase fails
+      // Enhanced fallback to localStorage if Supabase fails
       try {
-        console.log("[useShoppingCart] Falling back to localStorage");
+        console.log(
+          "[useShoppingCart] Falling back to localStorage due to:",
+          error.message,
+        );
+        const itemId = item.details?.booking_code || uuidv4();
+
         const newItem: CartItem = {
           ...item,
-          id: uuidv4(),
+          id: itemId,
           created_at: new Date().toISOString(),
         };
         const updatedCart = [newItem, ...cartItems];
         localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
         setCartItems(updatedCart);
 
+        // Show different toast message for offline mode
+        const isTimeoutError =
+          error.message && error.message.includes("timeout");
         toast({
-          title: "Item ditambahkan ke keranjang",
-          description: `${item.service_name} berhasil ditambahkan ke keranjang belanja (mode offline).`,
+          title: isTimeoutError
+            ? "Item ditambahkan (mode offline)"
+            : "Item ditambahkan ke keranjang",
+          description: isTimeoutError
+            ? `${item.service_name} disimpan secara lokal. Data akan disinkronkan saat koneksi stabil.`
+            : `${item.service_name} berhasil ditambahkan ke keranjang belanja.`,
         });
+        console.log("[useShoppingCart] Fallback to localStorage successful");
       } catch (fallbackError) {
         console.error("[useShoppingCart] Fallback also failed:", fallbackError);
         toast({
           title: "Gagal menambahkan item",
-          description: "Terjadi kesalahan saat menambahkan item ke keranjang.",
+          description:
+            "Terjadi kesalahan saat menambahkan item ke keranjang. Silakan coba lagi.",
           variant: "destructive",
         });
+        throw fallbackError;
       }
     } finally {
+      console.log("[useShoppingCart] Cleaning up addToCart operation");
       setIsLoading(false);
     }
   };
 
   const removeFromCart = async (id: string) => {
+    console.log("[useShoppingCart] Starting removeFromCart for ID:", id);
     setIsLoading(true);
+
+    // Create a timeout promise to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("RemoveFromCart operation timed out after 8 seconds"));
+      }, 8000); // Reduced timeout
+    });
+
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session?.user) {
-        // Remove from Supabase for authenticated users
-        const { error } = await supabase
-          .from("shopping_cart")
-          .delete()
-          .eq("id", id)
-          .eq("user_id", session.user.id);
-
-        if (error) {
-          console.error(
-            "[useShoppingCart] Error removing from Supabase:",
-            error,
+      // Race between the actual operation and timeout
+      await Promise.race([
+        (async () => {
+          console.log(
+            "[useShoppingCart] Getting current session for remove operation...",
           );
-          // Continue with local removal even if Supabase fails
-        }
-      } else {
-        // Remove from localStorage for guests
-        const updatedCart = cartItems.filter((item) => item.id !== id);
-        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
-      }
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
 
-      // Always update local state
-      setCartItems((prev) => prev.filter((item) => item.id !== id));
+          console.log("[useShoppingCart] Session check for remove:", {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            userId: session?.user?.id,
+          });
 
-      toast({
-        title: "Item dihapus",
-        description: "Item berhasil dihapus dari keranjang.",
-      });
+          if (session?.user) {
+            // Remove from Supabase for authenticated users
+            console.log(
+              "[useShoppingCart] Removing from Supabase for user:",
+              session.user.id,
+              "item ID:",
+              id,
+            );
+
+            const { data: deletedData, error } = await supabase
+              .from("shopping_cart")
+              .delete()
+              .eq("id", id)
+              .eq("user_id", session.user.id)
+              .select(); // Add select to see what was deleted
+
+            if (error) {
+              console.error(
+                "[useShoppingCart] Error removing from Supabase:",
+                error,
+              );
+              // Continue with local removal even if Supabase fails
+            } else {
+              console.log(
+                "[useShoppingCart] Successfully removed from Supabase:",
+                deletedData,
+              );
+            }
+          } else {
+            // Remove from localStorage for guests
+            console.log(
+              "[useShoppingCart] Removing from localStorage for guest user",
+            );
+            const updatedCart = cartItems.filter((item) => item.id !== id);
+            localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+          }
+
+          // Always update local state
+          console.log(
+            "[useShoppingCart] Updating local state to remove item:",
+            id,
+          );
+          setCartItems((prev) => {
+            const filtered = prev.filter((item) => item.id !== id);
+            console.log(
+              "[useShoppingCart] Cart items after removal:",
+              filtered.length,
+            );
+            return filtered;
+          });
+
+          console.log(
+            "[useShoppingCart] Showing success toast for item removal",
+          );
+          toast({
+            title: "Item dihapus",
+            description: "Item berhasil dihapus dari keranjang.",
+          });
+        })(),
+        timeoutPromise,
+      ]);
     } catch (error) {
       console.error("[useShoppingCart] Error removing item from cart:", error);
-      toast({
-        title: "Gagal menghapus item",
-        description: "Terjadi kesalahan saat menghapus item dari keranjang.",
-        variant: "destructive",
-      });
+
+      // Fallback: try to remove from local state anyway
+      try {
+        console.log("[useShoppingCart] Fallback: removing from local state");
+        setCartItems((prev) => prev.filter((item) => item.id !== id));
+
+        // Also try localStorage fallback
+        const updatedCart = cartItems.filter((item) => item.id !== id);
+        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updatedCart));
+
+        toast({
+          title: "Item dihapus",
+          description: "Item berhasil dihapus dari keranjang (mode offline).",
+        });
+      } catch (fallbackError) {
+        console.error(
+          "[useShoppingCart] Fallback removal also failed:",
+          fallbackError,
+        );
+        toast({
+          title: "Gagal menghapus item",
+          description: "Terjadi kesalahan saat menghapus item dari keranjang.",
+          variant: "destructive",
+        });
+      }
     } finally {
+      console.log("[useShoppingCart] Cleaning up removeFromCart operation");
       setIsLoading(false);
     }
   };
 
   const clearCart = async () => {
+    console.log("[useShoppingCart] Starting clearCart operation");
     setIsLoading(true);
+
+    // Create a timeout promise to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("ClearCart operation timed out after 6 seconds"));
+      }, 6000); // Further reduced timeout
+    });
+
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session?.user) {
-        // Clear from Supabase for authenticated users
-        const { error } = await supabase
-          .from("shopping_cart")
-          .delete()
-          .eq("user_id", session.user.id);
-
-        if (error) {
-          console.error(
-            "[useShoppingCart] Error clearing cart from Supabase:",
-            error,
+      // Race between the actual operation and timeout
+      await Promise.race([
+        (async () => {
+          console.log(
+            "[useShoppingCart] Getting current session for clear operation...",
           );
-          // Continue with local clearing even if Supabase fails
-        }
-      } else {
-        // Clear localStorage for guests
-        localStorage.removeItem(CART_STORAGE_KEY);
-      }
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
 
-      // Always clear local state
-      setCartItems([]);
+          console.log("[useShoppingCart] Session check for clear:", {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            userId: session?.user?.id,
+          });
 
-      // Dispatch event to notify other components that cart has been cleared
-      window.dispatchEvent(new CustomEvent("cartCleared"));
-      console.log("✅ Cart cleared successfully");
+          if (session?.user) {
+            // Clear from Supabase for authenticated users
+            console.log(
+              "[useShoppingCart] Clearing cart from Supabase for user:",
+              session.user.id,
+            );
+
+            const { data: deletedData, error } = await supabase
+              .from("shopping_cart")
+              .delete()
+              .eq("user_id", session.user.id)
+              .eq("status", "active")
+              .select(); // Add select to see what was deleted
+
+            if (error) {
+              console.error(
+                "[useShoppingCart] Error clearing cart from Supabase:",
+                error,
+              );
+              // Continue with local clearing even if Supabase fails
+            } else {
+              console.log(
+                "[useShoppingCart] Successfully cleared from Supabase:",
+                deletedData?.length || 0,
+                "items",
+              );
+            }
+          } else {
+            // Clear localStorage for guests
+            console.log(
+              "[useShoppingCart] Clearing localStorage for guest user",
+            );
+            localStorage.removeItem(CART_STORAGE_KEY);
+          }
+
+          // Always clear local state
+          console.log("[useShoppingCart] Clearing local cart state");
+          setCartItems([]);
+
+          // Dispatch event to notify other components that cart has been cleared
+          window.dispatchEvent(new CustomEvent("cartCleared"));
+          console.log("✅ Cart cleared successfully");
+        })(),
+        timeoutPromise,
+      ]);
     } catch (error) {
       console.error("[useShoppingCart] Error clearing cart:", error);
-      // Still clear local state even if there's an error
-      setCartItems([]);
-      localStorage.removeItem(CART_STORAGE_KEY);
+
+      // Fallback: try to clear local state anyway
+      try {
+        console.log("[useShoppingCart] Fallback: clearing local state");
+        setCartItems([]);
+        localStorage.removeItem(CART_STORAGE_KEY);
+
+        // Still dispatch the event
+        window.dispatchEvent(new CustomEvent("cartCleared"));
+        console.log("✅ Cart cleared successfully (fallback mode)");
+      } catch (fallbackError) {
+        console.error(
+          "[useShoppingCart] Fallback clear also failed:",
+          fallbackError,
+        );
+        throw fallbackError;
+      }
     } finally {
+      console.log("[useShoppingCart] Cleaning up clearCart operation");
       setIsLoading(false);
     }
   };
@@ -705,6 +1124,8 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
           // Create baggage booking
           const baggageBookingData = {
             booking_id:
+              item.details?.booking_code ||
+              item.id ||
               item.item_id ||
               `baggage-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`,
             customer_name:
@@ -972,19 +1393,153 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     refetchCartData,
   };
 
+  // Provide a stable context value even during initialization
+  const stableValue = React.useMemo(() => {
+    if (!isInitialized) {
+      // Return a minimal context during initialization to prevent undefined errors
+      return {
+        cartItems: [],
+        addToCart: async () => {},
+        removeFromCart: async () => {},
+        clearCart: async () => {},
+        totalAmount: 0,
+        checkout: async () => {
+          throw new Error("Cart not initialized");
+        },
+        isLoading: true,
+        cartCount: 0,
+        refetchCartData: async () => {},
+      };
+    }
+    return value;
+  }, [value, isInitialized]);
+
   return (
-    <ShoppingCartContext.Provider value={value}>
+    <ShoppingCartContext.Provider value={stableValue}>
       {children}
     </ShoppingCartContext.Provider>
   );
 };
 
 export const useShoppingCart = () => {
-  const context = useContext(ShoppingCartContext);
-  if (context === undefined) {
-    throw new Error(
-      "useShoppingCart must be used within a ShoppingCartProvider",
-    );
+  try {
+    const context = useContext(ShoppingCartContext);
+    if (context === undefined) {
+      console.warn(
+        "useShoppingCart called outside of ShoppingCartProvider, providing fallback context",
+      );
+      return createFallbackShoppingCartContext();
+    }
+    return context;
+  } catch (error) {
+    console.error("Error accessing ShoppingCartContext:", error);
+    return createFallbackShoppingCartContext();
   }
-  return context;
+};
+
+// Create a reusable fallback context with improved localStorage handling
+const createFallbackShoppingCartContext = () => {
+  // Try to get cart items from localStorage for fallback
+  let fallbackCartItems = [];
+  try {
+    const existingCart = localStorage.getItem("shopping_cart");
+    if (existingCart) {
+      const parsedCart = JSON.parse(existingCart);
+      fallbackCartItems = Array.isArray(parsedCart) ? parsedCart : [];
+    }
+  } catch (error) {
+    console.warn("Error parsing localStorage cart in fallback:", error);
+    fallbackCartItems = [];
+  }
+
+  return {
+    cartItems: fallbackCartItems,
+    addToCart: async (item: Omit<CartItem, "id" | "created_at">) => {
+      console.warn(
+        "addToCart called from fallback context - item:",
+        item.service_name,
+      );
+      // Try to save to localStorage as fallback
+      try {
+        const existingCart = localStorage.getItem("shopping_cart") || "[]";
+        const cartItems = JSON.parse(existingCart);
+        const newItem = {
+          ...item,
+          id: Date.now().toString(),
+          created_at: new Date().toISOString(),
+        };
+        cartItems.push(newItem);
+        localStorage.setItem("shopping_cart", JSON.stringify(cartItems));
+        console.log("Item saved to localStorage fallback");
+
+        // Dispatch a custom event to notify other components
+        window.dispatchEvent(
+          new CustomEvent("cartUpdated", {
+            detail: { action: "add", item: newItem },
+          }),
+        );
+      } catch (storageError) {
+        console.warn("Failed to save to localStorage fallback:", storageError);
+      }
+      return Promise.resolve();
+    },
+    removeFromCart: async (id: string) => {
+      console.warn("removeFromCart called from fallback context - id:", id);
+      try {
+        const existingCart = localStorage.getItem("shopping_cart") || "[]";
+        const cartItems = JSON.parse(existingCart);
+        const filteredItems = cartItems.filter((item: any) => item.id !== id);
+        localStorage.setItem("shopping_cart", JSON.stringify(filteredItems));
+        console.log("Item removed from localStorage fallback");
+
+        // Dispatch a custom event to notify other components
+        window.dispatchEvent(
+          new CustomEvent("cartUpdated", {
+            detail: { action: "remove", id },
+          }),
+        );
+      } catch (storageError) {
+        console.warn(
+          "Failed to remove from localStorage fallback:",
+          storageError,
+        );
+      }
+      return Promise.resolve();
+    },
+    clearCart: async () => {
+      console.warn("clearCart called from fallback context");
+      try {
+        localStorage.removeItem("shopping_cart");
+        console.log("Cart cleared from localStorage fallback");
+
+        // Dispatch a custom event to notify other components
+        window.dispatchEvent(
+          new CustomEvent("cartUpdated", {
+            detail: { action: "clear" },
+          }),
+        );
+      } catch (storageError) {
+        console.warn("Failed to clear localStorage fallback:", storageError);
+      }
+      return Promise.resolve();
+    },
+    totalAmount: fallbackCartItems.reduce(
+      (sum, item) => sum + (item.price || 0),
+      0,
+    ),
+    checkout: async () => {
+      console.warn("checkout called from fallback context");
+      return Promise.reject(
+        new Error(
+          "Shopping cart provider not available. Please refresh the page.",
+        ),
+      );
+    },
+    isLoading: false,
+    cartCount: fallbackCartItems.length,
+    refetchCartData: async () => {
+      console.warn("refetchCartData called from fallback context");
+      return Promise.resolve();
+    },
+  };
 };

@@ -265,7 +265,7 @@ function AirportTransferPageContent() {
       );
     } catch (error) {
       console.error("Error in fetchAvailableVehiclesWithDrivers:", error);
-      setAvailableVehiclesWithDrivers(null);
+      setAvailableVehiclesWithDrivers([]);
     } finally {
       setIsLoadingVehicles(false);
     }
@@ -2048,15 +2048,15 @@ function AirportTransferPageContent() {
         driver_name: selectedVehicleDriver?.driver_name || "",
         payment_method: "pending",
         distance: formData.distance.toString(),
-        duration: formData.duration,
+        duration: formData.duration.toString(),
         license_plate: selectedVehicleDriver?.license_plate || "N/A",
         model: selectedVehicleDriver?.model || "N/A",
         make: selectedVehicleDriver?.make || "N/A",
         vehicle_name: formData.vehicleType,
         status: "pending",
         customer_id: userId,
-        fromLocation: formData.fromLocation,
-        toLocation: formData.toLocation,
+        from_location: formData.fromLocation,
+        to_location: formData.toLocation,
       };
 
       // Insert booking to Supabase
@@ -2087,7 +2087,7 @@ function AirportTransferPageContent() {
           pickupDate: formData.pickupDate,
           pickupTime: formData.pickupTime,
           distance: formData.distance.toString(),
-          duration: formData.duration,
+          duration: formData.duration.toString(),
           passenger: formData.passenger,
           bookingType: bookingType,
           // ✅ Correct driver information from drivers table
@@ -2145,7 +2145,7 @@ function AirportTransferPageContent() {
         driver_name: formData.driverName,
         payment_method: formData.paymentMethod,
         distance: formData.distance.toString(),
-        duration: formData.duration,
+        duration: formData.duration.toString(),
         license_plate: formData.vehiclePlate || "N/A",
         model: formData.vehicleModel || "N/A",
         make: formData.vehicleMake || "N/A",
@@ -2481,7 +2481,7 @@ Please prepare for the trip!`;
                         Duration
                       </h4>
                       <p className="text-2xl font-bold">
-                        {formData.duration} min
+                        {formData.duration.toString()} min
                       </p>
                     </div>
                   </CardContent>
@@ -2598,7 +2598,7 @@ Please prepare for the trip!`;
                                 <h4 className="font-medium">{type.name}</h4>
                                 <p className="text-sm text-gray-500">
                                   {formData.distance.toFixed(1)} km •{" "}
-                                  {formData.duration} min
+                                  {formData.duration.toString()} min
                                 </p>
                               </div>
                             </div>
@@ -2881,7 +2881,9 @@ Please prepare for the trip!`;
                   <h4 className="text-sm font-medium text-gray-500">
                     Duration
                   </h4>
-                  <p className="text-2xl font-bold">{formData.duration} min</p>
+                  <p className="text-2xl font-bold">
+                    {formData.duration.toString()} min
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -2981,7 +2983,9 @@ Please prepare for the trip!`;
               </div>
               <div className="flex justify-between">
                 <span>Duration:</span>
-                <span className="font-medium">{formData.duration} min</span>
+                <span className="font-medium">
+                  {formData.duration.toString()} min
+                </span>
               </div>
               <div className="flex justify-between pt-2 border-t">
                 <span className="font-medium">Total Price:</span>

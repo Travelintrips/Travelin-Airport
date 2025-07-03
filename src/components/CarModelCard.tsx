@@ -108,7 +108,7 @@ const CarModelCard: React.FC<CarModelCardProps> = ({
           />
           {availableCount > 0 && (
             <div className="absolute top-2 right-2">
-              <Badge variant="success" className="bg-primary shadow-md">
+              <Badge variant="default" className="bg-primary shadow-md">
                 Available
               </Badge>
             </div>

@@ -74,6 +74,7 @@ const ROLES = {
 };
 
 function AppContent() {
+  // All hooks must be called at the top level and in the same order every render
   const {
     isAuthenticated,
     userRole,
@@ -117,8 +118,9 @@ function AppContent() {
       // Check for loggedOut flag to prevent redirect loops
       const loggedOut = sessionStorage.getItem("loggedOut");
       if (loggedOut) {
-        console.log("[App] Logged out flag detected, not redirecting");
+        console.log("[App] Logged out flag detected, forcing session ready");
         sessionStorage.removeItem("loggedOut");
+        setIsAuthReady(true);
         return;
       }
 
@@ -280,6 +282,12 @@ function AppContent() {
       );
     };
 
+    // Listen for force session ready events
+    const handleForceSessionReady = () => {
+      console.log("[App] Force session ready event received");
+      setIsAuthReady(true);
+    };
+
     // Initial recovery attempt
     recoverSession();
 
@@ -289,12 +297,20 @@ function AppContent() {
       "forceSessionRestore",
       handleForceSessionRestore as EventListener,
     );
+    window.addEventListener(
+      "forceSessionReady",
+      handleForceSessionReady as EventListener,
+    );
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener(
         "forceSessionRestore",
         handleForceSessionRestore as EventListener,
+      );
+      window.removeEventListener(
+        "forceSessionReady",
+        handleForceSessionReady as EventListener,
       );
       if (recoveryTimeout) clearTimeout(recoveryTimeout);
     };
@@ -349,8 +365,9 @@ function AppContent() {
           "[App] Session loading timeout reached, forcing ready state",
         );
         // Force session ready if it takes too long
+        setIsAuthReady(true);
         window.dispatchEvent(new CustomEvent("forceSessionReady"));
-      }, 8000); // 8 second timeout
+      }, 5000); // Reduced to 5 second timeout
 
       return () => clearTimeout(timeout);
     }
@@ -405,20 +422,8 @@ function AppContent() {
     return children;
   };
 
-  // Show loading indicator while session is not ready with timeout
-  if (!isSessionReady) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gradient-to-b from-blue-500 to-blue-700">
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-lg">Loading session...</p>
-          <p className="text-sm mt-2 opacity-75">
-            This should only take a moment
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Always call useRoutes to maintain hook order consistency
+  const tempoRoutes = useRoutes(routes);
 
   return (
     <div className="min-h-screen w-full">
@@ -431,7 +436,7 @@ function AppContent() {
       >
         {import.meta.env.VITE_TEMPO ? (
           <>
-            {useRoutes(routes)}
+            {tempoRoutes}
             <Routes>
               {/* Payment form route - only accessible from cart */}
               <Route path="/payment/form/:id" element={<PaymentFormPage />} />

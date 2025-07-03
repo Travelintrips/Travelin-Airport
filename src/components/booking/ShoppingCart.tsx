@@ -196,113 +196,93 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
 
   // Load unpaid bookings into cart on component mount and when auth state changes
   React.useEffect(() => {
+    // FIXED: Don't require isHydrated for loading unpaid bookings
     // Only load once when auth state is ready
     if (
       isAuthenticated &&
       userId &&
-      isHydrated &&
       !isCheckingSession &&
       userRole &&
       !isLoading
     ) {
-      console.log(
-        "[ShoppingCart] Auth state ready and hydrated, loading unpaid bookings",
-        { isAuthenticated, userId, isHydrated, userRole },
-      );
+      console.log("[ShoppingCart] Auth state ready, loading unpaid bookings", {
+        isAuthenticated,
+        userId,
+        userRole,
+      });
       loadUnpaidBookings();
     }
-  }, [isAuthenticated, userId, isHydrated, userRole]);
+  }, [isAuthenticated, userId, userRole]);
 
-  // Enhanced visibility change handler with auth state recovery
+  // Simplified visibility change handler to prevent timeout issues
   React.useEffect(() => {
     let timeoutId: NodeJS.Timeout;
-    let hasTriggeredRefresh = false;
+    let lastVisibilityTime = 0;
+    const VISIBILITY_COOLDOWN = 2000; // 2 second cooldown
 
     const handleVisibilityChange = async () => {
-      if (
-        document.visibilityState === "visible" &&
-        isHydrated &&
-        !hasTriggeredRefresh
-      ) {
-        console.log("[ShoppingCart] Tab became visible, checking auth state", {
+      if (document.visibilityState === "visible") {
+        const now = Date.now();
+        if (now - lastVisibilityTime < VISIBILITY_COOLDOWN) {
+          console.log(
+            "[ShoppingCart] Visibility change cooldown active, skipping",
+          );
+          return;
+        }
+        lastVisibilityTime = now;
+
+        console.log("[ShoppingCart] Tab became visible, refreshing cart", {
           isAuthenticated,
-          userId,
-          isHydrated,
+          userId: !!userId,
           userRole,
         });
-        hasTriggeredRefresh = true;
 
         // Clear any existing timeout
         if (timeoutId) clearTimeout(timeoutId);
 
+        // Simple timeout with quick cart refresh
         timeoutId = setTimeout(async () => {
           try {
-            // Check if we have valid auth state
-            if (isAuthenticated && userId && userRole && !isLoading) {
-              console.log(
-                "[ShoppingCart] Valid auth state, refreshing cart data",
-              );
+            // Only refresh if we have authentication or stored user data
+            const storedUser = localStorage.getItem("auth_user");
+            if (isAuthenticated && userId) {
+              console.log("[ShoppingCart] Authenticated user, refreshing cart");
               await refetchCartData();
-            } else if (!isAuthenticated && cartItems.length === 0) {
-              // Try to recover session if no auth state
-              console.log(
-                "[ShoppingCart] No auth state, attempting session recovery",
-              );
-              const {
-                data: { session },
-              } = await supabase.auth.getSession();
-              if (session?.user) {
-                console.log(
-                  "[ShoppingCart] Session recovered, will refetch cart",
-                );
-                // Wait a bit for auth context to update
-                setTimeout(async () => {
-                  await refetchCartData();
-                }, 1000);
-              }
+            } else if (storedUser) {
+              console.log("[ShoppingCart] Found stored user, refreshing cart");
+              await refetchCartData();
+            } else {
+              console.log("[ShoppingCart] No user data, skipping refresh");
             }
           } catch (error) {
-            console.error(
-              "[ShoppingCart] Error during visibility change handling:",
-              error,
-            );
-          } finally {
-            // Reset flag after delay
-            setTimeout(() => {
-              hasTriggeredRefresh = false;
-            }, 3000);
+            console.error("[ShoppingCart] Error refreshing cart:", error);
           }
-        }, 300);
+        }, 500); // Reduced timeout
       }
     };
 
-    // Listen for auth state refresh events
-    const handleAuthRefresh = async () => {
-      console.log("[ShoppingCart] Auth state refreshed, refetching cart data");
-      if (!isLoading) {
-        setTimeout(async () => {
-          await refetchCartData();
-        }, 500);
+    // Listen for session restored events
+    const handleSessionRestored = async () => {
+      console.log("[ShoppingCart] Session restored, refreshing cart");
+      try {
+        await refetchCartData();
+      } catch (error) {
+        console.error(
+          "[ShoppingCart] Error refreshing cart after session restore:",
+          error,
+        );
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("authStateRefreshed", handleAuthRefresh);
+    window.addEventListener("sessionRestored", handleSessionRestored);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("authStateRefreshed", handleAuthRefresh);
+      window.removeEventListener("sessionRestored", handleSessionRestored);
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [
-    isAuthenticated,
-    userId,
-    isHydrated,
-    userRole,
-    isLoading,
-    refetchCartData,
-    cartItems.length,
-  ]);
+  }, [isAuthenticated, userId, userRole, refetchCartData]);
 
   // Product suggestions for empty cart
   const productSuggestions = [
@@ -362,6 +342,10 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     },
   ];
 
+  // Enhanced loading state with timeout to prevent infinite loading - moved to top
+  const [showReloadButton, setShowReloadButton] = React.useState(false);
+  const [forceShowContent, setForceShowContent] = React.useState(false);
+
   // Add debug logs
   console.log("Cart Page: userRole", userRole);
   console.log("Cart Page: isAuthenticated", isAuthenticated);
@@ -370,8 +354,18 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
   console.log("Cart Page: authLoading", authLoading);
   console.log("Cart Page: userId", userId);
 
-  // Fallback for unauthenticated users
-  if (!isAuthenticated && !authLoading && isHydrated) {
+  // Show sign in prompt only if we're completely sure user is not authenticated
+  const shouldShowSignInPrompt =
+    !isAuthenticated &&
+    !authLoading &&
+    !userId &&
+    !isCheckingSession &&
+    isHydrated &&
+    !localStorage.getItem("auth_user") &&
+    forceShowContent &&
+    !localStorage.getItem("userId");
+
+  if (shouldShowSignInPrompt) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -379,62 +373,80 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
           <p className="text-gray-600 mb-6">
             You need to be signed in to view your cart.
           </p>
-          <Button onClick={() => navigate("/login")}>Sign In</Button>
+          <Button onClick={() => navigate("/")}>Go to Home</Button>
         </div>
       </div>
     );
   }
 
-  // Enhanced loading state with timeout to prevent infinite loading
-  const [showReloadButton, setShowReloadButton] = React.useState(false);
-
   React.useEffect(() => {
     let loadingTimeout: NodeJS.Timeout;
+    let forceTimeout: NodeJS.Timeout;
 
-    // Show reload button if loading persists for more than 5 seconds
-    if (
-      (authLoading && !isAuthenticated) ||
-      (!isHydrated && !isAuthenticated) ||
-      (isCheckingSession && !userRole)
-    ) {
+    // Show reload button if loading persists for more than 2 seconds
+    const shouldShowLoading = isLoading && cartItems.length === 0;
+
+    if (shouldShowLoading) {
       loadingTimeout = setTimeout(() => {
         console.log(
           "[ShoppingCart] Loading timeout reached, showing reload button",
         );
         setShowReloadButton(true);
+      }, 2000);
+
+      // Force show content after 5 seconds to prevent infinite loading
+      forceTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Force timeout reached, showing content anyway",
+        );
+        setForceShowContent(true);
+        setShowReloadButton(false);
       }, 5000);
     } else {
       setShowReloadButton(false);
+      setForceShowContent(false);
     }
 
     return () => {
       if (loadingTimeout) clearTimeout(loadingTimeout);
+      if (forceTimeout) clearTimeout(forceTimeout);
     };
-  }, [authLoading, isAuthenticated, isHydrated, isCheckingSession, userRole]);
+  }, [isLoading, cartItems.length]);
 
-  // Show loading spinner with reload option
-  if (
-    (authLoading && !isAuthenticated) ||
-    (!isHydrated && !isAuthenticated) ||
-    (isCheckingSession && !userRole)
-  ) {
+  // Show loading only when cart is actually loading and we have no items
+  // But don't show loading if we have stored user data (fallback available)
+  const hasStoredUserData =
+    localStorage.getItem("auth_user") || localStorage.getItem("userId");
+  const shouldShowLoadingScreen =
+    !forceShowContent &&
+    isLoading &&
+    cartItems.length === 0 &&
+    !authLoading &&
+    !isCheckingSession &&
+    !hasStoredUserData;
+
+  if (shouldShowLoadingScreen) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin mb-4" />
-          <span className="text-lg mb-4">
-            {authLoading ? "Loading authentication..." : "Loading..."}
-          </span>
+          <span className="text-lg mb-4">Loading cart...</span>
           {showReloadButton && (
             <Button
-              onClick={() => {
+              onClick={async () => {
                 console.log("[ShoppingCart] Manual reload triggered");
-                window.location.reload();
+                setShowReloadButton(false);
+                try {
+                  await refetchCartData();
+                } catch (error) {
+                  console.error("[ShoppingCart] Manual reload failed:", error);
+                  window.location.reload();
+                }
               }}
               variant="outline"
               className="mt-4"
             >
-              Reload Data
+              Reload Cart
             </Button>
           )}
         </div>

@@ -1587,7 +1587,7 @@ const Footer = ({ t }) => {
 };
 
 // Main TravelPage Component
-const TravelPage = () => {
+const TravelPageContent = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isAuthenticated, isLoading, isHydrated } = useAuth();
@@ -1675,330 +1675,337 @@ const TravelPage = () => {
   };
 
   return (
-    <ShoppingCartProvider>
-      <div className="min-h-screen bg-white">
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <MobileMenu
-            setMobileMenuOpen={setMobileMenuOpen}
-            handleTravelOptionClick={handleTravelOptionClick}
-            isAuthenticated={isAuthenticated}
-            setShowAuthForm={setShowAuthForm}
-            setAuthFormType={setAuthFormType}
-            currentLanguage={currentLanguage}
-            currentCurrency={currentCurrency}
-            navigate={navigate}
-          />
-        )}
-
-        {/* Header */}
-        <Header
+    <div className="min-h-screen bg-white">
+      {/* Mobile Menu */}
+      {mobileMenuOpen && (
+        <MobileMenu
+          setMobileMenuOpen={setMobileMenuOpen}
+          handleTravelOptionClick={handleTravelOptionClick}
           isAuthenticated={isAuthenticated}
-          showAuthForm={showAuthForm}
           setShowAuthForm={setShowAuthForm}
           setAuthFormType={setAuthFormType}
           currentLanguage={currentLanguage}
           currentCurrency={currentCurrency}
-          setMobileMenuOpen={setMobileMenuOpen}
           navigate={navigate}
         />
+      )}
 
-        {/* Secondary Navigation - Hidden when using the hero with integrated tabs */}
-        {/* <Navigation
+      {/* Header */}
+      <Header
+        isAuthenticated={isAuthenticated}
+        showAuthForm={showAuthForm}
+        setShowAuthForm={setShowAuthForm}
+        setAuthFormType={setAuthFormType}
+        currentLanguage={currentLanguage}
+        currentCurrency={currentCurrency}
+        setMobileMenuOpen={setMobileMenuOpen}
+        navigate={navigate}
+      />
+
+      {/* Secondary Navigation - Hidden when using the hero with integrated tabs */}
+      {/* <Navigation
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         handleTravelOptionClick={handleTravelOptionClick}
       /> */}
 
-        {/* Hero Image Slider Section */}
-        <div className="relative overflow-hidden">
-          {/* Hero Slider */}
-          <div className="relative w-full h-[500px] md:h-[600px]">
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{
-                backgroundImage:
-                  "url('https://travelintrips.co.id/wp-content/uploads/2025/05/Airport.png')",
-              }}
-            >
-              <div className="absolute inset-0 bg-black bg-opacity-40"></div>
-            </div>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
-              <h1 className="text-3xl md:text-5xl font-bold text-center mb-4 drop-shadow-lg">
-                {t("hero.title", "Premium Car Rental Service")}
-              </h1>
-              <p className="text-center text-white text-lg md:text-xl mb-8 max-w-3xl mx-auto drop-shadow-md">
-                {t(
-                  "hero.description",
-                  "Experience the freedom of the road with our extensive fleet of vehicles. Book your perfect ride today and enjoy hassle-free travel.",
-                )}
-              </p>
-              <div className="flex flex-wrap gap-4 justify-center mb-20 md:mb-0">
-                <Button
-                  size="lg"
-                  className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
-                  onClick={() => handleTravelOptionClick("Car Rental")}
-                >
-                  {t("hero.bookNow", "Book Now")}
-                </Button>
-                <Button
-                  size="lg"
-                  className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
-                  onClick={() => handleTravelOptionClick("Car Rental")}
-                >
-                  {t("hero.browseCars", "Browse Cars")}
-                </Button>
-              </div>
-            </div>
+      {/* Hero Image Slider Section */}
+      <div className="relative overflow-hidden">
+        {/* Hero Slider */}
+        <div className="relative w-full h-[500px] md:h-[600px]">
+          <div
+            className="absolute inset-0 bg-cover bg-center"
+            style={{
+              backgroundImage:
+                "url('https://travelintrips.co.id/wp-content/uploads/2025/05/Airport.png')",
+            }}
+          >
+            <div className="absolute inset-0 bg-black bg-opacity-40"></div>
           </div>
-
-          {/* Navigation Tabs - Desktop version positioned at the bottom of hero */}
-          <div className="hidden md:block absolute bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm py-3">
-            <div className="container mx-auto px-4">
-              <Tabs
-                defaultValue="flights"
-                value={activeTab}
-                onValueChange={setActiveTab}
-                className="w-full"
-              >
-                <TabsList className="flex justify-center space-x-2 bg-transparent w-full">
-                  <TabsTrigger
-                    value="hotels"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Hotels")}
-                  >
-                    <Hotel className="h-5 w-5 mr-2" />
-                    <span>Hotels</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="flights"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Flights")}
-                  >
-                    <Plane className="h-5 w-5 mr-2" />
-                    <span>Flights</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="trains"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Trains")}
-                  >
-                    <Train className="h-5 w-5 mr-2" />
-                    <span>Trains</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="bus"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Bus & Travel")}
-                  >
-                    <Bus className="h-5 w-5 mr-2" />
-                    <span>Bus</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="airport"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Airport Transfer")}
-                  >
-                    <MapPin className="h-5 w-5 mr-2" />
-                    <span>Airport</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="baggage"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Baggage")}
-                  >
-                    <Luggage className="h-5 w-5 mr-2" />
-                    <span>Baggage</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="handling"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Handling")}
-                  >
-                    <HandHeart className="h-5 w-5 mr-2" />
-                    <span>Handling</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="car"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Car Rental")}
-                  >
-                    <Car className="h-5 w-5 mr-2" />
-                    <span>Car</span>
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="activities"
-                    className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
-                    onClick={() => handleTravelOptionClick("Things to Do")}
-                  >
-                    <Compass className="h-5 w-5 mr-2" />
-                    <span>Activities</span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile Navigation - Displayed below hero content on mobile only */}
-        <div className="md:hidden w-full bg-white pt-4">
-          <div className="grid grid-cols-4 gap-2 px-2 pb-4">
-            <button
-              onClick={() => {
-                setActiveTab("hotels");
-                handleTravelOptionClick("Hotels");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "hotels" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <Hotel className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Hotels</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("flights");
-                handleTravelOptionClick("Flights");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "flights" ? "bg-green-500 text-white rounded-md" : "text-gray-700"}`}
-            >
-              <Plane className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Flights</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("trains");
-                handleTravelOptionClick("Trains");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "trains" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <Train className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Trains</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("bus");
-                handleTravelOptionClick("Bus & Travel");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "bus" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <Bus className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Bus</span>
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-2 px-2 pb-4">
-            <button
-              onClick={() => {
-                setActiveTab("airport");
-                handleTravelOptionClick("Airport Transfer");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "airport" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <MapPin className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Airport</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("baggage");
-                handleTravelOptionClick("Baggage");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${
-                activeTab === "baggage" ? "text-green-500" : "text-gray-700"
-              }`}
-            >
-              <Luggage className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Baggage</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("handling");
-                handleTravelOptionClick("Handling");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${
-                activeTab === "handling" ? "text-green-500" : "text-gray-700"
-              }`}
-            >
-              <HandHeart className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Handling</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab("car");
-                handleTravelOptionClick("Car Rental");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "car" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <Car className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Car</span>
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab("activities");
-                handleTravelOptionClick("Things to Do");
-              }}
-              className={`flex flex-col items-center justify-center p-2 ${activeTab === "activities" ? "text-green-500" : "text-gray-700"}`}
-            >
-              <Compass className="h-6 w-6 mb-1" />
-              <span className="text-xs font-medium">Activities</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Main Content Section */}
-        <div className="bg-white py-12">
-          <div className="container mx-auto px-4">
-            <h2 className="text-2xl md:text-4xl font-bold text-center mb-2">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
+            <h1 className="text-3xl md:text-5xl font-bold text-center mb-4 drop-shadow-lg">
               {t("hero.title", "Premium Car Rental Service")}
-            </h2>
-            <p className="text-center text-gray-600 mb-8 max-w-2xl mx-auto">
+            </h1>
+            <p className="text-center text-white text-lg md:text-xl mb-8 max-w-3xl mx-auto drop-shadow-md">
               {t(
                 "hero.description",
                 "Experience the freedom of the road with our extensive fleet of vehicles. Book your perfect ride today and enjoy hassle-free travel.",
               )}
             </p>
+            <div className="flex flex-wrap gap-4 justify-center mb-20 md:mb-0">
+              <Button
+                size="lg"
+                className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
+                onClick={() => handleTravelOptionClick("Car Rental")}
+              >
+                {t("hero.bookNow", "Book Now")}
+              </Button>
+              <Button
+                size="lg"
+                className="bg-white/10 backdrop-blur-sm border border-white text-white hover:bg-white/20 hover:text-white px-8 py-6 text-lg"
+                onClick={() => handleTravelOptionClick("Car Rental")}
+              >
+                {t("hero.browseCars", "Browse Cars")}
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Features Section */}
-        <FeaturesSection t={t} />
-
-        {/* Popular Destinations Section */}
-        <PopularDestinationsSection t={t} />
-
-        {/* Newsletter Section */}
-        <NewsletterSection t={t} />
-
-        {/* Footer */}
-        <Footer t={t} />
-
-        {/* Auth Form */}
-        {showAuthForm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md">
-              <div className="flex justify-between items-center p-4 border-b">
-                <h2 className="text-xl font-bold">
-                  {authFormType === "login"
-                    ? t("navbar.signIn", "Log In")
-                    : t("navbar.register", "Register")}
-                </h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowAuthForm(false)}
+        {/* Navigation Tabs - Desktop version positioned at the bottom of hero */}
+        <div className="hidden md:block absolute bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm py-3">
+          <div className="container mx-auto px-4">
+            <Tabs
+              defaultValue="flights"
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
+              <TabsList className="flex justify-center space-x-2 bg-transparent w-full">
+                <TabsTrigger
+                  value="hotels"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Hotels")}
                 >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-              <div className="p-4">
-                <AuthForm
-                  initialTab={authFormType}
-                  onAuthStateChange={handleAuthStateChange}
-                  onClose={() => setShowAuthForm(false)}
-                />
-              </div>
-            </Card>
+                  <Hotel className="h-5 w-5 mr-2" />
+                  <span>Hotels</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="flights"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Flights")}
+                >
+                  <Plane className="h-5 w-5 mr-2" />
+                  <span>Flights</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="trains"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Trains")}
+                >
+                  <Train className="h-5 w-5 mr-2" />
+                  <span>Trains</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="bus"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Bus & Travel")}
+                >
+                  <Bus className="h-5 w-5 mr-2" />
+                  <span>Bus</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="airport"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Airport Transfer")}
+                >
+                  <MapPin className="h-5 w-5 mr-2" />
+                  <span>Airport</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="baggage"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Baggage")}
+                >
+                  <Luggage className="h-5 w-5 mr-2" />
+                  <span>Baggage</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="handling"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Handling")}
+                >
+                  <HandHeart className="h-5 w-5 mr-2" />
+                  <span>Handling</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="car"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Car Rental")}
+                >
+                  <Car className="h-5 w-5 mr-2" />
+                  <span>Car</span>
+                </TabsTrigger>
+                <TabsTrigger
+                  value="activities"
+                  className="data-[state=active]:bg-green-500 data-[state=active]:text-white flex items-center gap-1 text-white"
+                  onClick={() => handleTravelOptionClick("Things to Do")}
+                >
+                  <Compass className="h-5 w-5 mr-2" />
+                  <span>Activities</span>
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Mobile Navigation - Displayed below hero content on mobile only */}
+      <div className="md:hidden w-full bg-white pt-4">
+        <div className="grid grid-cols-4 gap-2 px-2 pb-4">
+          <button
+            onClick={() => {
+              setActiveTab("hotels");
+              handleTravelOptionClick("Hotels");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "hotels" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <Hotel className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Hotels</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("flights");
+              handleTravelOptionClick("Flights");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "flights" ? "bg-green-500 text-white rounded-md" : "text-gray-700"}`}
+          >
+            <Plane className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Flights</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("trains");
+              handleTravelOptionClick("Trains");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "trains" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <Train className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Trains</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("bus");
+              handleTravelOptionClick("Bus & Travel");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "bus" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <Bus className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Bus</span>
+          </button>
+        </div>
+        <div className="grid grid-cols-4 gap-2 px-2 pb-4">
+          <button
+            onClick={() => {
+              setActiveTab("airport");
+              handleTravelOptionClick("Airport Transfer");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "airport" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <MapPin className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Airport</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("baggage");
+              handleTravelOptionClick("Baggage");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${
+              activeTab === "baggage" ? "text-green-500" : "text-gray-700"
+            }`}
+          >
+            <Luggage className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Baggage</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("handling");
+              handleTravelOptionClick("Handling");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${
+              activeTab === "handling" ? "text-green-500" : "text-gray-700"
+            }`}
+          >
+            <HandHeart className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Handling</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("car");
+              handleTravelOptionClick("Car Rental");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "car" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <Car className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Car</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab("activities");
+              handleTravelOptionClick("Things to Do");
+            }}
+            className={`flex flex-col items-center justify-center p-2 ${activeTab === "activities" ? "text-green-500" : "text-gray-700"}`}
+          >
+            <Compass className="h-6 w-6 mb-1" />
+            <span className="text-xs font-medium">Activities</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Section */}
+      <div className="bg-white py-12">
+        <div className="container mx-auto px-4">
+          <h2 className="text-2xl md:text-4xl font-bold text-center mb-2">
+            {t("hero.title", "Premium Car Rental Service")}
+          </h2>
+          <p className="text-center text-gray-600 mb-8 max-w-2xl mx-auto">
+            {t(
+              "hero.description",
+              "Experience the freedom of the road with our extensive fleet of vehicles. Book your perfect ride today and enjoy hassle-free travel.",
+            )}
+          </p>
+        </div>
+      </div>
+
+      {/* Features Section */}
+      <FeaturesSection t={t} />
+
+      {/* Popular Destinations Section */}
+      <PopularDestinationsSection t={t} />
+
+      {/* Newsletter Section */}
+      <NewsletterSection t={t} />
+
+      {/* Footer */}
+      <Footer t={t} />
+
+      {/* Auth Form */}
+      {showAuthForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h2 className="text-xl font-bold">
+                {authFormType === "login"
+                  ? t("navbar.signIn", "Log In")
+                  : t("navbar.register", "Register")}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowAuthForm(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <AuthForm
+                initialTab={authFormType}
+                onAuthStateChange={handleAuthStateChange}
+                onClose={() => setShowAuthForm(false)}
+              />
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Wrapper component with ShoppingCartProvider
+const TravelPage = () => {
+  return (
+    <ShoppingCartProvider>
+      <TravelPageContent />
     </ShoppingCartProvider>
   );
 };
