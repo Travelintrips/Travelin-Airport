@@ -32,7 +32,7 @@ interface BaggageSizeOption {
 }
 
 interface AirportBaggageProps {
-  onSelectSize: (size: string, price: number) => void;
+  onSelectSize?: (size: string, price: number) => void;
   selectedSize?: string;
 }
 
