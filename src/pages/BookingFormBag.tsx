@@ -113,7 +113,37 @@ const BookingForm = ({
 }: BookingFormProps) => {
   // Safely get shopping cart context with error handling
   const shoppingCartContext = useShoppingCart();
-  const { addToCart } = shoppingCartContext;
+  const {
+    addToCart,
+    isTabRecentlyActivated,
+    isLoading: cartLoading,
+  } = shoppingCartContext;
+
+  // 🎯 GUARD: Prevent rendering until session is ready
+  const { isHydrated, isLoading, isSessionReady } = useAuth();
+
+  if (!isHydrated || isLoading || !isSessionReady) {
+    return (
+      <Card className="w-full max-w-lg mx-auto bg-white">
+        <CardContent className="p-6">
+          <div className="animate-pulse flex flex-col items-center justify-center py-10">
+            <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            <p className="text-sm text-muted-foreground mt-4">
+              {!isSessionReady ? "Preparing session..." : "Loading session..."}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Effect to trigger refetch/reinit when session is ready
+  useEffect(() => {
+    if (!isSessionReady) return;
+    // Session is ready, can initialize booking-specific logic here
+    console.log("[BookingForm] Session ready, initializing booking form");
+  }, [isSessionReady]);
   // Safely get auth context with error handling
   let authContext;
   try {
@@ -161,8 +191,6 @@ const BookingForm = ({
     userEmail,
     userName,
     userPhone,
-    isHydrated,
-    isSessionReady,
     ensureSessionReady,
   } = authContext;
   const [step, setStep] = useState<number>(0);
@@ -389,6 +417,106 @@ const BookingForm = ({
     return pricePerUnit; // Default to one unit
   };
 
+  // Helper function to wait for session readiness with enhanced validation
+  const waitUntilSessionReady = async () => {
+    console.log("[BookingForm] Starting waitUntilSessionReady...");
+
+    // Check if session is already ready with userId validation
+    const storedUserId = localStorage.getItem("userId");
+    const storedUserEmail = localStorage.getItem("userEmail");
+
+    if (isSessionReady && storedUserId && storedUserEmail) {
+      console.log("[BookingForm] Session already ready with valid user data");
+      return {
+        isReady: true,
+        userId: storedUserId,
+        userEmail: storedUserEmail,
+      };
+    }
+
+    // Show connecting toast
+    const connectingToast = {
+      title: "⏳ Menyambungkan sesi...",
+      description: "Mohon tunggu sementara kami menyambungkan sesi Anda.",
+    };
+
+    // Show toast if available
+    try {
+      if (typeof toast === "function") {
+        toast(connectingToast);
+      } else {
+        console.log("[BookingForm] Toast not available, showing alert");
+        alert(connectingToast.description);
+      }
+    } catch (toastError) {
+      console.warn("[BookingForm] Error showing toast:", toastError);
+      alert(connectingToast.description);
+    }
+
+    // Wait for session to be ready with enhanced retry mechanism
+    let retryCount = 0;
+    const maxRetries = 5; // Maximum 5 retries
+    const retryDelay = 300; // 300ms delay between retries
+
+    while (retryCount < maxRetries) {
+      console.log(
+        `[BookingForm] Checking session readiness... (attempt ${retryCount + 1}/${maxRetries})`,
+      );
+
+      // Check multiple conditions for session readiness
+      const currentStoredUserId = localStorage.getItem("userId");
+      const currentStoredUserEmail = localStorage.getItem("userEmail");
+      const currentStoredUser = localStorage.getItem("auth_user");
+
+      // Enhanced validation: session ready AND valid user data exists
+      if (
+        isSessionReady &&
+        currentStoredUserId &&
+        currentStoredUserEmail &&
+        currentStoredUser
+      ) {
+        try {
+          const userData = JSON.parse(currentStoredUser);
+          if (userData && userData.id && userData.email) {
+            console.log(
+              "[BookingForm] Session is ready with valid user data:",
+              userData.email,
+            );
+            return {
+              isReady: true,
+              userId: currentStoredUserId,
+              userEmail: currentStoredUserEmail,
+              userData,
+            };
+          }
+        } catch (parseError) {
+          console.warn(
+            "[BookingForm] Error parsing stored user data:",
+            parseError,
+          );
+        }
+      }
+
+      // Wait before next retry
+      if (retryCount < maxRetries - 1) {
+        console.log(
+          `[BookingForm] Session not ready, waiting ${retryDelay}ms before retry...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+
+      retryCount++;
+    }
+
+    // If session is still not ready after all retries, return failure
+    console.error(
+      "[BookingForm] Session failed to become ready after all retries",
+    );
+    alert("Gagal menyambungkan sesi. Silakan refresh halaman dan coba lagi.");
+
+    return { isReady: false };
+  };
+
   const onSubmit = async (data: FormValues) => {
     console.log("[BookingForm] Starting booking submission...");
     console.log("[BookingForm] Auth State:", {
@@ -397,8 +525,49 @@ const BookingForm = ({
       userEmail,
       userName,
       isHydrated,
+      isSessionReady,
     });
     console.log("[BookingForm] Form Data:", data);
+
+    // 🎯 CRITICAL: Enhanced session readiness check with retry mechanism
+    const storedUserId = localStorage.getItem("userId");
+    const storedUserEmail = localStorage.getItem("userEmail");
+
+    if (!isSessionReady || !storedUserId || !storedUserEmail) {
+      console.warn(
+        "[BookingForm] Session not ready or missing user data, waiting...",
+      );
+
+      const sessionResult = await waitUntilSessionReady();
+
+      if (!sessionResult.isReady) {
+        console.error(
+          "[BookingForm] Failed to establish session readiness after retries",
+        );
+        alert(
+          "❌ Gagal menyambungkan sesi. Silakan refresh halaman dan coba lagi.",
+        );
+        return; // CRITICAL: Exit early, do not proceed with booking
+      }
+
+      console.log(
+        "[BookingForm] Session is now ready, proceeding with booking submission",
+      );
+    }
+
+    // Final validation before proceeding
+    const finalUserId = localStorage.getItem("userId");
+    const finalUserEmail = localStorage.getItem("userEmail");
+
+    if (!isSessionReady || !finalUserId || !finalUserEmail) {
+      console.error("[BookingForm] Final session validation failed", {
+        isSessionReady,
+        finalUserId: !!finalUserId,
+        finalUserEmail: !!finalUserEmail,
+      });
+      alert("❌ Sesi tidak siap. Silakan refresh halaman dan coba lagi.");
+      return; // CRITICAL: Exit early if session is still not ready
+    }
 
     setIsSubmitting(true);
 
@@ -602,49 +771,71 @@ const BookingForm = ({
         user_id: currentUser?.id,
       });
 
-      // Add to cart with enhanced error handling
-      try {
-        console.log("[BookingForm] Attempting to add item to cart...");
-        await addToCart(cartItem);
-        console.log("[BookingForm] Successfully added item to cart");
-      } catch (cartError) {
-        console.error("[BookingForm] Failed to add item to cart:", cartError);
+      // 🎯 NEW: Check if tab was recently activated before proceeding
+      if (isTabRecentlyActivated) {
+        console.warn(
+          "[BookingForm] Tab recently activated, preventing submission",
+        );
+        alert("⏳ Menunggu sesi aktif kembali… harap tunggu sebentar.");
+        return; // Exit early to prevent submission
+      }
 
-        // Enhanced error handling - check if it's a database connection issue
-        if (cartError.message && cartError.message.includes("timeout")) {
+      // 🎯 CRITICAL: Enhanced cart readiness check before adding to cart
+      console.log("[BookingForm] Checking cart readiness before submission...");
+
+      // Wait for cart to be ready if it's still loading
+      if (cartLoading) {
+        console.log("[BookingForm] Cart is still loading, waiting...");
+        let retryCount = 0;
+        const maxRetries = 10;
+
+        while (cartLoading && retryCount < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          retryCount++;
           console.log(
-            "[BookingForm] Database timeout detected, trying localStorage fallback",
+            `[BookingForm] Waiting for cart... attempt ${retryCount}/${maxRetries}`,
           );
-          // Force localStorage fallback for timeout errors
-          try {
-            const fallbackItem = {
-              ...cartItem,
-              id: cartItem.details?.booking_code || uuidv4(),
-              created_at: new Date().toISOString(),
-            };
-            const existingCart = localStorage.getItem("shopping_cart") || "[]";
-            const cartItems = JSON.parse(existingCart);
-            cartItems.unshift(fallbackItem);
-            localStorage.setItem("shopping_cart", JSON.stringify(cartItems));
-            console.log(
-              "[BookingForm] Successfully saved to localStorage as fallback",
-            );
-          } catch (fallbackError) {
-            console.error(
-              "[BookingForm] Fallback to localStorage also failed:",
-              fallbackError,
-            );
-            throw new Error(
-              "Failed to add item to cart. Please check your connection and try again.",
-            );
-          }
-        } else if (
-          !cartError.message ||
-          !cartError.message.includes("Fallback")
-        ) {
-          throw new Error("Failed to add item to cart. Please try again.");
+        }
+
+        if (cartLoading) {
+          console.error(
+            "[BookingForm] Cart failed to initialize after waiting",
+          );
+          alert(
+            "❌ Sistem keranjang belum siap. Silakan refresh halaman dan coba lagi.",
+          );
+          return;
         }
       }
+
+      // Validate cart context is properly initialized
+      if (!addToCart || typeof addToCart !== "function") {
+        console.error("[BookingForm] Cart addToCart function not available");
+        alert(
+          "❌ Sistem keranjang tidak tersedia. Silakan refresh halaman dan coba lagi.",
+        );
+        return;
+      }
+
+      // 🎯 CRITICAL: Add to cart with proper error handling - DO NOT proceed if failed
+      console.log("[BookingForm] Attempting to add item to cart...");
+      const cartResult = await addToCart(cartItem);
+
+      if (!cartResult || !cartResult.success) {
+        console.error(
+          "[BookingForm] Failed to add item to cart:",
+          cartResult?.error || "Unknown error",
+        );
+
+        // 🎯 CRITICAL: DO NOT call onComplete() or reset form if cart addition failed
+        alert(
+          cartResult?.error ||
+            "❌ Gagal menyimpan booking ke server. Silakan coba ulang.",
+        );
+        return; // CRITICAL: Exit early - do not proceed with onComplete
+      }
+
+      console.log("[BookingForm] Successfully added item to cart");
 
       console.log("[BookingForm] Calling onComplete callback...");
       if (onComplete) {
@@ -702,6 +893,8 @@ const BookingForm = ({
         error.message ||
           "Terjadi kesalahan saat memproses booking. Silakan coba lagi.",
       );
+      // 🎯 CRITICAL: DO NOT call onComplete() or reset form when there's an error
+      return; // Exit early to prevent onComplete from being called
     } finally {
       console.log("[BookingForm] Cleaning up - resetting state");
       // Always reset submitting state to prevent stuck processing
@@ -1910,8 +2103,11 @@ const BookingForm = ({
           }}
           disabled={
             step === steps.length - 1
-              ? isSubmitting
-              : !isStepValid() || isSubmitting
+              ? isSubmitting || isTabRecentlyActivated || cartLoading
+              : !isStepValid() ||
+                isSubmitting ||
+                isTabRecentlyActivated ||
+                cartLoading
           }
           className="bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
         >
@@ -1920,6 +2116,10 @@ const BookingForm = ({
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Processing...
             </>
+          ) : isTabRecentlyActivated ? (
+            "⏳ Menunggu sesi..."
+          ) : cartLoading ? (
+            "⏳ Menyiapkan keranjang..."
           ) : step === steps.length - 1 ? (
             "Book Now"
           ) : (

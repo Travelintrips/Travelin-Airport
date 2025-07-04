@@ -1591,6 +1591,8 @@ const TravelPageContent = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { isAuthenticated, isLoading, isHydrated } = useAuth();
+
+  // Initialize all state hooks first to maintain consistent hook order
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
@@ -1603,8 +1605,10 @@ const TravelPageContent = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("flights");
 
-  // Update currency when language changes
+  // Update currency when language changes - only after hydration
   useEffect(() => {
+    if (!isHydrated) return; // 🎯 Wait for hydration
+
     const updateCurrency = () => {
       const currencyCode = t("currency.code", "IDR");
       const currencySymbol = t("currency.symbol", "Rp");
@@ -1613,7 +1617,7 @@ const TravelPageContent = () => {
 
     updateCurrency();
     setCurrentLanguage(i18n.language || "en");
-  }, [t]);
+  }, [t, isHydrated]);
 
   // Handle auth form visibility based on authentication state
   useEffect(() => {
@@ -1621,6 +1625,24 @@ const TravelPageContent = () => {
       setShowAuthForm(false);
     }
   }, [isAuthenticated]);
+
+  // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
+  // This is placed AFTER all hooks to maintain consistent hook order
+  if (!isHydrated || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-500 mx-auto mb-6"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            Loading session...
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Please wait while we restore your session
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleAuthStateChange = (state: boolean) => {
     if (state) {

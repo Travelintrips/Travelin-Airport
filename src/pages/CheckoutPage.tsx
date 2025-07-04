@@ -23,7 +23,31 @@ import { v4 as uuidv4 } from "uuid";
 
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { isAuthenticated, userId, userEmail, userName } = useAuth();
+  const {
+    isAuthenticated,
+    userId,
+    userEmail,
+    userName,
+    isHydrated,
+    isLoading,
+  } = useAuth();
+
+  // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
+  if (!isHydrated || isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-6"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            Loading session...
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Please wait while we restore your session
+          </p>
+        </div>
+      </div>
+    );
+  }
   const { cartItems, totalAmount, clearCart } = useShoppingCart();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(
     () => {
@@ -104,6 +128,8 @@ const CheckoutPage: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!isHydrated) return; // 🎯 Wait for hydration
+
     // Auto-fill customer data if user is authenticated
     if (isAuthenticated) {
       setCustomerData((prev) => {
@@ -121,7 +147,7 @@ const CheckoutPage: React.FC = () => {
       });
       fetchCustomerPhone();
     }
-  }, [isAuthenticated, userName, userEmail]);
+  }, [isAuthenticated, userName, userEmail, isHydrated]);
 
   // Add useEffect to validate cart and redirect if empty
   useEffect(() => {

@@ -41,6 +41,7 @@ import { useNavigate } from "react-router-dom";
 interface ShoppingCartProps {}
 
 const ShoppingCart: React.FC<ShoppingCartProps> = () => {
+  // ALL HOOKS MUST BE DECLARED AT THE TOP LEVEL - NO CONDITIONAL HOOKS
   const navigate = useNavigate();
   const {
     isAuthenticated,
@@ -52,6 +53,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     isHydrated,
     isCheckingSession,
   } = useAuth();
+
   const {
     cartItems,
     addToCart,
@@ -63,54 +65,13 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     refetchCartData,
   } = useShoppingCart();
 
-  const handleRemoveItem = async (id: string) => {
-    try {
-      await removeFromCart(id);
-      toast({
-        title: "Item removed",
-        description: "Item successfully removed from cart.",
-      });
-    } catch (error) {
-      console.error("Error removing item:", error);
-      toast({
-        title: "Failed to remove item",
-        description: "An error occurred while removing item from cart.",
-        variant: "destructive",
-      });
-    }
-  };
+  // State hooks declared at the top level
+  const [showReloadButton, setShowReloadButton] = React.useState(false);
+  const [forceShowContent, setForceShowContent] = React.useState(false);
+  const [isTabRecentlyActivated, setIsTabRecentlyActivated] =
+    React.useState(false);
 
-  const handleClearCart = async () => {
-    try {
-      await clearCart();
-      toast({
-        title: "Cart cleared",
-        description: "All items successfully removed from cart.",
-      });
-    } catch (error) {
-      console.error("Error clearing cart:", error);
-      toast({
-        title: "Failed to clear cart",
-        description: "An error occurred while clearing the cart.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const getItemTypeLabel = (type: string) => {
-    switch (type) {
-      case "baggage":
-        return "Baggage";
-      case "airport_transfer":
-        return "Airport Transfer";
-      case "car":
-        return "Car Rental";
-      default:
-        return type;
-    }
-  };
-
-  // Function to load unpaid bookings - moved outside useEffect for reusability
+  // Function to load unpaid bookings - ALL useCallback hooks must be at top level
   const loadUnpaidBookings = React.useCallback(async () => {
     if (!isAuthenticated || !userId || !isHydrated || isLoading) {
       console.log("[ShoppingCart] Not ready for loading unpaid bookings", {
@@ -196,7 +157,8 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
 
   // Load unpaid bookings into cart on component mount and when auth state changes
   React.useEffect(() => {
-    // FIXED: Don't require isHydrated for loading unpaid bookings
+    if (!isHydrated) return; // 🎯 Wait for hydration
+
     // Only load once when auth state is ready
     if (
       isAuthenticated &&
@@ -212,11 +174,20 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
       });
       loadUnpaidBookings();
     }
-  }, [isAuthenticated, userId, userRole]);
+  }, [
+    isAuthenticated,
+    userId,
+    userRole,
+    isHydrated,
+    isCheckingSession,
+    isLoading,
+    loadUnpaidBookings,
+  ]);
 
-  // Simplified visibility change handler to prevent timeout issues
+  // Enhanced visibility change handler to prevent loading issues
   React.useEffect(() => {
     let timeoutId: NodeJS.Timeout;
+    let tabActivationTimeout: NodeJS.Timeout;
     let lastVisibilityTime = 0;
     const VISIBILITY_COOLDOWN = 2000; // 2 second cooldown
 
@@ -231,33 +202,53 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
         }
         lastVisibilityTime = now;
 
+        console.log(
+          "[ShoppingCart] Tab became visible, setting recently activated flag",
+        );
+
+        // Set tab recently activated flag to prevent immediate loading issues
+        setIsTabRecentlyActivated(true);
+
+        // Clear any existing timeouts
+        if (timeoutId) clearTimeout(timeoutId);
+        if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
+
+        // Reset the recently activated flag after 2 seconds
+        tabActivationTimeout = setTimeout(() => {
+          console.log("[ShoppingCart] Clearing recently activated flag");
+          setIsTabRecentlyActivated(false);
+        }, 2000);
+
         console.log("[ShoppingCart] Tab became visible, refreshing cart", {
           isAuthenticated,
           userId: !!userId,
           userRole,
         });
 
-        // Clear any existing timeout
-        if (timeoutId) clearTimeout(timeoutId);
-
-        // Simple timeout with quick cart refresh
+        // Simple timeout with quick cart refresh - but wait for session to stabilize
         timeoutId = setTimeout(async () => {
           try {
             // Only refresh if we have authentication or stored user data
             const storedUser = localStorage.getItem("auth_user");
+            const storedUserId = localStorage.getItem("userId");
+
             if (isAuthenticated && userId) {
               console.log("[ShoppingCart] Authenticated user, refreshing cart");
               await refetchCartData();
-            } else if (storedUser) {
+            } else if (storedUser && storedUserId) {
               console.log("[ShoppingCart] Found stored user, refreshing cart");
               await refetchCartData();
             } else {
               console.log("[ShoppingCart] No user data, skipping refresh");
+              // Force show content if no user data to prevent infinite loading
+              setForceShowContent(true);
             }
           } catch (error) {
             console.error("[ShoppingCart] Error refreshing cart:", error);
+            // Force show content on error to prevent infinite loading
+            setForceShowContent(true);
           }
-        }, 500); // Reduced timeout
+        }, 1000); // Increased timeout to allow session to stabilize
       }
     };
 
@@ -265,12 +256,16 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     const handleSessionRestored = async () => {
       console.log("[ShoppingCart] Session restored, refreshing cart");
       try {
+        // Reset tab activation flag when session is restored
+        setIsTabRecentlyActivated(false);
         await refetchCartData();
       } catch (error) {
         console.error(
           "[ShoppingCart] Error refreshing cart after session restore:",
           error,
         );
+        // Force show content on error
+        setForceShowContent(true);
       }
     };
 
@@ -281,8 +276,75 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("sessionRestored", handleSessionRestored);
       if (timeoutId) clearTimeout(timeoutId);
+      if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
     };
   }, [isAuthenticated, userId, userRole, refetchCartData]);
+
+  // Effect for managing loading timeouts and force content display
+
+  // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
+  if (!isHydrated || authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-6"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            Loading session...
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Please wait while we restore your session
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleRemoveItem = async (id: string) => {
+    try {
+      await removeFromCart(id);
+      toast({
+        title: "Item removed",
+        description: "Item successfully removed from cart.",
+      });
+    } catch (error) {
+      console.error("Error removing item:", error);
+      toast({
+        title: "Failed to remove item",
+        description: "An error occurred while removing item from cart.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleClearCart = async () => {
+    try {
+      await clearCart();
+      toast({
+        title: "Cart cleared",
+        description: "All items successfully removed from cart.",
+      });
+    } catch (error) {
+      console.error("Error clearing cart:", error);
+      toast({
+        title: "Failed to clear cart",
+        description: "An error occurred while clearing the cart.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getItemTypeLabel = (type: string) => {
+    switch (type) {
+      case "baggage":
+        return "Baggage";
+      case "airport_transfer":
+        return "Airport Transfer";
+      case "car":
+        return "Car Rental";
+      default:
+        return type;
+    }
+  };
 
   // Product suggestions for empty cart
   const productSuggestions = [
@@ -342,10 +404,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     },
   ];
 
-  // Enhanced loading state with timeout to prevent infinite loading - moved to top
-  const [showReloadButton, setShowReloadButton] = React.useState(false);
-  const [forceShowContent, setForceShowContent] = React.useState(false);
-
   // Add debug logs
   console.log("Cart Page: userRole", userRole);
   console.log("Cart Page: isAuthenticated", isAuthenticated);
@@ -353,6 +411,8 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
   console.log("Cart Page: isCheckingSession", isCheckingSession);
   console.log("Cart Page: authLoading", authLoading);
   console.log("Cart Page: userId", userId);
+  console.log("Cart Page: isLoading", isLoading);
+  console.log("Cart Page: cartItems.length", cartItems.length);
 
   // Show sign in prompt only if we're completely sure user is not authenticated
   const shouldShowSignInPrompt =
@@ -383,8 +443,9 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     let loadingTimeout: NodeJS.Timeout;
     let forceTimeout: NodeJS.Timeout;
 
-    // Show reload button if loading persists for more than 2 seconds
-    const shouldShowLoading = isLoading && cartItems.length === 0;
+    // Show reload button if loading persists for more than 3 seconds
+    const shouldShowLoading =
+      isLoading && cartItems.length === 0 && !isTabRecentlyActivated;
 
     if (shouldShowLoading) {
       loadingTimeout = setTimeout(() => {
@@ -392,29 +453,31 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
           "[ShoppingCart] Loading timeout reached, showing reload button",
         );
         setShowReloadButton(true);
-      }, 2000);
+      }, 3000); // Increased to 3 seconds
 
-      // Force show content after 5 seconds to prevent infinite loading
+      // Force show content after 6 seconds to prevent infinite loading
       forceTimeout = setTimeout(() => {
         console.log(
           "[ShoppingCart] Force timeout reached, showing content anyway",
         );
         setForceShowContent(true);
         setShowReloadButton(false);
-      }, 5000);
+      }, 6000); // Increased to 6 seconds
     } else {
       setShowReloadButton(false);
-      setForceShowContent(false);
+      if (!isLoading) {
+        setForceShowContent(false);
+      }
     }
 
     return () => {
       if (loadingTimeout) clearTimeout(loadingTimeout);
       if (forceTimeout) clearTimeout(forceTimeout);
     };
-  }, [isLoading, cartItems.length]);
+  }, [isLoading, cartItems.length, isTabRecentlyActivated]);
 
   // Show loading only when cart is actually loading and we have no items
-  // But don't show loading if we have stored user data (fallback available)
+  // But don't show loading if we have stored user data (fallback available) or tab was recently activated
   const hasStoredUserData =
     localStorage.getItem("auth_user") || localStorage.getItem("userId");
   const shouldShowLoadingScreen =
@@ -423,6 +486,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     cartItems.length === 0 &&
     !authLoading &&
     !isCheckingSession &&
+    !isTabRecentlyActivated &&
     !hasStoredUserData;
 
   if (shouldShowLoadingScreen) {
@@ -478,10 +542,34 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
             </div>
 
             <div className="space-y-6">
-              {isLoading && cartItems.length === 0 ? (
+              {isLoading &&
+              cartItems.length === 0 &&
+              !isTabRecentlyActivated &&
+              !forceShowContent ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <span className="ml-3 text-lg">Loading cart...</span>
+                  {showReloadButton && (
+                    <Button
+                      onClick={async () => {
+                        console.log("[ShoppingCart] Inline reload triggered");
+                        setShowReloadButton(false);
+                        try {
+                          await refetchCartData();
+                        } catch (error) {
+                          console.error(
+                            "[ShoppingCart] Inline reload failed:",
+                            error,
+                          );
+                          setForceShowContent(true);
+                        }
+                      }}
+                      variant="outline"
+                      className="ml-4"
+                    >
+                      Reload
+                    </Button>
+                  )}
                 </div>
               ) : cartItems.length === 0 ? (
                 <div className="text-center py-12">

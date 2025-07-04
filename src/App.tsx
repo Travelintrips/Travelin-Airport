@@ -422,9 +422,6 @@ function AppContent() {
     return children;
   };
 
-  // Always call useRoutes to maintain hook order consistency
-  const tempoRoutes = useRoutes(routes);
-
   return (
     <div className="min-h-screen w-full">
       <Suspense
@@ -434,259 +431,131 @@ function AppContent() {
           </div>
         }
       >
-        {import.meta.env.VITE_TEMPO ? (
-          <>
-            {tempoRoutes}
-            <Routes>
-              {/* Payment form route - only accessible from cart */}
-              <Route path="/payment/form/:id" element={<PaymentFormPage />} />
-              <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
-              <Route path="/payment/:id" element={<PaymentDetailsPage />} />
-              <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
-              <Route path="/checkout" element={<CheckoutPage />} />
-              <Route
-                path="/damage-payment/:bookingId"
-                element={<DamagePaymentForm />}
-              />
-              <Route
-                path="damage-payment/:bookingId"
-                element={<DamagePaymentForm />}
-              />
+        {/* Main application routes */}
+        <Routes>
+          {/* Public routes - no authentication required */}
+          <Route path="/" element={<TravelPage />} />
+          <Route
+            path="/baggage"
+            element={
+              <Suspense fallback={<div>Loading baggage page...</div>}>
+                <AirportBaggage />
+              </Suspense>
+            }
+          />
 
-              <Route index element={<TravelPage />} />
-              <Route path="/home" element={<RentCar />} />
-              <Route path="/sub-account" element={<TravelPage />} />
-              <Route path="/rentcar" element={<RentCar />} />
-              <Route path="/models/:modelName" element={<ModelDetailPage />} />
-              <Route
-                path="/models/:modelName/*"
-                element={<ModelDetailPage />}
-              />
-              <Route path="/booking" element={<BookingPage />} />
-              <Route path="/booking/:vehicle_id" element={<BookingPage />} />
-              <Route path="/booking/:vehicleId" element={<BookingForm />} />
-              <Route
-                path="/booking/model/:model_name"
-                element={<BookingPage />}
-              />
-              <Route
-                path="/airport-transfer"
-                element={<AirportTransferPage />}
-              />
-              <Route
-                path="/airport-preview/:previewCode"
-                element={<AirportTransferPreview />}
-              />
-              <Route path="/baggage" element={<AirportBaggage />} />
-              <Route path="/cart" element={<ShoppingCart />} />
-              <Route path="/driver-mitra" element={<DriverMitraPage />} />
-              <Route
-                path="/driver-perusahaan"
-                element={<DriverPerusahaanPage />}
-              />
-              <Route path="/driver-profile" element={<DriverProfile />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/bookings" element={<BookingsPage />} />
-              <Route path="/hotels" element={<HotelsPage />} />
-              <Route path="/flights" element={<FlightsPage />} />
-              <Route path="/trains" element={<TrainsPage />} />
-              <Route path="/bus-travel" element={<BusPage />} />
-              <Route path="/things-to-do" element={<ActivitiesPage />} />
-              <Route path="/handling" element={<HandlingPage />} />
+          <Route
+            path="/airport-preview/:previewCode"
+            element={<AirportTransferPreview />}
+          />
 
-              <Route
-                path="/new-booking"
-                element={
-                  <ProtectedRoute
-                    allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                  >
-                    <NewBookingPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute
-                    allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                  >
-                    <AdminLayout />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/admin/*"
-                element={
-                  <ProtectedRoute
-                    allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                  >
-                    <AdminLayout />
-                  </ProtectedRoute>
-                }
+          <Route path="/payment/form/:id" element={<PaymentFormPage />} />
+          <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
+          <Route path="/payment/:id" element={<PaymentDetailsPage />} />
+          <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
+          <Route path="/checkout" element={<CheckoutPage />} />
+          <Route
+            path="/damage-payment/:bookingId"
+            element={<DamagePaymentForm />}
+          />
+          <Route
+            path="damage-payment/:bookingId"
+            element={<DamagePaymentForm />}
+          />
+          <Route path="/home" element={<RentCar />} />
+          <Route path="/sub-account" element={<TravelPage />} />
+          <Route path="/rentcar" element={<RentCar />} />
+          <Route path="/models/:modelName" element={<ModelDetailPage />} />
+          <Route path="/models/:modelName/*" element={<ModelDetailPage />} />
+          <Route path="/booking" element={<BookingPage />} />
+          <Route path="/booking/:vehicle_id" element={<BookingPage />} />
+          <Route path="/booking/:vehicleId" element={<BookingForm />} />
+          <Route path="/booking/model/:model_name" element={<BookingPage />} />
+          <Route path="/airport-transfer" element={<AirportTransferPage />} />
+          <Route path="/cart" element={<ShoppingCart />} />
+          <Route path="/driver-mitra" element={<DriverMitraPage />} />
+          <Route path="/driver-perusahaan" element={<DriverPerusahaanPage />} />
+          <Route path="/driver-profile" element={<DriverProfile />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/bookings" element={<BookingsPage />} />
+          <Route path="/hotels" element={<HotelsPage />} />
+          <Route path="/flights" element={<FlightsPage />} />
+          <Route path="/trains" element={<TrainsPage />} />
+          <Route path="/bus-travel" element={<BusPage />} />
+          <Route path="/things-to-do" element={<ActivitiesPage />} />
+          <Route path="/handling" element={<HandlingPage />} />
+          <Route
+            path="/new-booking"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
               >
-                <Route path="api-settings" element={<ApiSettings />} />
-                <Route path="price-km" element={<PriceKMManagement />} />
-                <Route path="price-baggage" element={<PriceBaggage />} />
-                <Route
-                  path="payment-methods"
-                  element={<PaymentMethodsManagement />}
-                />
-                <Route
-                  path="baggage-booking"
-                  element={<BaggageBookingManagement />}
-                />
-                <Route path="chart" element={<ChartManagement />} />
-                <Route
-                  path="damage-payment/:bookingId"
-                  element={<DamagePaymentForm />}
-                />
-                <Route index element={<AdminDashboard />} />
-                <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="customers" element={<CustomerManagement />} />
-                <Route path="drivers" element={<DriverManagement />} />
-                <Route path="cars" element={<CarsManagement />} />
-                <Route path="payments" element={<Payments />} />
-                <Route
-                  path="bookings"
-                  element={<BookingManagementConnected />}
-                />
-                <Route path="staff" element={<StaffPage />} />
-                <Route path="inspections" element={<InspectionManagement />} />
-                <Route path="checklist" element={<ChecklistManagement />} />
-                <Route path="damages" element={<DamageManagement />} />
-                <Route
-                  path="vehicle-inventory"
-                  element={<VehicleInventory />}
-                />
-                <Route
-                  path="airport-transfer"
-                  element={<AirportTransferManagement />}
-                />
-              </Route>
+                <NewBookingPage />
+              </ProtectedRoute>
+            }
+          />
 
-              <Route path="/tempobook/*" element={<div />} />
-
-              <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
-          </>
-        ) : (
-          <Routes>
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+              >
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+              >
+                <AdminLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="customers" element={<CustomerManagement />} />
+            <Route path="drivers" element={<DriverManagement />} />
+            <Route path="cars" element={<CarsManagement />} />
+            <Route path="payments" element={<Payments />} />
+            <Route path="bookings" element={<BookingManagementConnected />} />
+            <Route path="staff" element={<StaffPage />} />
+            <Route path="inspections" element={<InspectionManagement />} />
+            <Route path="checklist" element={<ChecklistManagement />} />
+            <Route path="damages" element={<DamageManagement />} />
+            <Route path="vehicle-inventory" element={<VehicleInventory />} />
             <Route
-              path="/airport-preview/:previewCode"
-              element={<AirportTransferPreview />}
+              path="airport-transfer"
+              element={<AirportTransferManagement />}
             />
-
-            <Route path="/payment/form/:id" element={<PaymentFormPage />} />
-            <Route path="/payment/form/:id/*" element={<PaymentFormPage />} />
-            <Route path="/payment/:id" element={<PaymentDetailsPage />} />
-            <Route path="/thank-you/:paymentId" element={<ThankYouPage />} />
-            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="api-settings" element={<ApiSettings />} />
+            <Route path="price-km" element={<PriceKMManagement />} />
             <Route
-              path="/damage-payment/:bookingId"
-              element={<DamagePaymentForm />}
+              path="payment-methods"
+              element={<PaymentMethodsManagement />}
             />
+            <Route
+              path="baggage-booking"
+              element={<BaggageBookingManagement />}
+            />
+            <Route path="chart" element={<ChartManagement />} />
             <Route
               path="damage-payment/:bookingId"
               element={<DamagePaymentForm />}
             />
+          </Route>
 
-            <Route path="/" element={<TravelPage />} />
-            <Route path="/home" element={<RentCar />} />
-            <Route path="/sub-account" element={<TravelPage />} />
-            <Route path="/rentcar" element={<RentCar />} />
-            <Route path="/models/:modelName" element={<ModelDetailPage />} />
-            <Route path="/models/:modelName/*" element={<ModelDetailPage />} />
-            <Route path="/booking" element={<BookingPage />} />
-            <Route path="/booking/:vehicle_id" element={<BookingPage />} />
-            <Route path="/booking/:vehicleId" element={<BookingForm />} />
-            <Route
-              path="/booking/model/:model_name"
-              element={<BookingPage />}
-            />
-            <Route path="/airport-transfer" element={<AirportTransferPage />} />
-            <Route path="/baggage" element={<AirportBaggage />} />
-            <Route path="/cart" element={<ShoppingCart />} />
-            <Route path="/driver-mitra" element={<DriverMitraPage />} />
-            <Route
-              path="/driver-perusahaan"
-              element={<DriverPerusahaanPage />}
-            />
-            <Route path="/driver-profile" element={<DriverProfile />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/bookings" element={<BookingsPage />} />
-            <Route path="/hotels" element={<HotelsPage />} />
-            <Route path="/flights" element={<FlightsPage />} />
-            <Route path="/trains" element={<TrainsPage />} />
-            <Route path="/bus-travel" element={<BusPage />} />
-            <Route path="/things-to-do" element={<ActivitiesPage />} />
-            <Route path="/handling" element={<HandlingPage />} />
-            <Route
-              path="/new-booking"
-              element={
-                <ProtectedRoute
-                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                >
-                  <NewBookingPage />
-                </ProtectedRoute>
-              }
-            />
+          {/* Tempo routes fallback - only if not already handled */}
+          {import.meta.env.VITE_TEMPO && <Route path="/tempobook/*" />}
 
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute
-                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                >
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/*"
-              element={
-                <ProtectedRoute
-                  allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
-                >
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<AdminDashboard />} />
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="customers" element={<CustomerManagement />} />
-              <Route path="drivers" element={<DriverManagement />} />
-              <Route path="cars" element={<CarsManagement />} />
-              <Route path="payments" element={<Payments />} />
-              <Route path="bookings" element={<BookingManagementConnected />} />
-              <Route path="staff" element={<StaffPage />} />
-              <Route path="inspections" element={<InspectionManagement />} />
-              <Route path="checklist" element={<ChecklistManagement />} />
-              <Route path="damages" element={<DamageManagement />} />
-              <Route path="vehicle-inventory" element={<VehicleInventory />} />
-              <Route
-                path="airport-transfer"
-                element={<AirportTransferManagement />}
-              />
-              <Route path="api-settings" element={<ApiSettings />} />
-              <Route path="price-km" element={<PriceKMManagement />} />
-              <Route
-                path="payment-methods"
-                element={<PaymentMethodsManagement />}
-              />
-              <Route
-                path="baggage-booking"
-                element={<BaggageBookingManagement />}
-              />
-              <Route path="chart" element={<ChartManagement />} />
-              <Route
-                path="damage-payment/:bookingId"
-                element={<DamagePaymentForm />}
-              />
-            </Route>
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
 
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        )}
+        {/* Tempo routes for storyboards - rendered separately */}
+        {import.meta.env.VITE_TEMPO && useRoutes(routes)}
       </Suspense>
       <Toaster />
     </div>
