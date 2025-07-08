@@ -41,7 +41,7 @@ interface Vehicle {
   fuelType: "petrol" | "diesel" | "electric" | "hybrid";
   available: boolean;
   features: string[];
-  make?: string;
+  make: string;
   model?: string;
   year?: number;
   license_plate?: string;
@@ -926,16 +926,6 @@ const RentCar = () => {
       <AuthRequiredModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        onLogin={() => {
-          setShowAuthModal(false);
-          setShowAuthForm(true);
-          setAuthFormType("login");
-        }}
-        onRegister={() => {
-          setShowAuthModal(false);
-          setShowAuthForm(true);
-          setAuthFormType("register");
-        }}
       />
 
       {/* Footer */}

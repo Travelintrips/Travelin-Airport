@@ -156,12 +156,22 @@ const DamagePaymentForm = () => {
         if (error) throw error;
 
         const normalizedData = (data || []).map((item) => ({
-          ...item,
-          status: item.status || "unpaid",
+          id: item.id,
+          booking_id: parseInt(bookingId),
           item_name: item.item_name || item.description,
+          description: item.description,
           damage_description: item.damage_description || item.description,
           damage_value:
             item.damage_value || item.repair_cost || item.amount || 0,
+          repair_cost:
+            item.repair_cost || item.damage_value || item.amount || 0,
+          severity: item.severity || "major",
+          status: item.status || "unpaid",
+          payment_status: item.payment_status || "unpaid",
+          vehicle_id: item.vehicle_id || 0,
+          payment_id: item.payment_id || null,
+          created_at: item.created_at,
+          photo_url: item.photo_url,
         }));
 
         // Jika data ada, langsung set

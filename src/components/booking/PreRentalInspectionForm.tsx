@@ -496,8 +496,6 @@ const PreRentalInspectionForm: React.FC<PreRentalInspectionFormProps> = ({
         onComplete({
           ...data,
           photos: uploadedPhotoUrls,
-          itemPhotos: uploadedItemPhotoUrls,
-          inspectionId: insertedInspection.id,
         });
       }
     } catch (error) {

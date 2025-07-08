@@ -745,6 +745,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 
     // Show retry toast for better UX
     let retryToast: { dismiss?: () => void } | null = null;
+    let offlineFallbackUsed = false; // Declare at function scope
 
     try {
       console.log("[useShoppingCart] Getting current session...");
@@ -817,7 +818,6 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         let insertData_result = null;
         let lastError = null;
         const maxRetries = 5; // Increased retries
-        let offlineFallbackUsed = false;
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
           try {

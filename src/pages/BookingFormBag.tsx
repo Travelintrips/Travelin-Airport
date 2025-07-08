@@ -442,6 +442,7 @@ const BookingForm = ({
 
     // Show toast if available
     try {
+      const { toast } = await import("@/components/ui/use-toast");
       if (typeof toast === "function") {
         toast(connectingToast);
       } else {

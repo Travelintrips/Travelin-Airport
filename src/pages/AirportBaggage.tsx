@@ -844,7 +844,7 @@ const AirportBaggage = ({
                     <div>
                       <p className="text-sm text-gray-500">Booking ID</p>
                       <p className="font-medium font-mono text-blue-600">
-                        {bookingData.bookingCode || "GENERATING..."}
+                        {(bookingData as any).bookingCode || "GENERATING..."}
                       </p>
                     </div>
                     <div>

@@ -613,6 +613,7 @@ const AdminDashboard = () => {
               <BarChart3 className="h-5 w-5 text-white" />
               {sidebarOpen && <span className="ml-3">Dashboard</span>}
             </Link>
+
             <Link
               to="customers"
               className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/customers") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}

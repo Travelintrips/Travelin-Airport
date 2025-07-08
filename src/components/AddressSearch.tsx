@@ -146,7 +146,7 @@ export default function AddressSearch({
   };
 
   return (
-    <div className="mb-4 relative">
+    <div className="mb-3 sm:mb-4 relative">
       <label className="block text-sm font-medium mb-1">{label}</label>
       <Input
         type="text"
@@ -192,17 +192,17 @@ export default function AddressSearch({
           if (onClick) onClick();
         }}
         placeholder={placeholder}
-        className="w-full"
+        className="w-full text-sm sm:text-base"
       />
       {results.length > 0 && (
         <div
-          className="bg-white shadow rounded-md mt-2 max-h-60 overflow-y-auto absolute w-full left-0 right-0"
+          className="bg-white shadow-lg rounded-md mt-2 max-h-48 sm:max-h-60 overflow-y-auto absolute w-full left-0 right-0 border"
           style={{ zIndex: 9999, top: "100%" }}
         >
           {results.map((place, index) => (
             <div
               key={index}
-              className="cursor-pointer px-4 py-3 hover:bg-gray-100 active:bg-gray-200 touch-auto"
+              className="cursor-pointer px-3 sm:px-4 py-2 sm:py-3 hover:bg-gray-100 active:bg-gray-200 touch-auto text-sm sm:text-base border-b last:border-b-0"
               onClick={async () => {
                 try {
                   // Immediately update the input field with the selected address
@@ -235,7 +235,7 @@ export default function AddressSearch({
                 }
               }}
             >
-              {place.description}
+              <div className="truncate">{place.description}</div>
             </div>
           ))}
         </div>

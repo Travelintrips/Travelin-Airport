@@ -17,7 +17,8 @@ import {
 } from "react-router-dom";
 import AirportTransferPreview from "./pages/AirportTransferPreview";
 import DamagePaymentForm from "./components/payment/DamagePaymentForm";
-import routes from "tempo-routes";
+// Import tempo routes conditionally
+let routes: any[] = [];
 import RentCar from "./components/RentCar";
 import TravelPage from "./pages/TravelPage";
 import ModelDetailPage from "./pages/ModelDetailPage";
@@ -87,6 +88,22 @@ function AppContent() {
   } = useAuth();
   const [isAuthReady, setIsAuthReady] = useState(false);
   const navigate = useNavigate();
+
+  // Load tempo routes dynamically
+  useEffect(() => {
+    const loadTempoRoutes = async () => {
+      try {
+        if (import.meta.env.VITE_TEMPO) {
+          const tempoModule = await import("tempo-routes");
+          routes = tempoModule.default || [];
+        }
+      } catch (error) {
+        console.warn("Tempo routes not available:", error);
+        routes = [];
+      }
+    };
+    loadTempoRoutes();
+  }, []);
 
   console.log("App.tsx - Current auth state:", {
     isAuthenticated,
@@ -555,7 +572,7 @@ function AppContent() {
         </Routes>
 
         {/* Tempo routes for storyboards - rendered separately */}
-        {import.meta.env.VITE_TEMPO && useRoutes(routes)}
+        {import.meta.env.VITE_TEMPO && routes.length > 0 && useRoutes(routes)}
       </Suspense>
       <Toaster />
     </div>

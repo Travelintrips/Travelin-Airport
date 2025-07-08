@@ -51,7 +51,7 @@ const HandlingPage = () => {
     category: "",
     pickDate: new Date(),
     pickTime: "09:00",
-    passengers: 4,
+    passengers: 4, // Only used for Group categories
     flightNumber: "",
     travelType: "Arrival",
     pickupArea: "",
@@ -306,7 +306,7 @@ const HandlingPage = () => {
     try {
       // Add to shopping cart
       await addToCart({
-        item_type: "airport_transfer",
+        item_type: "handling",
         service_name: `Handling Service - ${formData.passengerArea}`,
         price: totalPrice || 150000, // Use calculated total price or fallback
         details: {
@@ -315,7 +315,10 @@ const HandlingPage = () => {
           customerPhone: formData.phone,
           passengerArea: formData.passengerArea,
           category: formData.category,
-          passengers: formData.passengers,
+          // Only include passengers for Group categories
+          ...(formData.category.includes("Group") && {
+            passengers: formData.passengers,
+          }),
           pickupDate: format(formData.pickDate, "yyyy-MM-dd"),
           pickupTime: formData.pickTime,
           flightNumber: formData.flightNumber,

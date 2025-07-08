@@ -127,7 +127,6 @@ const CarsManagement = () => {
     tax_expiry: "",
     is_active: true,
     vehicle_type_id: "",
-    type: "",
   });
 
   const [uploadLoading, setUploadLoading] = useState({

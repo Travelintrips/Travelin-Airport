@@ -189,7 +189,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     let timeoutId: NodeJS.Timeout;
     let tabActivationTimeout: NodeJS.Timeout;
     let lastVisibilityTime = 0;
-    const VISIBILITY_COOLDOWN = 2000; // 2 second cooldown
+    const VISIBILITY_COOLDOWN = 1000; // Reduced to 1 second cooldown
 
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
@@ -203,52 +203,30 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
         lastVisibilityTime = now;
 
         console.log(
-          "[ShoppingCart] Tab became visible, setting recently activated flag",
+          "[ShoppingCart] Tab became visible, refreshing cart immediately",
         );
-
-        // Set tab recently activated flag to prevent immediate loading issues
-        setIsTabRecentlyActivated(true);
 
         // Clear any existing timeouts
         if (timeoutId) clearTimeout(timeoutId);
         if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
 
-        // Reset the recently activated flag after 2 seconds
-        tabActivationTimeout = setTimeout(() => {
-          console.log("[ShoppingCart] Clearing recently activated flag");
-          setIsTabRecentlyActivated(false);
-        }, 2000);
+        // Immediately try to refresh cart data without waiting
+        try {
+          // Always try to refresh cart data when tab becomes visible
+          console.log("[ShoppingCart] Refreshing cart data on tab focus");
+          await refetchCartData();
 
-        console.log("[ShoppingCart] Tab became visible, refreshing cart", {
-          isAuthenticated,
-          userId: !!userId,
-          userRole,
-        });
-
-        // Simple timeout with quick cart refresh - but wait for session to stabilize
-        timeoutId = setTimeout(async () => {
-          try {
-            // Only refresh if we have authentication or stored user data
-            const storedUser = localStorage.getItem("auth_user");
-            const storedUserId = localStorage.getItem("userId");
-
-            if (isAuthenticated && userId) {
-              console.log("[ShoppingCart] Authenticated user, refreshing cart");
-              await refetchCartData();
-            } else if (storedUser && storedUserId) {
-              console.log("[ShoppingCart] Found stored user, refreshing cart");
-              await refetchCartData();
-            } else {
-              console.log("[ShoppingCart] No user data, skipping refresh");
-              // Force show content if no user data to prevent infinite loading
-              setForceShowContent(true);
-            }
-          } catch (error) {
-            console.error("[ShoppingCart] Error refreshing cart:", error);
-            // Force show content on error to prevent infinite loading
-            setForceShowContent(true);
-          }
-        }, 1000); // Increased timeout to allow session to stabilize
+          // Reset any loading states that might be stuck
+          setForceShowContent(false);
+          setShowReloadButton(false);
+        } catch (error) {
+          console.error(
+            "[ShoppingCart] Error refreshing cart on tab focus:",
+            error,
+          );
+          // Force show content on error to prevent infinite loading
+          setForceShowContent(true);
+        }
       }
     };
 
@@ -256,9 +234,9 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     const handleSessionRestored = async () => {
       console.log("[ShoppingCart] Session restored, refreshing cart");
       try {
-        // Reset tab activation flag when session is restored
-        setIsTabRecentlyActivated(false);
         await refetchCartData();
+        setForceShowContent(false);
+        setShowReloadButton(false);
       } catch (error) {
         console.error(
           "[ShoppingCart] Error refreshing cart after session restore:",
@@ -280,7 +258,43 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     };
   }, [isAuthenticated, userId, userRole, refetchCartData]);
 
-  // Effect for managing loading timeouts and force content display
+  // Effect for managing loading timeouts and force content display - MOVED TO TOP LEVEL
+  React.useEffect(() => {
+    let loadingTimeout: NodeJS.Timeout;
+    let forceTimeout: NodeJS.Timeout;
+
+    // Show reload button if loading persists for more than 2 seconds
+    const shouldShowLoading =
+      isLoading && cartItems.length === 0 && !isTabRecentlyActivated;
+
+    if (shouldShowLoading) {
+      loadingTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Loading timeout reached, showing reload button",
+        );
+        setShowReloadButton(true);
+      }, 2000); // Reduced to 2 seconds
+
+      // Force show content after 4 seconds to prevent infinite loading
+      forceTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Force timeout reached, showing content anyway",
+        );
+        setForceShowContent(true);
+        setShowReloadButton(false);
+      }, 4000); // Reduced to 4 seconds
+    } else {
+      setShowReloadButton(false);
+      if (!isLoading) {
+        setForceShowContent(false);
+      }
+    }
+
+    return () => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+      if (forceTimeout) clearTimeout(forceTimeout);
+    };
+  }, [isLoading, cartItems.length, isTabRecentlyActivated]);
 
   // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
   if (!isHydrated || authLoading) {
@@ -339,6 +353,8 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
         return "Baggage";
       case "airport_transfer":
         return "Airport Transfer";
+      case "handling":
+        return "Handling";
       case "car":
         return "Car Rental";
       default:
@@ -439,43 +455,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     );
   }
 
-  React.useEffect(() => {
-    let loadingTimeout: NodeJS.Timeout;
-    let forceTimeout: NodeJS.Timeout;
-
-    // Show reload button if loading persists for more than 3 seconds
-    const shouldShowLoading =
-      isLoading && cartItems.length === 0 && !isTabRecentlyActivated;
-
-    if (shouldShowLoading) {
-      loadingTimeout = setTimeout(() => {
-        console.log(
-          "[ShoppingCart] Loading timeout reached, showing reload button",
-        );
-        setShowReloadButton(true);
-      }, 3000); // Increased to 3 seconds
-
-      // Force show content after 6 seconds to prevent infinite loading
-      forceTimeout = setTimeout(() => {
-        console.log(
-          "[ShoppingCart] Force timeout reached, showing content anyway",
-        );
-        setForceShowContent(true);
-        setShowReloadButton(false);
-      }, 6000); // Increased to 6 seconds
-    } else {
-      setShowReloadButton(false);
-      if (!isLoading) {
-        setForceShowContent(false);
-      }
-    }
-
-    return () => {
-      if (loadingTimeout) clearTimeout(loadingTimeout);
-      if (forceTimeout) clearTimeout(forceTimeout);
-    };
-  }, [isLoading, cartItems.length, isTabRecentlyActivated]);
-
   // Show loading only when cart is actually loading and we have no items
   // But don't show loading if we have stored user data (fallback available) or tab was recently activated
   const hasStoredUserData =
@@ -486,8 +465,8 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     cartItems.length === 0 &&
     !authLoading &&
     !isCheckingSession &&
-    !isTabRecentlyActivated &&
-    !hasStoredUserData;
+    !isTabRecentlyActivated;
+  // Removed hasStoredUserData check to allow loading even with stored data
 
   if (shouldShowLoadingScreen) {
     return (
@@ -542,10 +521,627 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
             </div>
 
             <div className="space-y-6">
-              {isLoading &&
-              cartItems.length === 0 &&
-              !isTabRecentlyActivated &&
-              !forceShowContent ? (
+              {/* Always show cart items if they exist, regardless of loading state */}
+              {cartItems.length > 0 ? (
+                <>
+                  <div className="space-y-4">
+                    {cartItems.map((item) => {
+                      // Debug log to see the actual item_type
+                      console.log("Cart item:", {
+                        id: item.id,
+                        item_type: item.item_type,
+                        service_name: item.service_name,
+                      });
+
+                      return (
+                        <Card key={item.id} className="p-6">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Badge variant="outline">
+                                  {getItemTypeLabel(item.item_type)}
+                                </Badge>
+                                {item.status && (
+                                  <Badge
+                                    variant={
+                                      item.status === "paid"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-xs"
+                                  >
+                                    {item.status}
+                                  </Badge>
+                                )}
+                              </div>
+                              <h3 className="font-medium text-lg">
+                                {item.service_name}
+                              </h3>
+
+                              {/* Baggage Details Information - Enhanced display */}
+                              {item.item_type === "baggage" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing item details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Customer Information */}
+                                      {parsedDetails.customer_name && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Customer:
+                                          </span>{" "}
+                                          {parsedDetails.customer_name}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customer_email && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Email:
+                                          </span>{" "}
+                                          {parsedDetails.customer_email}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customer_phone && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Phone:
+                                          </span>{" "}
+                                          {parsedDetails.customer_phone}
+                                        </p>
+                                      )}
+
+                                      {/* Baggage Information */}
+                                      {parsedDetails.baggage_size && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Baggage Size:
+                                          </span>{" "}
+                                          {parsedDetails.baggage_size
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                            parsedDetails.baggage_size.slice(1)}
+                                        </p>
+                                      )}
+                                      {parsedDetails.item_name && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Item Name:
+                                          </span>{" "}
+                                          {parsedDetails.item_name}
+                                        </p>
+                                      )}
+                                      {parsedDetails.flight_number &&
+                                        parsedDetails.flight_number !== "-" && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              Flight Number:
+                                            </span>{" "}
+                                            {parsedDetails.flight_number}
+                                          </p>
+                                        )}
+
+                                      {/* Location Information */}
+                                      {parsedDetails.airport && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Airport:
+                                          </span>{" "}
+                                          {parsedDetails.airport}
+                                        </p>
+                                      )}
+                                      {parsedDetails.terminal && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Terminal:
+                                          </span>{" "}
+                                          {parsedDetails.terminal}
+                                        </p>
+                                      )}
+                                      {parsedDetails.storage_location && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Storage Location:
+                                          </span>{" "}
+                                          {parsedDetails.storage_location}
+                                        </p>
+                                      )}
+
+                                      {/* Duration and Time Information */}
+                                      {parsedDetails.duration && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Duration:
+                                          </span>{" "}
+                                          {parsedDetails.duration}{" "}
+                                          {parsedDetails.duration_type ===
+                                          "days"
+                                            ? "day(s)"
+                                            : "hour(s)"}
+                                        </p>
+                                      )}
+                                      {parsedDetails.start_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Start Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.start_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.start_time && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Start Time:
+                                          </span>{" "}
+                                          {parsedDetails.start_time}
+                                        </p>
+                                      )}
+                                      {parsedDetails.duration_type === "days" &&
+                                        parsedDetails.end_date && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              End Date:
+                                            </span>{" "}
+                                            {new Date(
+                                              parsedDetails.end_date,
+                                            ).toLocaleDateString("en-US", {
+                                              weekday: "short",
+                                              year: "numeric",
+                                              month: "short",
+                                              day: "numeric",
+                                            })}
+                                          </p>
+                                        )}
+                                      {parsedDetails.hours && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Hours:
+                                          </span>{" "}
+                                          {parsedDetails.hours}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Airport Transfer Information */}
+                              {item.item_type === "airport_transfer" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing airport transfer details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  const isInstantBooking =
+                                    parsedDetails.bookingType === "instant";
+                                  const isScheduleBooking =
+                                    parsedDetails.bookingType === "scheduled";
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Booking Code */}
+                                      {parsedDetails.bookingCode && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking Code:
+                                          </span>{" "}
+                                          {parsedDetails.bookingCode}
+                                        </p>
+                                      )}
+
+                                      {/* Booking Type */}
+                                      {parsedDetails.bookingType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking Type:
+                                          </span>{" "}
+                                          {parsedDetails.bookingType ===
+                                          "instant"
+                                            ? "Instant Booking"
+                                            : "Schedule Booking"}
+                                        </p>
+                                      )}
+
+                                      {/* Vehicle Type - for both booking types */}
+                                      {parsedDetails.vehicleType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Vehicle Type:
+                                          </span>{" "}
+                                          {parsedDetails.vehicleType}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup Date and Time - for both booking types */}
+                                      {parsedDetails.pickupDate && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.pickupDate,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.pickupTime && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickupTime}
+                                        </p>
+                                      )}
+
+                                      {/* Driver Information */}
+                                      {parsedDetails.driverName && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.driverName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Driver ID */}
+                                      {(parsedDetails.id_driver ||
+                                        parsedDetails.driverId) && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver ID:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.id_driver ||
+                                              parsedDetails.driverId}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Driver Phone */}
+                                      {parsedDetails.driverPhone && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver Phone:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.driverPhone}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Vehicle Information */}
+                                      {parsedDetails.vehicleName && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Vehicle:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.vehicleName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {parsedDetails.vehiclePlate && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            License Plate:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.vehiclePlate}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Passengers */}
+                                      {parsedDetails.passenger && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Passengers:
+                                          </span>{" "}
+                                          {parsedDetails.passenger}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup and Dropoff Locations */}
+                                      {parsedDetails.fromAddress && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup:
+                                          </span>{" "}
+                                          {parsedDetails.fromAddress}
+                                        </p>
+                                      )}
+                                      {parsedDetails.toAddress && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Dropoff:
+                                          </span>{" "}
+                                          {parsedDetails.toAddress}
+                                        </p>
+                                      )}
+
+                                      {/* Distance */}
+                                      {parsedDetails.distance && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Distance:
+                                          </span>{" "}
+                                          {parsedDetails.distance} km
+                                        </p>
+                                      )}
+
+                                      {/* Duration */}
+                                      {parsedDetails.duration && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Duration:
+                                          </span>{" "}
+                                          {parsedDetails.duration} minutes
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Handling Service Information */}
+                              {item.item_type === "handling" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing handling details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Category */}
+                                      {parsedDetails.category && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Category:
+                                          </span>{" "}
+                                          {parsedDetails.category}
+                                        </p>
+                                      )}
+
+                                      {/* Passengers - Only show for Group categories */}
+                                      {parsedDetails.passengers &&
+                                        parsedDetails.category &&
+                                        parsedDetails.category.includes(
+                                          "Group",
+                                        ) && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              Passengers:
+                                            </span>{" "}
+                                            {parsedDetails.passengers} orang
+                                          </p>
+                                        )}
+
+                                      {/* Pickup Date */}
+                                      {parsedDetails.pickupDate && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.pickupDate,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup Time */}
+                                      {parsedDetails.pickupTime && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickupTime}
+                                        </p>
+                                      )}
+
+                                      {/* Flight Number */}
+                                      {parsedDetails.flightNumber &&
+                                        parsedDetails.flightNumber !== "-" && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              Flight Number:
+                                            </span>{" "}
+                                            {parsedDetails.flightNumber}
+                                          </p>
+                                        )}
+
+                                      {/* Travel Type */}
+                                      {parsedDetails.travelType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Travel Type:
+                                          </span>{" "}
+                                          {parsedDetails.travelType}
+                                        </p>
+                                      )}
+
+                                      {/* Service Type */}
+                                      {parsedDetails.serviceType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Service Type:
+                                          </span>{" "}
+                                          {parsedDetails.serviceType}
+                                        </p>
+                                      )}
+
+                                      {/* Additional Notes */}
+                                      {parsedDetails.additionalNotes && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Additional Notes:
+                                          </span>{" "}
+                                          {parsedDetails.additionalNotes}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Car Rental Information */}
+                              {item.item_type === "car" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing car details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {parsedDetails.start_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.start_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.end_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Return Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.end_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.pickup_time && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickup_time}
+                                        </p>
+                                      )}
+                                      {parsedDetails.driver_option && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Driver Option:
+                                          </span>{" "}
+                                          {parsedDetails.driver_option ===
+                                          "self"
+                                            ? "Self-drive"
+                                            : "With Driver"}
+                                        </p>
+                                      )}
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs"
+                                      >
+                                        Booking ID: {item.item_id}
+                                      </Badge>
+                                    </div>
+                                  );
+                                })()}
+
+                              <p className="text-2xl font-semibold text-primary mt-2">
+                                {formatCurrency(item.price)}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleRemoveItem(item.id)}
+                              disabled={!isAuthenticated || !userId}
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex justify-between items-center text-xl font-semibold bg-gray-50 p-4 rounded-lg">
+                    <span>Total:</span>
+                    <span className="text-primary">
+                      {formatCurrency(totalAmount)}
+                    </span>
+                  </div>
+                </>
+              ) : isLoading && !forceShowContent ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <span className="ml-3 text-lg">Loading cart...</span>
@@ -571,7 +1167,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                     </Button>
                   )}
                 </div>
-              ) : cartItems.length === 0 ? (
+              ) : (
                 <div className="text-center py-12">
                   <CartIcon className="h-16 w-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
                   <p className="text-xl font-medium text-muted-foreground mb-2">
@@ -612,492 +1208,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-4">
-                    {cartItems.map((item) => (
-                      <Card key={item.id} className="p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Badge variant="outline">
-                                {getItemTypeLabel(item.item_type)}
-                              </Badge>
-                              {item.status && (
-                                <Badge
-                                  variant={
-                                    item.status === "paid"
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                  className="text-xs"
-                                >
-                                  {item.status}
-                                </Badge>
-                              )}
-                            </div>
-                            <h3 className="font-medium text-lg">
-                              {item.service_name}
-                            </h3>
-
-                            {/* Baggage Details Information - Enhanced display */}
-                            {item.item_type === "baggage" &&
-                              item.details &&
-                              (() => {
-                                // Parse details if it's a JSON string, otherwise use as object
-                                let parsedDetails = item.details;
-                                if (typeof item.details === "string") {
-                                  try {
-                                    parsedDetails = JSON.parse(item.details);
-                                  } catch (error) {
-                                    console.error(
-                                      "Error parsing item details JSON:",
-                                      error,
-                                    );
-                                    parsedDetails = item.details;
-                                  }
-                                }
-
-                                return (
-                                  <div className="mt-3 space-y-1">
-                                    {/* Customer Information */}
-                                    {parsedDetails.customer_name && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Customer:
-                                        </span>{" "}
-                                        {parsedDetails.customer_name}
-                                      </p>
-                                    )}
-                                    {parsedDetails.customer_email && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Email:
-                                        </span>{" "}
-                                        {parsedDetails.customer_email}
-                                      </p>
-                                    )}
-                                    {parsedDetails.customer_phone && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Phone:
-                                        </span>{" "}
-                                        {parsedDetails.customer_phone}
-                                      </p>
-                                    )}
-
-                                    {/* Baggage Information */}
-                                    {parsedDetails.baggage_size && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Baggage Size:
-                                        </span>{" "}
-                                        {parsedDetails.baggage_size
-                                          .charAt(0)
-                                          .toUpperCase() +
-                                          parsedDetails.baggage_size.slice(1)}
-                                      </p>
-                                    )}
-                                    {parsedDetails.item_name && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Item Name:
-                                        </span>{" "}
-                                        {parsedDetails.item_name}
-                                      </p>
-                                    )}
-                                    {parsedDetails.flight_number &&
-                                      parsedDetails.flight_number !== "-" && (
-                                        <p className="text-sm text-gray-600">
-                                          <span className="font-medium">
-                                            Flight Number:
-                                          </span>{" "}
-                                          {parsedDetails.flight_number}
-                                        </p>
-                                      )}
-
-                                    {/* Location Information */}
-                                    {parsedDetails.airport && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Airport:
-                                        </span>{" "}
-                                        {parsedDetails.airport}
-                                      </p>
-                                    )}
-                                    {parsedDetails.terminal && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Terminal:
-                                        </span>{" "}
-                                        {parsedDetails.terminal}
-                                      </p>
-                                    )}
-                                    {parsedDetails.storage_location && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Storage Location:
-                                        </span>{" "}
-                                        {parsedDetails.storage_location}
-                                      </p>
-                                    )}
-
-                                    {/* Duration and Time Information */}
-                                    {parsedDetails.duration && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Duration:
-                                        </span>{" "}
-                                        {parsedDetails.duration}{" "}
-                                        {parsedDetails.duration_type === "days"
-                                          ? "day(s)"
-                                          : "hour(s)"}
-                                      </p>
-                                    )}
-                                    {parsedDetails.start_date && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Start Date:
-                                        </span>{" "}
-                                        {new Date(
-                                          parsedDetails.start_date,
-                                        ).toLocaleDateString("en-US", {
-                                          weekday: "short",
-                                          year: "numeric",
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
-                                      </p>
-                                    )}
-                                    {parsedDetails.start_time && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Start Time:
-                                        </span>{" "}
-                                        {parsedDetails.start_time}
-                                      </p>
-                                    )}
-                                    {parsedDetails.duration_type === "days" &&
-                                      parsedDetails.end_date && (
-                                        <p className="text-sm text-gray-600">
-                                          <span className="font-medium">
-                                            End Date:
-                                          </span>{" "}
-                                          {new Date(
-                                            parsedDetails.end_date,
-                                          ).toLocaleDateString("en-US", {
-                                            weekday: "short",
-                                            year: "numeric",
-                                            month: "short",
-                                            day: "numeric",
-                                          })}
-                                        </p>
-                                      )}
-                                    {parsedDetails.hours && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Hours:
-                                        </span>{" "}
-                                        {parsedDetails.hours}
-                                      </p>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-
-                            {/* Airport Transfer Information */}
-                            {item.item_type === "airport_transfer" &&
-                              item.details &&
-                              (() => {
-                                // Parse details if it's a JSON string, otherwise use as object
-                                let parsedDetails = item.details;
-                                if (typeof item.details === "string") {
-                                  try {
-                                    parsedDetails = JSON.parse(item.details);
-                                  } catch (error) {
-                                    console.error(
-                                      "Error parsing airport transfer details JSON:",
-                                      error,
-                                    );
-                                    parsedDetails = item.details;
-                                  }
-                                }
-
-                                const isInstantBooking =
-                                  parsedDetails.bookingType === "instant";
-                                const isScheduleBooking =
-                                  parsedDetails.bookingType === "scheduled";
-
-                                return (
-                                  <div className="mt-3 space-y-1">
-                                    {/* Booking Code */}
-                                    {parsedDetails.bookingCode && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Booking Code:
-                                        </span>{" "}
-                                        {parsedDetails.bookingCode}
-                                      </p>
-                                    )}
-
-                                    {/* Booking Type */}
-                                    {parsedDetails.bookingType && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Booking Type:
-                                        </span>{" "}
-                                        {parsedDetails.bookingType === "instant"
-                                          ? "Instant Booking"
-                                          : "Schedule Booking"}
-                                      </p>
-                                    )}
-
-                                    {/* Vehicle Type - for both booking types */}
-                                    {parsedDetails.vehicleType && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Vehicle Type:
-                                        </span>{" "}
-                                        {parsedDetails.vehicleType}
-                                      </p>
-                                    )}
-
-                                    {/* Pickup Date and Time - for both booking types */}
-                                    {parsedDetails.pickupDate && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Pickup Date:
-                                        </span>{" "}
-                                        {new Date(
-                                          parsedDetails.pickupDate,
-                                        ).toLocaleDateString("en-US", {
-                                          weekday: "short",
-                                          year: "numeric",
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
-                                      </p>
-                                    )}
-                                    {parsedDetails.pickupTime && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Pickup Time:
-                                        </span>{" "}
-                                        {parsedDetails.pickupTime}
-                                      </p>
-                                    )}
-
-                                    {/* Driver Information */}
-                                    {parsedDetails.driverName && (
-                                      <div className="flex justify-between">
-                                        <span className="font-medium text-gray-600">
-                                          Driver:
-                                        </span>
-                                        <span>{parsedDetails.driverName}</span>
-                                      </div>
-                                    )}
-
-                                    {/* Driver ID */}
-                                    {(parsedDetails.id_driver ||
-                                      parsedDetails.driverId) && (
-                                      <div className="flex justify-between">
-                                        <span className="font-medium text-gray-600">
-                                          Driver ID:
-                                        </span>
-                                        <span>
-                                          {parsedDetails.id_driver ||
-                                            parsedDetails.driverId}
-                                        </span>
-                                      </div>
-                                    )}
-
-                                    {/* Driver Phone */}
-                                    {parsedDetails.driverPhone && (
-                                      <div className="flex justify-between">
-                                        <span className="font-medium text-gray-600">
-                                          Driver Phone:
-                                        </span>
-                                        <span>{parsedDetails.driverPhone}</span>
-                                      </div>
-                                    )}
-
-                                    {/* Vehicle Information */}
-                                    {parsedDetails.vehicleName && (
-                                      <div className="flex justify-between">
-                                        <span className="font-medium text-gray-600">
-                                          Vehicle:
-                                        </span>
-                                        <span>{parsedDetails.vehicleName}</span>
-                                      </div>
-                                    )}
-
-                                    {parsedDetails.vehiclePlate && (
-                                      <div className="flex justify-between">
-                                        <span className="font-medium text-gray-600">
-                                          License Plate:
-                                        </span>
-                                        <span>
-                                          {parsedDetails.vehiclePlate}
-                                        </span>
-                                      </div>
-                                    )}
-
-                                    {/* Passengers */}
-                                    {parsedDetails.passenger && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Passengers:
-                                        </span>{" "}
-                                        {parsedDetails.passenger}
-                                      </p>
-                                    )}
-
-                                    {/* Pickup and Dropoff Locations */}
-                                    {parsedDetails.fromAddress && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Pickup:
-                                        </span>{" "}
-                                        {parsedDetails.fromAddress}
-                                      </p>
-                                    )}
-                                    {parsedDetails.toAddress && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Dropoff:
-                                        </span>{" "}
-                                        {parsedDetails.toAddress}
-                                      </p>
-                                    )}
-
-                                    {/* Distance */}
-                                    {parsedDetails.distance && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Distance:
-                                        </span>{" "}
-                                        {parsedDetails.distance} km
-                                      </p>
-                                    )}
-
-                                    {/* Duration */}
-                                    {parsedDetails.duration && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Duration:
-                                        </span>{" "}
-                                        {parsedDetails.duration} minutes
-                                      </p>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-
-                            {/* Car Rental Information */}
-                            {item.item_type === "car" &&
-                              item.details &&
-                              (() => {
-                                // Parse details if it's a JSON string, otherwise use as object
-                                let parsedDetails = item.details;
-                                if (typeof item.details === "string") {
-                                  try {
-                                    parsedDetails = JSON.parse(item.details);
-                                  } catch (error) {
-                                    console.error(
-                                      "Error parsing car details JSON:",
-                                      error,
-                                    );
-                                    parsedDetails = item.details;
-                                  }
-                                }
-
-                                return (
-                                  <div className="mt-3 space-y-1">
-                                    {parsedDetails.start_date && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Pickup Date:
-                                        </span>{" "}
-                                        {new Date(
-                                          parsedDetails.start_date,
-                                        ).toLocaleDateString("en-US", {
-                                          weekday: "short",
-                                          year: "numeric",
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
-                                      </p>
-                                    )}
-                                    {parsedDetails.end_date && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Return Date:
-                                        </span>{" "}
-                                        {new Date(
-                                          parsedDetails.end_date,
-                                        ).toLocaleDateString("en-US", {
-                                          weekday: "short",
-                                          year: "numeric",
-                                          month: "short",
-                                          day: "numeric",
-                                        })}
-                                      </p>
-                                    )}
-                                    {parsedDetails.pickup_time && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Pickup Time:
-                                        </span>{" "}
-                                        {parsedDetails.pickup_time}
-                                      </p>
-                                    )}
-                                    {parsedDetails.driver_option && (
-                                      <p className="text-sm text-gray-600">
-                                        <span className="font-medium">
-                                          Driver Option:
-                                        </span>{" "}
-                                        {parsedDetails.driver_option === "self"
-                                          ? "Self-drive"
-                                          : "With Driver"}
-                                      </p>
-                                    )}
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs"
-                                    >
-                                      Booking ID: {item.item_id}
-                                    </Badge>
-                                  </div>
-                                );
-                              })()}
-
-                            <p className="text-2xl font-semibold text-primary mt-2">
-                              {formatCurrency(item.price)}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleRemoveItem(item.id)}
-                            disabled={!isAuthenticated || !userId}
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex justify-between items-center text-xl font-semibold bg-gray-50 p-4 rounded-lg">
-                    <span>Total:</span>
-                    <span className="text-primary">
-                      {formatCurrency(totalAmount)}
-                    </span>
-                  </div>
-                </>
               )}
             </div>
 

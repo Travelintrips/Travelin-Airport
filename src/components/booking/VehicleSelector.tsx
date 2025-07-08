@@ -178,7 +178,6 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
               ? vehicleTypeData.name
               : undefined,
             license_plate: car.license_plate || "",
-            isWithDriver: car.is_with_driver || false,
           };
         });
 
@@ -444,19 +443,9 @@ const VehicleSelector: React.FC<VehicleSelectorProps> = ({
                       </div>
                       <Badge
                         variant={vehicle.available ? "default" : "outline"}
-                        className={
-                          vehicle.available
-                            ? vehicle.isWithDriver
-                              ? "bg-yellow-500" // Warna beda untuk with driver
-                              : "bg-green-500"
-                            : ""
-                        }
+                        className={vehicle.available ? "bg-green-500" : ""}
                       >
-                        {vehicle.available
-                          ? vehicle.isWithDriver
-                            ? "Available - With Driver"
-                            : "Available"
-                          : "Unavailable"}
+                        {vehicle.available ? "Available" : "Unavailable"}
                       </Badge>
                     </div>
                   </CardHeader>

@@ -209,6 +209,7 @@ const DriverManagement = () => {
         kk_url: "",
         stnk_expiry: "",
         reference_phone: "",
+        role_id: null,
       });
     } catch (error) {
       console.error("Error adding driver:", error);
@@ -359,6 +360,7 @@ const DriverManagement = () => {
       kk_url: driver.kk_url || "",
       stnk_expiry: driver.stnk_expiry || "",
       reference_phone: driver.reference_phone || "",
+      role_id: null,
     });
     setIsSubmitting(false);
     setIsEditDialogOpen(true);

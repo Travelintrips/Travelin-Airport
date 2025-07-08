@@ -69,7 +69,7 @@ const UserDashboard = () => {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
   // Store the setCapturedImage function in the static property
-  UserDashboard.setCapturedImage = setCapturedImage;
+  (UserDashboard as any).setCapturedImage = setCapturedImage;
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);

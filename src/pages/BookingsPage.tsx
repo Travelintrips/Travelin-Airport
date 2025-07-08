@@ -227,6 +227,10 @@ const BookingsPage = () => {
   }
 
   // Show fallback UI if session is not ready after timeout
+  // Check if we have stored auth data
+  const hasStoredAuth =
+    localStorage.getItem("auth_user") && localStorage.getItem("userId");
+
   if (!isSessionReady && !isAuthenticated && !hasStoredAuth) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -250,8 +254,6 @@ const BookingsPage = () => {
 
   // Check if we should show auth modal or dashboard
   const shouldShowDashboard = isAuthenticated && userId;
-  const hasStoredAuth =
-    localStorage.getItem("auth_user") && localStorage.getItem("userId");
 
   // Show dashboard if authenticated or has stored auth
   if (shouldShowDashboard || hasStoredAuth) {

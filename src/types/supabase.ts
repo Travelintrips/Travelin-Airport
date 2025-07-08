@@ -2154,19 +2154,23 @@ export type Database = {
       handling_bookings: {
         Row: {
           additional_notes: string | null
+          booking_id: string | null
           category: string
           category_price: number | null
           created_at: string | null
           customer_email: string
+          customer_id: string | null
           customer_name: string
           customer_phone: string
           flight_number: string
           id: string
           passenger_area: string
           passengers: number | null
+          payment_id: string | null
           pickup_area: string
           pickup_date: string
           pickup_time: string
+          price: string | null
           service_price: number | null
           status: string | null
           total_price: number
@@ -2176,19 +2180,23 @@ export type Database = {
         }
         Insert: {
           additional_notes?: string | null
+          booking_id?: string | null
           category: string
           category_price?: number | null
           created_at?: string | null
           customer_email: string
+          customer_id?: string | null
           customer_name: string
           customer_phone: string
           flight_number: string
           id?: string
           passenger_area: string
           passengers?: number | null
+          payment_id?: string | null
           pickup_area: string
           pickup_date: string
           pickup_time?: string
+          price?: string | null
           service_price?: number | null
           status?: string | null
           total_price: number
@@ -2198,19 +2206,23 @@ export type Database = {
         }
         Update: {
           additional_notes?: string | null
+          booking_id?: string | null
           category?: string
           category_price?: number | null
           created_at?: string | null
           customer_email?: string
+          customer_id?: string | null
           customer_name?: string
           customer_phone?: string
           flight_number?: string
           id?: string
           passenger_area?: string
           passengers?: number | null
+          payment_id?: string | null
           pickup_area?: string
           pickup_date?: string
           pickup_time?: string
+          price?: string | null
           service_price?: number | null
           status?: string | null
           total_price?: number
@@ -3482,9 +3494,10 @@ export type Database = {
           id: string
           item_id: string | null
           item_type: string | null
+          payment_status: string | null
           price: number | null
           service_name: string | null
-          status: string | null
+          status_cart: string | null
           user_id: string | null
         }
         Insert: {
@@ -3493,9 +3506,10 @@ export type Database = {
           id?: string
           item_id?: string | null
           item_type?: string | null
+          payment_status?: string | null
           price?: number | null
           service_name?: string | null
-          status?: string | null
+          status_cart?: string | null
           user_id?: string | null
         }
         Update: {
@@ -3504,9 +3518,10 @@ export type Database = {
           id?: string
           item_id?: string | null
           item_type?: string | null
+          payment_status?: string | null
           price?: number | null
           service_name?: string | null
-          status?: string | null
+          status_cart?: string | null
           user_id?: string | null
         }
         Relationships: []

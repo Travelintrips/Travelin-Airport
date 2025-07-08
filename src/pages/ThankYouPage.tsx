@@ -59,7 +59,14 @@ interface BookingDetails {
   type?: string;
   // Car rental specific fields
   driver_option?: string;
-  booking_type?: "baggage" | "airport_transfer" | "car_rental";
+  // Handling specific fields
+  category?: string;
+  pickup_area?: string;
+  passenger_area?: string;
+  travel_type?: string;
+  passengers?: number;
+  additional_notes?: string;
+  booking_type?: "baggage" | "airport_transfer" | "car_rental" | "handling";
 }
 
 const ThankYouPage: React.FC = () => {
@@ -177,6 +184,42 @@ const ThankYouPage: React.FC = () => {
                   console.error(
                     "Error fetching airport transfer booking:",
                     transferError,
+                  );
+                }
+              } else if (booking_type === "handling") {
+                console.log("Fetching handling booking:", booking_id);
+
+                const { data: handlingBooking, error: handlingError } =
+                  await supabase
+                    .from("handling_bookings")
+                    .select("*")
+                    .eq("id", booking_id)
+                    .single();
+
+                if (!handlingError && handlingBooking) {
+                  allBookings.push({
+                    booking_id: handlingBooking.id,
+                    customer_name: handlingBooking.customer_name || "Guest",
+                    customer_email: handlingBooking.customer_email || "",
+                    customer_phone: handlingBooking.customer_phone || "",
+                    item_name: `Handling Service - ${handlingBooking.pickup_area} - ${handlingBooking.passenger_area}`,
+                    price: handlingBooking.total_price || 0,
+                    category: handlingBooking.category,
+                    pickup_area: handlingBooking.pickup_area,
+                    passenger_area: handlingBooking.passenger_area,
+                    travel_type: handlingBooking.travel_type,
+                    passengers: handlingBooking.passengers,
+                    pickup_date: handlingBooking.pickup_date,
+                    pickup_time: handlingBooking.pickup_time,
+                    flight_number: handlingBooking.flight_number,
+                    additional_notes: handlingBooking.additional_notes,
+                    status: handlingBooking.status || "confirmed",
+                    booking_type: "handling" as const,
+                  });
+                } else {
+                  console.error(
+                    "Error fetching handling booking:",
+                    handlingError,
                   );
                 }
               } else if (
@@ -757,6 +800,104 @@ const ThankYouPage: React.FC = () => {
                           </>
                         )}
 
+                        {/* Handling Service Details */}
+                        {booking.booking_type === "handling" && (
+                          <>
+                            {booking.category && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Category
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.category}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.pickup_area && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Pickup Area
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.pickup_area}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.passenger_area && (
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Passenger Area
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.passenger_area}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.travel_type && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Travel Type
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.travel_type}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.passengers && (
+                              <div className="flex items-center gap-2">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Passengers
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.passengers} person(s)
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {booking.flight_number &&
+                              booking.flight_number !== "-" && (
+                                <div className="flex items-center gap-2">
+                                  <Car className="h-4 w-4 text-gray-500" />
+                                  <div>
+                                    <p className="text-xs text-gray-600">
+                                      Flight Number
+                                    </p>
+                                    <p className="text-sm font-medium">
+                                      {booking.flight_number}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+                            {booking.additional_notes && (
+                              <div className="flex items-center gap-2 col-span-full">
+                                <Car className="h-4 w-4 text-gray-500" />
+                                <div>
+                                  <p className="text-xs text-gray-600">
+                                    Additional Notes
+                                  </p>
+                                  <p className="text-sm font-medium">
+                                    {booking.additional_notes}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+
                         {/* Airport Transfer Details */}
                         {booking.booking_type === "airport_transfer" && (
                           <>
@@ -931,7 +1072,8 @@ const ThankYouPage: React.FC = () => {
                         {/* Common Date/Time Fields - Only show if not already shown in booking type specific section */}
                         {(booking.start_date || booking.pickup_date) &&
                           booking.booking_type !== "airport_transfer" &&
-                          booking.booking_type !== "car_rental" && (
+                          booking.booking_type !== "car_rental" &&
+                          booking.booking_type !== "handling" && (
                             <div className="flex items-center gap-2">
                               <Calendar className="h-4 w-4 text-gray-500" />
                               <div>
@@ -955,7 +1097,8 @@ const ThankYouPage: React.FC = () => {
                           )}
                         {(booking.start_time || booking.pickup_time) &&
                           booking.booking_type !== "airport_transfer" &&
-                          booking.booking_type !== "car_rental" && (
+                          booking.booking_type !== "car_rental" &&
+                          booking.booking_type !== "handling" && (
                             <div className="flex items-center gap-2">
                               <Clock className="h-4 w-4 text-gray-500" />
                               <div>

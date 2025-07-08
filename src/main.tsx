@@ -6,15 +6,22 @@ import { BrowserRouter } from "react-router-dom";
 import "./lib/i18n";
 import { supabase } from "./lib/supabase";
 
-import { TempoDevtools } from "tempo-devtools";
+// Initialize TempoDevtools conditionally
+const initializeTempoDevtools = async () => {
+  try {
+    if (import.meta.env.VITE_TEMPO && typeof window !== "undefined") {
+      const { TempoDevtools } = await import("tempo-devtools");
+      if ((window as any).__REDUX_DEVTOOLS_EXTENSION__) {
+        TempoDevtools.init();
+      }
+    }
+  } catch (error) {
+    console.warn("TempoDevtools not available:", error);
+  }
+};
 
-// Inisialisasi TempoDevtools hanya jika Redux DevTools tersedia
-if (
-  typeof window !== "undefined" &&
-  (window as any).__REDUX_DEVTOOLS_EXTENSION__
-) {
-  TempoDevtools.init();
-}
+// Call the initialization function
+initializeTempoDevtools();
 
 // Removed redundant global auth listener to prevent repeated authentication checks
 

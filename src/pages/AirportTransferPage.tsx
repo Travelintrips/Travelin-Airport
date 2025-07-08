@@ -49,16 +49,20 @@ async function geocodeAddress(
 ): Promise<[number, number] | null> {
   if (!address || address.trim() === "") return null;
 
+  const MAPBOX_ACCESS_TOKEN =
+    "pk.eyJ1IjoidHJhdmVsaW50cmlwcyIsImEiOiJjbWNib2VqaWwwNzZoMmtvNmYxd3htbTFhIn0.9rFe8T88zhYh--wZDSumsQ";
+
   try {
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&limit=1`,
     );
     const data = await res.json();
-    if (data.length > 0) {
-      return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    if (data.features && data.features.length > 0) {
+      const [lng, lat] = data.features[0].center;
+      return [lat, lng];
     }
   } catch (err) {
-    console.error("Geocoding failed:", err);
+    console.error("Mapbox geocoding failed:", err);
   }
   return null;
 }
@@ -1674,9 +1678,9 @@ function AirportTransferPageContent() {
             distance: Math.round(Math.random() * 10 + 5), // 5-15 km
             eta: Math.round(Math.random() * 15 + 10), // 10-25 minutes
             // Add vehicle pricing data from database
-            price_km,
-            basic_price,
-            surcharge,
+            price_km: defaultValues.price_km,
+            basic_price: defaultValues.basic_price,
+            surcharge: defaultValues.surcharge,
             vehicle_type: formData.vehicleType,
           });
         }
@@ -2225,7 +2229,7 @@ Please prepare for the trip!`;
       // Import the createBooking function to send data to external API
       import("../lib/bookingApi").then(async ({ createBooking }) => {
         try {
-          const result = await createBooking(bookingData);
+          const result = await createBooking(bookingData as any);
           console.log("External API booking result:", result);
         } catch (apiError) {
           console.error("Failed to send booking to external API:", apiError);
@@ -2460,14 +2464,14 @@ Please prepare for the trip!`;
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-4 sm:pt-6">
                     <div className="text-center">
-                      <h4 className="text-sm font-medium text-gray-500">
+                      <h4 className="text-xs sm:text-sm font-medium text-gray-500">
                         Distance
                       </h4>
-                      <p className="text-2xl font-bold">
+                      <p className="text-lg sm:text-2xl font-bold">
                         {formData.distance.toFixed(1)} km
                       </p>
                     </div>
@@ -2475,12 +2479,12 @@ Please prepare for the trip!`;
                 </Card>
 
                 <Card>
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-4 sm:pt-6">
                     <div className="text-center">
-                      <h4 className="text-sm font-medium text-gray-500">
+                      <h4 className="text-xs sm:text-sm font-medium text-gray-500">
                         Duration
                       </h4>
-                      <p className="text-2xl font-bold">
+                      <p className="text-lg sm:text-2xl font-bold">
                         {formData.duration.toString()} min
                       </p>
                     </div>
@@ -2488,10 +2492,12 @@ Please prepare for the trip!`;
                 </Card>
               </div>
 
-              <h3 className="text-lg font-medium mt-6">Booking Type</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <h3 className="text-base sm:text-lg font-medium mt-4 sm:mt-6">
+                Booking Type
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
                 <div
-                  className={`border rounded-lg p-4 cursor-pointer transition-all ${bookingType === "instant" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                  className={`border rounded-lg p-3 sm:p-4 cursor-pointer transition-all ${bookingType === "instant" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
                   onClick={() => setBookingType("instant")}
                 >
                   <div className="flex items-center gap-2">
@@ -2499,8 +2505,10 @@ Please prepare for the trip!`;
                       className={`h-4 w-4 rounded-full border ${bookingType === "instant" ? "border-4 border-blue-500" : "border border-gray-300"}`}
                     ></div>
                     <div>
-                      <span className="font-medium">Instant Booking</span>
-                      <p className="text-sm text-gray-500">
+                      <span className="text-sm sm:text-base font-medium">
+                        Instant Booking
+                      </span>
+                      <p className="text-xs sm:text-sm text-gray-500">
                         Book for right now
                       </p>
                     </div>
@@ -2508,7 +2516,7 @@ Please prepare for the trip!`;
                 </div>
 
                 <div
-                  className={`border rounded-lg p-4 cursor-pointer transition-all ${bookingType === "scheduled" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
+                  className={`border rounded-lg p-3 sm:p-4 cursor-pointer transition-all ${bookingType === "scheduled" ? "border-blue-500 bg-blue-50" : "hover:border-gray-400"}`}
                   onClick={() => setBookingType("scheduled")}
                 >
                   <div className="flex items-center gap-2">
@@ -2516,17 +2524,23 @@ Please prepare for the trip!`;
                       className={`h-4 w-4 rounded-full border ${bookingType === "scheduled" ? "border-4 border-blue-500" : "border border-gray-300"}`}
                     ></div>
                     <div>
-                      <span className="font-medium">Schedule Booking</span>
-                      <p className="text-sm text-gray-500">Book for later</p>
+                      <span className="text-sm sm:text-base font-medium">
+                        Schedule Booking
+                      </span>
+                      <p className="text-xs sm:text-sm text-gray-500">
+                        Book for later
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Show vehicle types for both instant and scheduled booking */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium">Available Vehicle Types</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-3 sm:space-y-4">
+                <h3 className="text-base sm:text-lg font-medium">
+                  Available Vehicle Types
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {vehicleTypes.map((type) => {
                     // Calculate estimated price for this vehicle type
                     const calculateEstimatedPrice = () => {
@@ -2588,31 +2602,33 @@ Please prepare for the trip!`;
                           }));
                         }}
                       >
-                        <CardContent className="pt-6">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
-                                {getVehicleIcon()}
+                        <CardContent className="pt-4 sm:pt-6">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 sm:gap-3 flex-1">
+                              <div className="bg-blue-100 text-blue-600 p-1.5 sm:p-2 rounded-full">
+                                <Car className="h-5 w-5 sm:h-8 sm:w-8" />
                               </div>
-                              <div>
-                                <h4 className="font-medium">{type.name}</h4>
-                                <p className="text-sm text-gray-500">
+                              <div className="flex-1">
+                                <h4 className="text-sm sm:text-base font-medium">
+                                  {type.name}
+                                </h4>
+                                <p className="text-xs sm:text-sm text-gray-500">
                                   {formData.distance.toFixed(1)} km •{" "}
                                   {formData.duration.toString()} min
                                 </p>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-bold text-green-600">
+                            <div className="text-right flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                              <p className="text-sm sm:text-base font-bold text-green-600">
                                 {(() => {
                                   const price = calculateEstimatedPrice();
                                   return isNaN(price) || price <= 0
-                                    ? "Price calculating..."
+                                    ? "Calculating..."
                                     : `Rp ${price.toLocaleString()}`;
                                 })()}
                               </p>
                               {isSelected && (
-                                <CheckCircle className="h-5 w-5 text-blue-500 mt-1 ml-auto" />
+                                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-500" />
                               )}
                             </div>
                           </div>
@@ -2636,7 +2652,7 @@ Please prepare for the trip!`;
                       <span>Loading available vehicles...</span>
                     </div>
                   ) : availableVehiclesWithDrivers.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                       {availableVehiclesWithDrivers.map((vehicle) => {
                         const calculateVehiclePrice = () => {
                           if (formData.distance <= 0) return 0;
@@ -2703,31 +2719,31 @@ Please prepare for the trip!`;
                               }));
                             }}
                           >
-                            <CardContent className="pt-6">
+                            <CardContent className="pt-4 sm:pt-6">
                               <div className="space-y-3">
                                 {/* Vehicle Info */}
-                                <div className="flex items-center gap-3">
-                                  <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
-                                    <Car className="h-6 w-6" />
+                                <div className="flex items-center gap-2 sm:gap-3">
+                                  <div className="bg-blue-100 text-blue-600 p-1.5 sm:p-2 rounded-full">
+                                    <Car className="h-4 w-4 sm:h-6 sm:w-6" />
                                   </div>
-                                  <div className="flex-1">
-                                    <h4 className="font-semibold">
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm sm:text-base font-semibold truncate">
                                       {vehicle.make} {vehicle.model}
                                     </h4>
-                                    <p className="text-sm text-gray-500">
+                                    <p className="text-xs sm:text-sm text-gray-500">
                                       {vehicle.license_plate}
                                     </p>
                                   </div>
                                   {isSelected && (
-                                    <CheckCircle className="h-6 w-6 text-blue-500" />
+                                    <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-blue-500 flex-shrink-0" />
                                   )}
                                 </div>
 
                                 {/* Driver Info */}
-                                <div className="flex items-center gap-3 pl-11">
-                                  <UserCheck className="h-4 w-4 text-green-600" />
-                                  <div>
-                                    <p className="font-medium text-sm">
+                                <div className="flex items-center gap-2 sm:gap-3 pl-7 sm:pl-11">
+                                  <UserCheck className="h-3 w-3 sm:h-4 sm:w-4 text-green-600" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs sm:text-sm font-medium truncate">
                                       {vehicle.driver_name}
                                     </p>
                                     <p className="text-xs text-gray-500">
@@ -2737,15 +2753,15 @@ Please prepare for the trip!`;
                                 </div>
 
                                 {/* Price */}
-                                <div className="flex justify-between items-center pt-2 border-t">
-                                  <span className="text-sm text-gray-600">
+                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center pt-2 border-t gap-1">
+                                  <span className="text-xs sm:text-sm text-gray-600">
                                     Estimated Price:
                                   </span>
-                                  <span className="font-bold text-green-600">
+                                  <span className="text-sm sm:text-base font-bold text-green-600">
                                     {(() => {
                                       const price = calculateVehiclePrice();
                                       return isNaN(price) || price <= 0
-                                        ? "Price calculating..."
+                                        ? "Calculating..."
                                         : `Rp ${price.toLocaleString()}`;
                                     })()}
                                   </span>
@@ -2774,11 +2790,11 @@ Please prepare for the trip!`;
           </div>
         )}
 
-        <div className="space-y-4">
-          <h3 className="text-lg font-medium">Passengers</h3>
+        <div className="space-y-3 sm:space-y-4">
+          <h3 className="text-base sm:text-lg font-medium">Passengers</h3>
 
           {bookingType === "scheduled" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               {/* Pickup Date */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Pickup Date</label>
@@ -2793,9 +2809,9 @@ Please prepare for the trip!`;
                       }))
                     }
                     min={new Date().toISOString().split("T")[0]}
-                    className="pl-10"
+                    className="pl-8 sm:pl-10 text-sm sm:text-base"
                   />
-                  <Calendar className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                  <Calendar className="absolute left-2 sm:left-3 top-2.5 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                 </div>
               </div>
 
@@ -2812,15 +2828,15 @@ Please prepare for the trip!`;
                         pickupTime: e.target.value,
                       }))
                     }
-                    className="pl-10"
+                    className="pl-8 sm:pl-10 text-sm sm:text-base"
                   />
-                  <Clock className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                  <Clock className="absolute left-2 sm:left-3 top-2.5 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                 </div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4">
             {/* Passengers */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Passengers</label>
@@ -2836,9 +2852,9 @@ Please prepare for the trip!`;
                       passenger: parseInt(e.target.value),
                     }))
                   }
-                  className="pl-10"
+                  className="pl-8 sm:pl-10 text-sm sm:text-base"
                 />
-                <Users className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+                <Users className="absolute left-2 sm:left-3 top-2.5 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
               </div>
             </div>
           </div>
@@ -3412,71 +3428,81 @@ Please prepare for the trip!`;
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-blue-500 to-blue-700">
-      {/* Header with back button */}
-      <header className="p-4 flex flex-col sm:flex-row justify-between items-center gap-3 sm:gap-0">
+      {/* Header with back button - Mobile optimized */}
+      <header className="p-3 sm:p-4 flex flex-col sm:flex-row justify-between items-center gap-2 sm:gap-0">
         <Button
           variant="outline"
           onClick={() => navigate("/")}
-          className="bg-white/90 hover:bg-white"
+          className="bg-white/90 hover:bg-white text-sm sm:text-base w-full sm:w-auto"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           {t("common.back")}
         </Button>
-        <div className="flex gap-2">
-          <Button variant="outline" className="bg-white/90 hover:bg-white">
+        <div className="flex gap-2 w-full sm:w-auto justify-center">
+          <Button
+            variant="outline"
+            className="bg-white/90 hover:bg-white text-sm px-3 py-2"
+          >
             IDR
           </Button>
           <Button
             variant="outline"
-            className="bg-white/90 hover:bg-white flex items-center gap-1"
+            className="bg-white/90 hover:bg-white flex items-center gap-1 text-sm px-3 py-2"
           >
             <img
               src="https://flagcdn.com/w20/gb.png"
               alt="English"
-              className="h-4"
+              className="h-3 sm:h-4"
             />
             EN
           </Button>
         </div>
       </header>
 
-      {/* Hero section */}
-      <div className="text-center text-white px-4 py-6">
-        <h1 className="text-3xl md:text-4xl font-bold mb-2">
+      {/* Hero section - Mobile optimized */}
+      <div className="text-center text-white px-3 sm:px-4 py-4 sm:py-6">
+        <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-2 leading-tight">
           {t("airportTransfer.title", "Airport transfers made")}
         </h1>
-        <h2 className="text-2xl md:text-3xl font-bold mb-4">
+        <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold mb-4 leading-tight">
           {t("airportTransfer.subtitle", "surprisingly easy and enjoyable!")}
         </h2>
       </div>
 
-      {/* Main content */}
-      <div className="mx-auto w-full max-w-5xl px-4 pb-8 flex-1 flex flex-col">
-        <Card className="w-full">
-          <CardHeader>
+      {/* Main content - Mobile optimized */}
+      <div className="mx-auto w-full max-w-5xl px-2 sm:px-4 pb-4 sm:pb-8 flex-1 flex flex-col">
+        <Card className="w-full shadow-lg">
+          <CardHeader className="p-3 sm:p-6">
             <div className="w-full">
               {/* Progress bar */}
-              <div className="mb-4">
+              <div className="mb-3 sm:mb-4">
                 <Progress value={progressPercentage} className="h-2" />
               </div>
 
-              {/* Step indicators */}
-              <div className="flex justify-between">
+              {/* Step indicators - Mobile responsive */}
+              <div className="flex justify-between px-2">
                 {[1, 2, 3, 4].map((step) => (
                   <div
                     key={step}
                     className={`flex flex-col items-center ${currentStep >= step ? "text-blue-600" : "text-gray-400"}`}
                   >
                     <div
-                      className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-medium ${currentStep >= step ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"}`}
+                      className={`h-6 w-6 sm:h-8 sm:w-8 rounded-full flex items-center justify-center text-xs sm:text-sm font-medium ${currentStep >= step ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"}`}
                     >
                       {step}
                     </div>
-                    <span className="text-xs mt-1 hidden sm:block">
+                    <span className="text-xs mt-1 hidden sm:block text-center">
                       {step === 1 && "Location"}
                       {step === 2 && "Route & Driver"}
                       {step === 3 && "Confirm"}
                       {step === 4 && "Success"}
+                    </span>
+                    {/* Mobile step labels */}
+                    <span className="text-xs mt-1 block sm:hidden text-center leading-tight">
+                      {step === 1 && "Loc"}
+                      {step === 2 && "Route"}
+                      {step === 3 && "Conf"}
+                      {step === 4 && "Done"}
                     </span>
                   </div>
                 ))}
@@ -3484,35 +3510,48 @@ Please prepare for the trip!`;
             </div>
           </CardHeader>
 
-          <CardContent>{renderStepContent()}</CardContent>
+          <CardContent className="p-3 sm:p-6">
+            {renderStepContent()}
+          </CardContent>
 
           {currentStep < 4 && (
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0 p-3 sm:p-6">
               {currentStep > 1 ? (
                 <Button
                   variant="outline"
                   onClick={handlePrevStep}
                   disabled={isLoadingBooking}
+                  className="w-full sm:w-auto order-2 sm:order-1"
                 >
                   Back
                 </Button>
               ) : (
-                <div></div>
+                <div className="hidden sm:block"></div>
               )}
 
               <Button
                 onClick={handleNextStep}
                 disabled={!isCurrentStepValid() || isLoadingBooking}
-                className="min-w-[100px]"
+                className="min-w-[100px] w-full sm:w-auto order-1 sm:order-2"
               >
                 {isLoadingBooking ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {currentStep === 2 ? "Adding to Cart..." : "Loading..."}
+                    <span className="hidden sm:inline">
+                      {currentStep === 2 ? "Adding to Cart..." : "Loading..."}
+                    </span>
+                    <span className="sm:hidden">
+                      {currentStep === 2 ? "Adding..." : "Loading..."}
+                    </span>
                   </>
                 ) : (
                   <>
-                    {currentStep === 2 ? "Confirm & Add to Cart" : "Next"}
+                    <span className="hidden sm:inline">
+                      {currentStep === 2 ? "Confirm & Add to Cart" : "Next"}
+                    </span>
+                    <span className="sm:hidden">
+                      {currentStep === 2 ? "Add to Cart" : "Next"}
+                    </span>
                     <ChevronRight className="ml-2 h-4 w-4" />
                   </>
                 )}

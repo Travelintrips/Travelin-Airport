@@ -32,6 +32,9 @@ const CheckoutPage: React.FC = () => {
     isLoading,
   } = useAuth();
 
+  // ALL HOOKS MUST BE CALLED AT THE TOP LEVEL
+  const { cartItems, totalAmount, clearCart } = useShoppingCart();
+
   // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
   if (!isHydrated || isLoading) {
     return (
@@ -48,7 +51,6 @@ const CheckoutPage: React.FC = () => {
       </div>
     );
   }
-  const { cartItems, totalAmount, clearCart } = useShoppingCart();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(
     () => {
       // Try to restore from sessionStorage
@@ -575,6 +577,71 @@ const CheckoutPage: React.FC = () => {
               // Don't throw error - continue with checkout process
             }
           }
+        } else if (item.item_type === "handling" && item.details) {
+          // Handle handling service bookings
+          const bookingId = `HD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+          // Parse details if it's a JSON string, otherwise use as object
+          let parsedDetails = item.details;
+          if (typeof item.details === "string") {
+            try {
+              parsedDetails = JSON.parse(item.details);
+            } catch (error) {
+              console.error("Error parsing handling details JSON:", error);
+              parsedDetails = item.details;
+            }
+          }
+
+          const handlingBookingData = {
+            booking_id: bookingId,
+            customer_name: customerData.name,
+            customer_phone: customerData.phone,
+            customer_email: customerData.email,
+            passenger_area: parsedDetails.passengerArea || null,
+            category: parsedDetails.category || null,
+            // Only include passengers for Group categories
+            ...(parsedDetails.category &&
+              parsedDetails.category.includes("Group") &&
+              parsedDetails.passengers && {
+                passengers: parsedDetails.passengers,
+              }),
+            pickup_date:
+              parsedDetails.pickupDate ||
+              new Date().toISOString().split("T")[0],
+            pickup_time: parsedDetails.pickupTime || "09:00",
+            flight_number: parsedDetails.flightNumber || "-",
+            travel_type: parsedDetails.travelType || "Arrival",
+            pickup_area: parsedDetails.pickupArea || null,
+            additional_notes: parsedDetails.additionalNotes || null,
+            price: item.price,
+            total_price: item.price, // Add the missing total_price field
+            status: "confirmed",
+            customer_id: userId || null,
+            payment_id: paymentId,
+            created_at: new Date().toISOString(),
+          };
+
+          const { data: handlingBooking, error: handlingError } = await supabase
+            .from("handling_bookings")
+            .insert(handlingBookingData)
+            .select()
+            .single();
+
+          if (handlingError) {
+            console.error("❌ Error saving handling booking:", handlingError);
+            throw new Error(
+              `Failed to save handling booking: ${handlingError.message}`,
+            );
+          }
+
+          console.log("✅ Handling booking created:", handlingBooking.id);
+
+          // Link to payment_bookings table
+          await linkPaymentBooking(
+            paymentId,
+            handlingBooking.id.toString(),
+            "handling",
+          );
         } else if (item.item_type === "car" && item.details) {
           // Handle car rental bookings
           try {
@@ -685,7 +752,7 @@ const CheckoutPage: React.FC = () => {
           try {
             const { error: updateError } = await supabase
               .from("shopping_cart")
-              .update({ status: "paid" })
+              .update({ payment_status: "paid" })
               .eq("id", item.id)
               .eq("user_id", userId);
 
@@ -941,12 +1008,77 @@ const CheckoutPage: React.FC = () => {
                             {formatCurrency(item.price)}
                           </span>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {item.item_type === "baggage" && "Baggage"}
-                          {item.item_type === "airport_transfer" &&
-                            "Airport Transfer"}
-                          {item.item_type === "car" && "Car Rental"}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          <Badge variant="outline" className="text-xs">
+                            {item.item_type === "baggage" && "Baggage"}
+                            {item.item_type === "airport_transfer" &&
+                              "Airport Transfer"}
+                            {item.item_type === "car" && "Car Rental"}
+                            {item.item_type === "handling" && "Handling"}
+                          </Badge>
+
+                          {/* Show handling service details */}
+                          {item.item_type === "handling" &&
+                            item.details &&
+                            (() => {
+                              let parsedDetails = item.details;
+                              if (typeof item.details === "string") {
+                                try {
+                                  parsedDetails = JSON.parse(item.details);
+                                } catch (error) {
+                                  console.error(
+                                    "Error parsing handling details:",
+                                    error,
+                                  );
+                                  parsedDetails = item.details;
+                                }
+                              }
+
+                              return (
+                                <div className="text-xs text-gray-600 mt-1 space-y-1">
+                                  {parsedDetails.category && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Category:
+                                      </span>{" "}
+                                      {parsedDetails.category}
+                                    </div>
+                                  )}
+                                  {parsedDetails.passengers &&
+                                    parsedDetails.category &&
+                                    parsedDetails.category.includes(
+                                      "Group",
+                                    ) && (
+                                      <div>
+                                        <span className="font-medium">
+                                          Passengers:
+                                        </span>{" "}
+                                        {parsedDetails.passengers} orang
+                                      </div>
+                                    )}
+                                  {parsedDetails.pickupDate && (
+                                    <div>
+                                      <span className="font-medium">Date:</span>{" "}
+                                      {new Date(
+                                        parsedDetails.pickupDate,
+                                      ).toLocaleDateString("en-US", {
+                                        weekday: "short",
+                                        year: "numeric",
+                                        month: "short",
+                                        day: "numeric",
+                                      })}
+                                    </div>
+                                  )}
+                                  {parsedDetails.pickupTime && (
+                                    <div>
+                                      <span className="font-medium">Time:</span>{" "}
+                                      {parsedDetails.pickupTime}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                        </div>
                       </div>
                     ))}
                   </div>
