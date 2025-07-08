@@ -1017,6 +1017,87 @@ const CheckoutPage: React.FC = () => {
                             {item.item_type === "handling" && "Handling"}
                           </Badge>
 
+                          {/* Show baggage service details */}
+                          {item.item_type === "baggage" &&
+                            item.details &&
+                            (() => {
+                              let parsedDetails = item.details;
+                              if (typeof item.details === "string") {
+                                try {
+                                  parsedDetails = JSON.parse(item.details);
+                                } catch (error) {
+                                  console.error(
+                                    "Error parsing baggage details:",
+                                    error,
+                                  );
+                                  parsedDetails = item.details;
+                                }
+                              }
+
+                              return (
+                                <div className="text-xs text-gray-600 mt-1 space-y-1 w-full">
+                                  {parsedDetails.terminal && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Terminal:
+                                      </span>{" "}
+                                      {parsedDetails.terminal}
+                                    </div>
+                                  )}
+                                  {parsedDetails.storage_location && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Storage Location:
+                                      </span>{" "}
+                                      {parsedDetails.storage_location}
+                                    </div>
+                                  )}
+                                  {parsedDetails.duration && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Duration:
+                                      </span>{" "}
+                                      {parsedDetails.duration}{" "}
+                                      {parsedDetails.duration_type === "days"
+                                        ? "day(s)"
+                                        : "hour(s)"}
+                                    </div>
+                                  )}
+                                  {parsedDetails.start_date && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Start Date:
+                                      </span>{" "}
+                                      {new Date(
+                                        parsedDetails.start_date,
+                                      ).toLocaleDateString("en-US", {
+                                        weekday: "short",
+                                        year: "numeric",
+                                        month: "short",
+                                        day: "numeric",
+                                      })}
+                                    </div>
+                                  )}
+                                  {parsedDetails.start_time && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Start Time:
+                                      </span>{" "}
+                                      {parsedDetails.start_time}
+                                    </div>
+                                  )}
+                                  {parsedDetails.hours && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Hours:
+                                      </span>{" "}
+                                      {parsedDetails.hours}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                           {/* Show handling service details */}
                           {item.item_type === "handling" &&
                             item.details &&
@@ -1036,6 +1117,30 @@ const CheckoutPage: React.FC = () => {
 
                               return (
                                 <div className="text-xs text-gray-600 mt-1 space-y-1">
+                                  {parsedDetails.customerName && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Customer:
+                                      </span>{" "}
+                                      {parsedDetails.customerName}
+                                    </div>
+                                  )}
+                                  {parsedDetails.customerEmail && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Email:
+                                      </span>{" "}
+                                      {parsedDetails.customerEmail}
+                                    </div>
+                                  )}
+                                  {parsedDetails.customerPhone && (
+                                    <div>
+                                      <span className="font-medium">
+                                        Phone:
+                                      </span>{" "}
+                                      {parsedDetails.customerPhone}
+                                    </div>
+                                  )}
                                   {parsedDetails.category && (
                                     <div>
                                       <span className="font-medium">
@@ -1044,18 +1149,6 @@ const CheckoutPage: React.FC = () => {
                                       {parsedDetails.category}
                                     </div>
                                   )}
-                                  {parsedDetails.passengers &&
-                                    parsedDetails.category &&
-                                    parsedDetails.category.includes(
-                                      "Group",
-                                    ) && (
-                                      <div>
-                                        <span className="font-medium">
-                                          Passengers:
-                                        </span>{" "}
-                                        {parsedDetails.passengers} orang
-                                      </div>
-                                    )}
                                   {parsedDetails.pickupDate && (
                                     <div>
                                       <span className="font-medium">Date:</span>{" "}

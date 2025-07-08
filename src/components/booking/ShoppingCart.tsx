@@ -947,6 +947,32 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
 
                                   return (
                                     <div className="mt-3 space-y-1">
+                                      {/* Customer Information - Priority display */}
+                                      {parsedDetails.customerName && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Customer:
+                                          </span>{" "}
+                                          {parsedDetails.customerName}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customerEmail && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Email:
+                                          </span>{" "}
+                                          {parsedDetails.customerEmail}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customerPhone && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Phone:
+                                          </span>{" "}
+                                          {parsedDetails.customerPhone}
+                                        </p>
+                                      )}
+
                                       {/* Category */}
                                       {parsedDetails.category && (
                                         <p className="text-sm text-gray-600">
@@ -975,7 +1001,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                       {parsedDetails.pickupDate && (
                                         <p className="text-sm text-gray-600">
                                           <span className="font-medium">
-                                            Pickup Date:
+                                            Date:
                                           </span>{" "}
                                           {new Date(
                                             parsedDetails.pickupDate,
@@ -992,50 +1018,9 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                       {parsedDetails.pickupTime && (
                                         <p className="text-sm text-gray-600">
                                           <span className="font-medium">
-                                            Pickup Time:
+                                            Time:
                                           </span>{" "}
                                           {parsedDetails.pickupTime}
-                                        </p>
-                                      )}
-
-                                      {/* Flight Number */}
-                                      {parsedDetails.flightNumber &&
-                                        parsedDetails.flightNumber !== "-" && (
-                                          <p className="text-sm text-gray-600">
-                                            <span className="font-medium">
-                                              Flight Number:
-                                            </span>{" "}
-                                            {parsedDetails.flightNumber}
-                                          </p>
-                                        )}
-
-                                      {/* Travel Type */}
-                                      {parsedDetails.travelType && (
-                                        <p className="text-sm text-gray-600">
-                                          <span className="font-medium">
-                                            Travel Type:
-                                          </span>{" "}
-                                          {parsedDetails.travelType}
-                                        </p>
-                                      )}
-
-                                      {/* Service Type */}
-                                      {parsedDetails.serviceType && (
-                                        <p className="text-sm text-gray-600">
-                                          <span className="font-medium">
-                                            Service Type:
-                                          </span>{" "}
-                                          {parsedDetails.serviceType}
-                                        </p>
-                                      )}
-
-                                      {/* Additional Notes */}
-                                      {parsedDetails.additionalNotes && (
-                                        <p className="text-sm text-gray-600">
-                                          <span className="font-medium">
-                                            Additional Notes:
-                                          </span>{" "}
-                                          {parsedDetails.additionalNotes}
                                         </p>
                                       )}
                                     </div>

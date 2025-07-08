@@ -187,6 +187,7 @@ function AirportTransferPageContent() {
         price_km: number;
         basic_price: number;
         surcharge: number;
+        image: string | null;
       }[]
     >([]);
   const [isLoadingVehicles, setIsLoadingVehicles] = useState<boolean>(false);
@@ -226,6 +227,7 @@ function AirportTransferPageContent() {
           price_km,
           basic_price,
           surcharge,
+          image,
           drivers!vehicles_driver_id_fkey (
             id,
             id_driver,
@@ -261,6 +263,7 @@ function AirportTransferPageContent() {
             price_km: Number(vehicle.price_km) || 3250,
             basic_price: Number(vehicle.basic_price) || 75000,
             surcharge: Number(vehicle.surcharge) || 40000,
+            image: vehicle.image || null,
           })) || [];
 
       setAvailableVehiclesWithDrivers(formattedVehicles);
@@ -2605,8 +2608,47 @@ Please prepare for the trip!`;
                         <CardContent className="pt-4 sm:pt-6">
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                             <div className="flex items-center gap-2 sm:gap-3 flex-1">
-                              <div className="bg-blue-100 text-blue-600 p-1.5 sm:p-2 rounded-full">
-                                <Car className="h-5 w-5 sm:h-8 sm:w-8" />
+                              <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                {/* Vehicle type specific images */}
+                                <img
+                                  src={(() => {
+                                    switch (type.name.toLowerCase()) {
+                                      case "mpv":
+                                        return "https://travelintrips.co.id/wp-content/uploads/2025/07/Terios-Hitam-80.png?w=200&q=80&fit=crop&crop=center";
+                                      case "mpv premium":
+                                        return "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=200&q=80&fit=crop&crop=center";
+                                      case "electric":
+                                        return "https://images.unsplash.com/photo-1560958089-b8a1929cea89?w=200&q=80&fit=crop&crop=center";
+                                      case "sedan":
+                                        return "https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=200&q=80&fit=crop&crop=center";
+                                      case "suv":
+                                        return "https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?w=200&q=80&fit=crop&crop=center";
+                                      default:
+                                        return "https://images.unsplash.com/photo-1549924231-f129b911e442?w=200&q=80&fit=crop&crop=center";
+                                    }
+                                  })()}
+                                  alt={type.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    // Fallback to icon if image fails to load
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = "none";
+                                    const iconDiv =
+                                      target.nextElementSibling as HTMLElement;
+                                    if (iconDiv) iconDiv.style.display = "flex";
+                                  }}
+                                />
+                                {/* Fallback icon (hidden by default) */}
+                                <div
+                                  className="absolute inset-0 bg-blue-100 text-blue-600 flex items-center justify-center"
+                                  style={{ display: "none" }}
+                                >
+                                  <Car className="h-5 w-5 sm:h-8 sm:w-8" />
+                                </div>
+                                {/* Vehicle type badge */}
+                                <div className="absolute bottom-1 right-1 bg-black/70 text-white text-xs px-1 py-0.5 rounded">
+                                  {type.name.charAt(0).toUpperCase()}
+                                </div>
                               </div>
                               <div className="flex-1">
                                 <h4 className="text-sm sm:text-base font-medium">
@@ -2723,8 +2765,55 @@ Please prepare for the trip!`;
                               <div className="space-y-3">
                                 {/* Vehicle Info */}
                                 <div className="flex items-center gap-2 sm:gap-3">
-                                  <div className="bg-blue-100 text-blue-600 p-1.5 sm:p-2 rounded-full">
-                                    <Car className="h-4 w-4 sm:h-6 sm:w-6" />
+                                  <div className="relative w-12 h-12 sm:w-16 sm:h-16 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                                    {/* Try to load vehicle photo from database, fallback to placeholder */}
+                                    <img
+                                      src={
+                                        vehicle.image ||
+                                        `https://images.unsplash.com/photo-1549924231-f129b911e442?w=200&q=80&fit=crop&crop=center`
+                                      }
+                                      alt={`${vehicle.make} ${vehicle.model}`}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        // Fallback to different car images if the database image fails
+                                        const target =
+                                          e.target as HTMLImageElement;
+                                        if (
+                                          vehicle.image &&
+                                          target.src === vehicle.image
+                                        ) {
+                                          // First fallback: generic car image
+                                          target.src = `https://images.unsplash.com/photo-1549924231-f129b911e442?w=200&q=80&fit=crop&crop=center`;
+                                        } else if (
+                                          target.src.includes("1549924231")
+                                        ) {
+                                          target.src = `https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=200&q=80&fit=crop&crop=center`;
+                                        } else if (
+                                          target.src.includes("1580273916")
+                                        ) {
+                                          target.src = `https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=200&q=80&fit=crop&crop=center`;
+                                        } else {
+                                          // Final fallback: show icon
+                                          target.style.display = "none";
+                                          const iconDiv =
+                                            target.nextElementSibling as HTMLElement;
+                                          if (iconDiv)
+                                            iconDiv.style.display = "flex";
+                                        }
+                                      }}
+                                    />
+                                    {/* Fallback icon (hidden by default) */}
+                                    <div
+                                      className="absolute inset-0 bg-blue-100 text-blue-600 flex items-center justify-center"
+                                      style={{ display: "none" }}
+                                    >
+                                      <Car className="h-4 w-4 sm:h-6 sm:w-6" />
+                                    </div>
+                                    {/* Vehicle type badge */}
+                                    <div className="absolute top-1 right-1 bg-black/70 text-white text-xs px-1 py-0.5 rounded">
+                                      {vehicle.vehicle_type ||
+                                        formData.vehicleType}
+                                    </div>
                                   </div>
                                   <div className="flex-1 min-w-0">
                                     <h4 className="text-sm sm:text-base font-semibold truncate">
