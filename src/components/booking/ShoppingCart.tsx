@@ -579,6 +579,14 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                   return (
                                     <div className="mt-3 space-y-1">
                                       {/* Customer Information */}
+                                      {parsedDetails.booking_id && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking ID:
+                                          </span>{" "}
+                                          {parsedDetails.booking_id}
+                                        </p>
+                                      )}
                                       {parsedDetails.customer_name && (
                                         <p className="text-sm text-gray-600">
                                           <span className="font-medium">
@@ -628,7 +636,7 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                                         parsedDetails.flight_number !== "-" && (
                                           <p className="text-sm text-gray-600">
                                             <span className="font-medium">
-                                              Flight Number:
+                                              Flight Number1:
                                             </span>{" "}
                                             {parsedDetails.flight_number}
                                           </p>
