@@ -21,6 +21,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
+// UUID validation function
+const isValidUUID = (uuid: string): boolean => {
+  if (!uuid || typeof uuid !== "string") return false;
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+};
+
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const {
@@ -31,9 +39,6 @@ const CheckoutPage: React.FC = () => {
     isHydrated,
     isLoading,
   } = useAuth();
-
-  // ALL HOOKS MUST BE CALLED AT THE TOP LEVEL
-  const { cartItems, totalAmount, clearCart } = useShoppingCart();
 
   // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
   if (!isHydrated || isLoading) {
@@ -51,6 +56,7 @@ const CheckoutPage: React.FC = () => {
       </div>
     );
   }
+  const { cartItems, totalAmount, clearCart } = useShoppingCart();
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>(
     () => {
       // Try to restore from sessionStorage
@@ -394,18 +400,37 @@ const CheckoutPage: React.FC = () => {
       console.log("💰 Creating payment for total amount:", totalAmount);
       console.log("🛒 Processing", cartItems.length, "cart items");
 
-      // Create payment record first
+      // Validate userId from auth context - CRITICAL for UUID type matching
+      const validUserId = userId && isValidUUID(userId) ? userId : null;
+
+      console.log("💰 User ID validation:", {
+        originalUserId: userId,
+        validUserId,
+        isValid: !!validUserId,
+        userIdType: typeof userId,
+        userIdLength: userId?.length,
+      });
+
+      const paymentData: any = {
+        amount: totalAmount,
+        payment_method: selectedPaymentMethod,
+        status: "pending",
+        is_partial_payment: false,
+        is_damage_payment: false,
+        created_at: new Date().toISOString(),
+      };
+
+      // Only add user_id if it's a valid UUID to prevent type mismatch
+      if (validUserId) {
+        paymentData.user_id = validUserId;
+      }
+      // If no valid UUID, leave user_id as null (which is allowed by schema)
+
+      console.log("💰 Payment data being inserted:", paymentData);
+
       const { data: payment, error: paymentError } = await supabase
         .from("payments")
-        .insert({
-          user_id: userId || null,
-          amount: totalAmount,
-          payment_method: selectedPaymentMethod,
-          status: "pending",
-          is_partial_payment: "false",
-          is_damage_payment: false,
-          created_at: new Date().toISOString(),
-        })
+        .insert(paymentData)
         .select()
         .single();
 
@@ -464,7 +489,7 @@ const CheckoutPage: React.FC = () => {
               parsedDetails.duration_type || item.details?.duration_type,
             hours: parsedDetails.hours || item.details?.hours,
             status: "confirmed",
-            customer_id: userId || null,
+            customer_id: validUserId, // Will be null if userId is not a valid UUID
             payment_id: paymentId,
           };
 
@@ -524,7 +549,7 @@ const CheckoutPage: React.FC = () => {
               "09:00",
             price: item.price,
             status: "confirmed",
-            customer_id: userId || null,
+            customer_id: validUserId, // Will be null if userId is not a valid UUID
             // Add additional fields from details
             vehicle_name:
               parsedDetails?.vehicleType || parsedDetails?.vehicle_name || null,
@@ -577,71 +602,6 @@ const CheckoutPage: React.FC = () => {
               // Don't throw error - continue with checkout process
             }
           }
-        } else if (item.item_type === "handling" && item.details) {
-          // Handle handling service bookings
-          const bookingId = `HD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-          // Parse details if it's a JSON string, otherwise use as object
-          let parsedDetails = item.details;
-          if (typeof item.details === "string") {
-            try {
-              parsedDetails = JSON.parse(item.details);
-            } catch (error) {
-              console.error("Error parsing handling details JSON:", error);
-              parsedDetails = item.details;
-            }
-          }
-
-          const handlingBookingData = {
-            booking_id: bookingId,
-            customer_name: customerData.name,
-            customer_phone: customerData.phone,
-            customer_email: customerData.email,
-            passenger_area: parsedDetails.passengerArea || null,
-            category: parsedDetails.category || null,
-            // Only include passengers for Group categories
-            ...(parsedDetails.category &&
-              parsedDetails.category.includes("Group") &&
-              parsedDetails.passengers && {
-                passengers: parsedDetails.passengers,
-              }),
-            pickup_date:
-              parsedDetails.pickupDate ||
-              new Date().toISOString().split("T")[0],
-            pickup_time: parsedDetails.pickupTime || "09:00",
-            flight_number: parsedDetails.flightNumber || "-",
-            travel_type: parsedDetails.travelType || "Arrival",
-            pickup_area: parsedDetails.pickupArea || null,
-            additional_notes: parsedDetails.additionalNotes || null,
-            price: item.price,
-            total_price: item.price, // Add the missing total_price field
-            status: "confirmed",
-            customer_id: userId || null,
-            payment_id: paymentId,
-            created_at: new Date().toISOString(),
-          };
-
-          const { data: handlingBooking, error: handlingError } = await supabase
-            .from("handling_bookings")
-            .insert(handlingBookingData)
-            .select()
-            .single();
-
-          if (handlingError) {
-            console.error("❌ Error saving handling booking:", handlingError);
-            throw new Error(
-              `Failed to save handling booking: ${handlingError.message}`,
-            );
-          }
-
-          console.log("✅ Handling booking created:", handlingBooking.id);
-
-          // Link to payment_bookings table
-          await linkPaymentBooking(
-            paymentId,
-            handlingBooking.id.toString(),
-            "handling",
-          );
         } else if (item.item_type === "car" && item.details) {
           // Handle car rental bookings
           try {
@@ -694,7 +654,7 @@ const CheckoutPage: React.FC = () => {
               }
 
               const bookingData = {
-                customer_id: userId || null,
+                customer_id: validUserId, // Will be null if userId is not a valid UUID
                 vehicle_id: parsedDetails?.vehicle_id || item.item_id || null,
                 total_amount: item.price,
                 start_date:
@@ -752,7 +712,7 @@ const CheckoutPage: React.FC = () => {
           try {
             const { error: updateError } = await supabase
               .from("shopping_cart")
-              .update({ payment_status: "paid" })
+              .update({ status: "paid" })
               .eq("id", item.id)
               .eq("user_id", userId);
 
@@ -1008,170 +968,12 @@ const CheckoutPage: React.FC = () => {
                             {formatCurrency(item.price)}
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          <Badge variant="outline" className="text-xs">
-                            {item.item_type === "baggage" && "Baggage"}
-                            {item.item_type === "airport_transfer" &&
-                              "Airport Transfer"}
-                            {item.item_type === "car" && "Car Rental"}
-                            {item.item_type === "handling" && "Handling"}
-                          </Badge>
-
-                          {/* Show baggage service details */}
-                          {item.item_type === "baggage" &&
-                            item.details &&
-                            (() => {
-                              let parsedDetails = item.details;
-                              if (typeof item.details === "string") {
-                                try {
-                                  parsedDetails = JSON.parse(item.details);
-                                } catch (error) {
-                                  console.error(
-                                    "Error parsing baggage details:",
-                                    error,
-                                  );
-                                  parsedDetails = item.details;
-                                }
-                              }
-
-                              return (
-                                <div className="text-xs text-gray-600 mt-1 space-y-1 w-full">
-                                  {parsedDetails.terminal && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Terminal:
-                                      </span>{" "}
-                                      {parsedDetails.terminal}
-                                    </div>
-                                  )}
-                                  {parsedDetails.storage_location && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Storage Location:
-                                      </span>{" "}
-                                      {parsedDetails.storage_location}
-                                    </div>
-                                  )}
-                                  {parsedDetails.duration && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Duration:
-                                      </span>{" "}
-                                      {parsedDetails.duration}{" "}
-                                      {parsedDetails.duration_type === "days"
-                                        ? "day(s)"
-                                        : "hour(s)"}
-                                    </div>
-                                  )}
-                                  {parsedDetails.start_date && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Start Date:
-                                      </span>{" "}
-                                      {new Date(
-                                        parsedDetails.start_date,
-                                      ).toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                      })}
-                                    </div>
-                                  )}
-                                  {parsedDetails.start_time && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Start Time:
-                                      </span>{" "}
-                                      {parsedDetails.start_time}
-                                    </div>
-                                  )}
-                                  {parsedDetails.hours && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Hours:
-                                      </span>{" "}
-                                      {parsedDetails.hours}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-
-                          {/* Show handling service details */}
-                          {item.item_type === "handling" &&
-                            item.details &&
-                            (() => {
-                              let parsedDetails = item.details;
-                              if (typeof item.details === "string") {
-                                try {
-                                  parsedDetails = JSON.parse(item.details);
-                                } catch (error) {
-                                  console.error(
-                                    "Error parsing handling details:",
-                                    error,
-                                  );
-                                  parsedDetails = item.details;
-                                }
-                              }
-
-                              return (
-                                <div className="text-xs text-gray-600 mt-1 space-y-1">
-                                  {parsedDetails.customerName && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Customer:
-                                      </span>{" "}
-                                      {parsedDetails.customerName}
-                                    </div>
-                                  )}
-                                  {parsedDetails.customerEmail && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Email:
-                                      </span>{" "}
-                                      {parsedDetails.customerEmail}
-                                    </div>
-                                  )}
-                                  {parsedDetails.customerPhone && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Phone:
-                                      </span>{" "}
-                                      {parsedDetails.customerPhone}
-                                    </div>
-                                  )}
-                                  {parsedDetails.category && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Category:
-                                      </span>{" "}
-                                      {parsedDetails.category}
-                                    </div>
-                                  )}
-                                  {parsedDetails.pickupDate && (
-                                    <div>
-                                      <span className="font-medium">Date:</span>{" "}
-                                      {new Date(
-                                        parsedDetails.pickupDate,
-                                      ).toLocaleDateString("en-US", {
-                                        weekday: "short",
-                                        year: "numeric",
-                                        month: "short",
-                                        day: "numeric",
-                                      })}
-                                    </div>
-                                  )}
-                                  {parsedDetails.pickupTime && (
-                                    <div>
-                                      <span className="font-medium">Time:</span>{" "}
-                                      {parsedDetails.pickupTime}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {item.item_type === "baggage" && "Baggage"}
+                          {item.item_type === "airport_transfer" &&
+                            "Airport Transfer"}
+                          {item.item_type === "car" && "Car Rental"}
+                        </Badge>
                       </div>
                     ))}
                   </div>

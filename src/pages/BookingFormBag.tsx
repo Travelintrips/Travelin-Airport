@@ -199,49 +199,45 @@ const BookingForm = ({
   const [selectedAirport, setSelectedAirport] =
     useState<string>("soekarno_hatta");
   const [authStateReady, setAuthStateReady] = useState<boolean>(false);
+  const [formJustCleared, setFormJustCleared] = useState<boolean>(false);
 
   // Generate booking code once and persist it - use a single source of truth
   const [bookingCode, setBookingCode] = useState<string | null>(null);
   const [isBookingCodeInitialized, setIsBookingCodeInitialized] =
     useState(false);
 
-  // Initialize booking code only once and persist it
+  // Generate a new unique booking code for each order
   const initializeBookingCode = useCallback(() => {
-    // Prevent multiple initializations
+    // Always generate a new booking code for each new order
+    // Don't restore from localStorage to ensure uniqueness
+
+    // If already initialized for this session, return existing code
     if (isBookingCodeInitialized && bookingCode) {
       console.log(
-        "[BookingForm] Booking code already initialized:",
+        "[BookingForm] Booking code already initialized for this session:",
         bookingCode,
       );
       return bookingCode;
     }
 
-    // Try to restore from localStorage first
-    const savedBookingCode = localStorage.getItem(
-      `booking_code_${selectedSize}`,
+    // Generate new unique booking code matching payment system format: BG-{timestamp}-{random}
+    const timestamp = Date.now().toString(); // Full timestamp
+    const randomPart = uuidv4().replace(/-/g, "").substring(0, 3).toUpperCase(); // 3 chars for consistency
+
+    const newBookingCode = `BG-${timestamp}-${randomPart}`;
+
+    console.log(
+      "[BookingForm] Generated new unique booking code:",
+      newBookingCode,
     );
-    if (savedBookingCode) {
-      console.log(
-        "[BookingForm] Restoring booking code from localStorage:",
-        savedBookingCode,
-      );
-      setBookingCode(savedBookingCode);
-      setIsBookingCodeInitialized(true);
-      return savedBookingCode;
-    }
-
-    // Generate new booking code only if none exists
-    const newBookingCode = uuidv4()
-      .replace(/-/g, "")
-      .substring(0, 8)
-      .toUpperCase();
-
-    console.log("[BookingForm] Generated new booking code:", newBookingCode);
     setBookingCode(newBookingCode);
     setIsBookingCodeInitialized(true);
-    localStorage.setItem(`booking_code_${selectedSize}`, newBookingCode);
+
+    // Don't store in localStorage to prevent reuse
+    // Each new form instance should get a fresh booking code
+
     return newBookingCode;
-  }, [bookingCode, selectedSize, isBookingCodeInitialized]);
+  }, [bookingCode, isBookingCodeInitialized]);
 
   // Get booking code function that always returns the same code
   const getBookingCode = useCallback(() => {
@@ -517,6 +513,90 @@ const BookingForm = ({
 
     return { isReady: false };
   };
+
+  // Function to clear form and reset state after successful booking
+  const clearFormAfterSuccess = useCallback(() => {
+    console.log("[BookingForm] Clearing form after successful booking");
+
+    // Clear localStorage draft - no need to clear booking codes since we don't store them anymore
+    localStorage.removeItem("booking_form_draft");
+
+    // Clear any legacy booking codes that might exist from previous versions
+    const sizes = [
+      "small",
+      "medium",
+      "large",
+      "extra_large",
+      "electronic",
+      "surfingboard",
+      "wheelchair",
+      "stickgolf",
+    ];
+    sizes.forEach((size) => {
+      localStorage.removeItem(`booking_code_${size}`);
+      localStorage.removeItem(`form_cleared_${size}`);
+      localStorage.removeItem(`booking_completed_${size}`);
+    });
+
+    // Set multiple flags to prevent any draft restoration
+    localStorage.setItem(`form_cleared_${selectedSize}`, Date.now().toString());
+    localStorage.setItem(
+      `booking_completed_${selectedSize}`,
+      Date.now().toString(),
+    );
+    localStorage.setItem("last_booking_completion", Date.now().toString());
+    localStorage.setItem("force_form_reset", Date.now().toString());
+
+    // Reset form state
+    reset();
+    setStep(0);
+    setIsSubmitting(false);
+
+    // Reset booking code state COMPLETELY - this will force generation of new code
+    setBookingCode(null);
+    setIsBookingCodeInitialized(false);
+
+    // Reset duration type and dates
+    setDurationType("hours");
+    setHoursStartDate(initialDate || new Date());
+    setHoursTime(initialTime || "");
+    setHourCount(1);
+    setDaysStartDate(initialDate || new Date());
+    setDaysEndDate(
+      initialDate
+        ? new Date(new Date(initialDate).setDate(initialDate.getDate() + 1))
+        : new Date(new Date().setDate(new Date().getDate() + 1)),
+    );
+    setDaysPickTime(initialTime || "");
+
+    // Reset touched states
+    setStartDateHoursTouched(!!initialDate);
+    setDateTimeHoursTouched(!!initialTime);
+    setStartDateDaysTouched(!!initialDate);
+    setDateTimeDaysTouched(!!initialTime);
+
+    console.log("[BookingForm] Form cleared and reset to initial state");
+
+    // Dispatch a custom event to notify other components
+    window.dispatchEvent(
+      new CustomEvent("bookingFormCleared", {
+        detail: { selectedSize },
+      }),
+    );
+
+    // Set flag to prevent immediate draft restoration
+    setFormJustCleared(true);
+
+    // Force a longer delay to ensure state updates are processed and prevent draft restoration
+    setTimeout(() => {
+      console.log("[BookingForm] Form clearing completed with delay");
+      setFormJustCleared(false);
+      // Remove the cleared flags after 60 seconds
+      localStorage.removeItem(`form_cleared_${selectedSize}`);
+      localStorage.removeItem(`booking_completed_${selectedSize}`);
+      localStorage.removeItem("force_form_reset");
+    }, 60000); // 60 seconds to prevent draft restoration
+  }, [selectedSize, reset, initialDate, initialTime]);
 
   const onSubmit = async (data: FormValues) => {
     console.log("[BookingForm] Starting booking submission...");
@@ -871,6 +951,8 @@ const BookingForm = ({
           durationType: durationType,
           hours: durationType === "hours" ? data.hours : undefined,
           bookingCode: getBookingCode(), // Add persistent booking code
+          // Add callback to clear form when modal is closed
+          onModalClose: clearFormAfterSuccess,
         };
 
         console.log("[BookingForm] Completion data:", completionData);
@@ -907,7 +989,7 @@ const BookingForm = ({
   // Save form draft to localStorage with enhanced data
   const saveFormDraft = () => {
     try {
-      const currentBookingCode = getBookingCode(); // Get the persistent booking code
+      const currentBookingCode = getBookingCode(); // Get the current booking code
       const formData = {
         step,
         durationType,
@@ -930,14 +1012,13 @@ const BookingForm = ({
         },
         timestamp: Date.now(),
         isSubmitting: false, // Always save as not submitting to prevent stuck state
-        bookingCode: currentBookingCode, // Save the persistent booking code
+        // Don't save booking code in draft - each new session should get fresh code
       };
       localStorage.setItem("booking_form_draft", JSON.stringify(formData));
       console.log(
         "[BookingForm] Enhanced form draft saved with step:",
         step,
-        "and booking code:",
-        currentBookingCode,
+        "(booking code not saved to ensure uniqueness)",
       );
     } catch (error) {
       console.warn("[BookingForm] Error saving form draft:", error);
@@ -946,6 +1027,40 @@ const BookingForm = ({
 
   // 2. Auto-restore step dari localStorage jika ditemukan draft valid
   const restoreFormDraft = () => {
+    // Don't restore if form was just cleared
+    if (formJustCleared) {
+      console.log(
+        "[BookingForm] Form just cleared, skipping draft restoration",
+      );
+      return false;
+    }
+
+    // Check multiple flags to prevent restoration after successful booking
+    const formClearedTimestamp = localStorage.getItem(
+      `form_cleared_${selectedSize}`,
+    );
+    const bookingCompletedTimestamp = localStorage.getItem(
+      `booking_completed_${selectedSize}`,
+    );
+    const lastBookingCompletion = localStorage.getItem(
+      "last_booking_completion",
+    );
+    const forceReset = localStorage.getItem("force_form_reset");
+
+    // CRITICAL: If any reset flag exists, don't restore
+    if (
+      forceReset ||
+      formClearedTimestamp ||
+      bookingCompletedTimestamp ||
+      lastBookingCompletion
+    ) {
+      console.log(
+        "[BookingForm] Reset flags detected, preventing draft restoration",
+      );
+      localStorage.removeItem("booking_form_draft");
+      return false;
+    }
+
     try {
       const savedDraft = localStorage.getItem("booking_form_draft");
       if (savedDraft) {
@@ -954,6 +1069,15 @@ const BookingForm = ({
         const maxAge = 30 * 60 * 1000; // 30 minutes
 
         if (timeDiff < maxAge && draftData.selectedSize === selectedSize) {
+          // CRITICAL: Never restore step 2 drafts - they indicate completed bookings
+          if (draftData.step === 2) {
+            console.log(
+              "[BookingForm] Draft is from completed booking (step 2), clearing and starting fresh",
+            );
+            localStorage.removeItem("booking_form_draft");
+            return false;
+          }
+
           console.log(
             "[BookingForm] Restoring valid form draft with step:",
             draftData.step,
@@ -1013,19 +1137,10 @@ const BookingForm = ({
             });
           }
 
-          // Restore booking code if available and not already initialized
-          if (draftData.bookingCode && !isBookingCodeInitialized) {
-            console.log(
-              "[BookingForm] Restoring booking code from draft:",
-              draftData.bookingCode,
-            );
-            setBookingCode(draftData.bookingCode);
-            setIsBookingCodeInitialized(true);
-            localStorage.setItem(
-              `booking_code_${selectedSize}`,
-              draftData.bookingCode,
-            );
-          }
+          // DON'T restore booking code - always generate new unique one for each order
+          console.log(
+            "[BookingForm] Not restoring booking code - will generate new unique one",
+          );
 
           console.log(
             "[BookingForm] Form draft restored successfully to step:",
@@ -1665,6 +1780,44 @@ const BookingForm = ({
 
   // Check for booking draft and reset step if needed
   useEffect(() => {
+    // Don't restore draft if form was just cleared
+    if (formJustCleared) {
+      console.log(
+        "[BookingForm] Form just cleared, skipping draft restoration in useEffect",
+      );
+      setStep(0);
+      return;
+    }
+
+    // Check multiple flags to prevent restoration after successful booking
+    const formClearedTimestamp = localStorage.getItem(
+      `form_cleared_${selectedSize}`,
+    );
+    const bookingCompletedTimestamp = localStorage.getItem(
+      `booking_completed_${selectedSize}`,
+    );
+    const lastBookingCompletion = localStorage.getItem(
+      "last_booking_completion",
+    );
+    const forceReset = localStorage.getItem("force_form_reset");
+
+    // CRITICAL: If any reset flag exists, force fresh start
+    if (
+      forceReset ||
+      formClearedTimestamp ||
+      bookingCompletedTimestamp ||
+      lastBookingCompletion
+    ) {
+      console.log("[BookingForm] Reset flags detected, forcing fresh start");
+      localStorage.removeItem("booking_form_draft");
+      setStep(0);
+      // Force new booking code generation
+      setBookingCode(null);
+      setIsBookingCodeInitialized(false);
+      initializeBookingCode();
+      return;
+    }
+
     const draft = localStorage.getItem("booking_form_draft");
     const parsedDraft = draft ? JSON.parse(draft) : null;
 
@@ -1679,34 +1832,51 @@ const BookingForm = ({
       }
       setStep(0);
     } else {
-      setStep(parsedDraft.step ?? 0);
-      // Restore booking code if available and not already initialized
-      if (parsedDraft.bookingCode && !isBookingCodeInitialized) {
+      // Check if this is a recently completed booking (step 2) - ALWAYS start fresh for step 2
+      if (parsedDraft.step === 2) {
         console.log(
-          "[BookingForm] Restoring booking code from draft in useEffect:",
-          parsedDraft.bookingCode,
+          "[BookingForm] Detected draft from completed booking (step 2), starting fresh",
         );
-        setBookingCode(parsedDraft.bookingCode);
-        setIsBookingCodeInitialized(true);
-        localStorage.setItem(
-          `booking_code_${selectedSize}`,
-          parsedDraft.bookingCode,
+        localStorage.removeItem("booking_form_draft");
+        setStep(0);
+        // Force new booking code generation
+        setBookingCode(null);
+        setIsBookingCodeInitialized(false);
+        initializeBookingCode();
+      } else {
+        // Only restore if it's not step 2 and not recently completed
+        setStep(parsedDraft.step ?? 0);
+        // Don't restore booking code - always generate new unique one for each order
+        console.log(
+          "[BookingForm] Not restoring booking code from draft - will generate new unique one",
         );
       }
     }
-  }, [selectedSize, isBookingCodeInitialized, initializeBookingCode]);
+  }, [
+    selectedSize,
+    isBookingCodeInitialized,
+    initializeBookingCode,
+    formJustCleared,
+  ]);
 
-  // Initialize booking code on component mount
+  // Initialize booking code on component mount - always generate new unique code
   useEffect(() => {
-    // Initialize booking code immediately to prevent regeneration
-    if (!isBookingCodeInitialized) {
-      const code = initializeBookingCode();
-      console.log(
-        `[BookingForm] Initialized booking code for ${selectedSize}:`,
-        code,
-      );
-    }
-  }, [selectedSize, isBookingCodeInitialized, initializeBookingCode]);
+    // Always generate a new unique booking code when component mounts or selectedSize changes
+    console.log(
+      `[BookingForm] Component mounted or size changed to ${selectedSize}, generating new unique booking code`,
+    );
+
+    // Reset booking code state to force new generation
+    setBookingCode(null);
+    setIsBookingCodeInitialized(false);
+
+    // Generate new unique code
+    const code = initializeBookingCode();
+    console.log(
+      `[BookingForm] Generated new unique booking code for ${selectedSize}:`,
+      code,
+    );
+  }, [selectedSize]); // Only depend on selectedSize to ensure new code for each size selection
 
   // Function to fetch user profile data from database
   const fetchUserProfile = useCallback(async () => {
@@ -1895,6 +2065,23 @@ const BookingForm = ({
 
         // Let AuthContext handle session restoration, we only restore form state
         visibilityTimeout = setTimeout(() => {
+          // Check if form was recently cleared before restoring
+          const formClearedTimestamp = localStorage.getItem(
+            `form_cleared_${selectedSize}`,
+          );
+          if (formClearedTimestamp) {
+            const timeSinceCleared =
+              Date.now() - parseInt(formClearedTimestamp);
+            if (timeSinceCleared < 30000) {
+              // 30 seconds
+              console.log(
+                "[BookingForm] Form was recently cleared, skipping auto-restore on visibility change",
+              );
+              setAuthStateReady(true);
+              return;
+            }
+          }
+
           console.log(
             "[BookingForm] Auto-restoring form draft to prevent reset",
           );
@@ -2023,6 +2210,20 @@ const BookingForm = ({
         "[BookingForm] Initial mount - attempting to restore form draft",
       );
       setTimeout(() => {
+        // Check if form was recently cleared before restoring
+        const formClearedTimestamp = localStorage.getItem(
+          `form_cleared_${selectedSize}`,
+        );
+        if (formClearedTimestamp) {
+          const timeSinceCleared = Date.now() - parseInt(formClearedTimestamp);
+          if (timeSinceCleared < 30000) {
+            // 30 seconds
+            console.log(
+              "[BookingForm] Form was recently cleared, skipping initial draft restore",
+            );
+            return;
+          }
+        }
         restoreFormDraft();
       }, 100); // Small delay to ensure form is initialized
     }
@@ -2051,6 +2252,54 @@ const BookingForm = ({
     isSubmitting,
     authStateReady,
   ]); // Fixed dependencies array
+
+  // Add event listeners for checkout completion and form reset
+  useEffect(() => {
+    const handleCheckoutCompleted = () => {
+      console.log("[BookingForm] Checkout completed, clearing form");
+      clearFormAfterSuccess();
+    };
+
+    const handleResetBookingForms = () => {
+      console.log("[BookingForm] Reset booking forms event received");
+      clearFormAfterSuccess();
+    };
+
+    const handleCartNavigation = () => {
+      console.log("[BookingForm] User navigated back from cart, clearing form");
+      clearFormAfterSuccess();
+    };
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      // This fires when user navigates back to the page
+      if (event.persisted) {
+        console.log(
+          "[BookingForm] Page restored from cache, checking if form should be cleared",
+        );
+        // Check if user came from cart page
+        const referrer = document.referrer;
+        if (referrer.includes("/cart")) {
+          console.log(
+            "[BookingForm] User came back from cart page, clearing form",
+          );
+          clearFormAfterSuccess();
+        }
+      }
+    };
+
+    // Listen for checkout completion
+    window.addEventListener("checkoutCompleted", handleCheckoutCompleted);
+    window.addEventListener("resetBookingForms", handleResetBookingForms);
+    window.addEventListener("cartNavigationBack", handleCartNavigation);
+    window.addEventListener("pageshow", handlePageShow as EventListener);
+
+    return () => {
+      window.removeEventListener("checkoutCompleted", handleCheckoutCompleted);
+      window.removeEventListener("resetBookingForms", handleResetBookingForms);
+      window.removeEventListener("cartNavigationBack", handleCartNavigation);
+      window.removeEventListener("pageshow", handlePageShow as EventListener);
+    };
+  }, [clearFormAfterSuccess]);
 
   return (
     <Card className="w-full max-w-lg mx-auto bg-white">

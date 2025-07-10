@@ -298,7 +298,7 @@ const UserDashboard = () => {
             )
             .eq("customer_id", userId);
 
-        // Fetch baggage booking data for this user
+        // Fetch baggage booking data for this user with payment information
         const { data: baggageBookingData, error: baggageBookingError } =
           await supabase
             .from("baggage_booking")
@@ -311,6 +311,7 @@ const UserDashboard = () => {
         customer_email,
         flight_number,
         baggage_size,
+        item_name,
         price,
         duration,
         duration_type,
@@ -323,8 +324,10 @@ const UserDashboard = () => {
         terminal,
         storage_location,
         status,
+        payment_method,
         created_at,
-        updated_at
+        updated_at,
+        payments!left (payment_method)
       `,
             )
             .eq("customer_id", userId)
@@ -492,6 +495,12 @@ const UserDashboard = () => {
           // Transform the baggage booking data
           const formattedBaggageBookings = (baggageBookingData || []).map(
             (booking) => {
+              // Get payment method from payments table if available, otherwise from booking record
+              const paymentMethod =
+                booking.payments && booking.payments.length > 0
+                  ? booking.payments[0].payment_method
+                  : booking.payment_method || "-";
+
               return {
                 id: booking.id.toString(),
                 vehicleName: `Baggage Storage - ${booking.baggage_size.replace("_", " ").toUpperCase()}`,
@@ -524,9 +533,10 @@ const UserDashboard = () => {
                 customerName: booking.customer_name,
                 customerPhone: booking.customer_phone,
                 customerEmail: booking.customer_email,
+                itemName: booking.item_name,
                 startTime: booking.start_time,
                 endTime: booking.end_time,
-                paymentMethod: "-",
+                paymentMethod: paymentMethod,
               };
             },
           );
@@ -1138,16 +1148,17 @@ const UserDashboard = () => {
                                       </p>
                                     </div>
                                   )}
-                                  {booking.storageLocation && (
-                                    <div className="md:col-span-2">
-                                      <p className="text-sm text-muted-foreground">
-                                        Storage Location
-                                      </p>
-                                      <p className="font-medium">
-                                        {booking.storageLocation}
-                                      </p>
-                                    </div>
-                                  )}
+                                  {booking.baggageSize === "electronic" &&
+                                    booking.itemName && (
+                                      <div>
+                                        <p className="text-sm text-muted-foreground">
+                                          Item Name
+                                        </p>
+                                        <p className="font-medium">
+                                          {booking.itemName}
+                                        </p>
+                                      </div>
+                                    )}
                                 </>
                               )}
                               <div>
