@@ -7,6 +7,7 @@ import PriceBaggage from "./components/admin/PriceBaggage";
 import PaymentMethodsManagement from "./components/admin/PaymentMethodsManagement";
 import BaggageBookingManagement from "./components/admin/BaggageBookingManagement";
 import ChartManagement from "./components/admin/ChartManagement";
+import HandlingServiceManagement from "./components/admin/HandlingServiceManagement";
 import { Toaster } from "@/components/ui/toaster";
 import {
   useRoutes,
@@ -559,6 +560,11 @@ function AppContent() {
               element={<BaggageBookingManagement />}
             />
             <Route path="chart" element={<ChartManagement />} />
+            <Route path="price-baggage" element={<PriceBaggage />} />
+            <Route
+              path="handling-booking"
+              element={<HandlingServiceManagement />}
+            />
             <Route
               path="damage-payment/:bookingId"
               element={<DamagePaymentForm />}

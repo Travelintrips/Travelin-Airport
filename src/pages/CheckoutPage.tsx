@@ -34,6 +34,10 @@ const CheckoutPage: React.FC = () => {
 
   // ALL HOOKS MUST BE CALLED AT THE TOP LEVEL
   const { cartItems, totalAmount, clearCart } = useShoppingCart();
+  const isValidUUID = (value: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    );
 
   // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
   if (!isHydrated || isLoading) {
@@ -394,15 +398,21 @@ const CheckoutPage: React.FC = () => {
       console.log("💰 Creating payment for total amount:", totalAmount);
       console.log("🛒 Processing", cartItems.length, "cart items");
 
-      // Create payment record first
+      //const validUserId = userId && isValidUUID(userId) ? userId : null;
+      const validUserId = isValidUUID(userId ?? "") ? userId : null;
+      // Ambil dari cart atau form — sesuaikan sesuai struktur kamu
+      const bookingId = cartItems?.[0]?.booking_id ?? null; // atau dari props, state, dsb
+      const validBookingId = isValidUUID(bookingId ?? "") ? bookingId : null;
+
       const { data: payment, error: paymentError } = await supabase
         .from("payments")
         .insert({
-          user_id: userId || null,
+          user_id: isValidUUID(userId ?? "") ? userId : null,
+          booking_id: validBookingId,
           amount: totalAmount,
           payment_method: selectedPaymentMethod,
           status: "pending",
-          is_partial_payment: "false",
+          is_partial_payment: false,
           is_damage_payment: false,
           created_at: new Date().toISOString(),
         })

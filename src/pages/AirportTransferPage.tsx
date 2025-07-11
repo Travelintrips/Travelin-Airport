@@ -728,6 +728,24 @@ function AirportTransferPageContent() {
     fetchVehicleTypes();
   }, [isSessionReady]);
 
+  // Clear distance and duration when pickup location changes
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      distance: 0,
+      duration: 0,
+    }));
+  }, [formData.fromAddress]);
+
+  // Clear distance and duration when dropoff location changes
+  useEffect(() => {
+    setFormData((prev) => ({
+      ...prev,
+      distance: 0,
+      duration: 0,
+    }));
+  }, [formData.toAddress]);
+
   // Calculate route distance and duration
   useEffect(() => {
     // Reset distance and duration when addresses change
@@ -2542,7 +2560,7 @@ Please prepare for the trip!`;
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {vehicleTypes.map((type) => {
-                    // Calculate estimated price for this vehicle type
+                    // Calculate estimated price for this vehicle type using consistent distance
                     const calculateEstimatedPrice = () => {
                       if (formData.distance <= 0) return 0;
 
@@ -2552,15 +2570,14 @@ Please prepare for the trip!`;
                       const surcharge = type.surcharge;
                       const baseDistance = type.minimum_distance || 8; // Use minimum_distance from price_km table
 
-                      // Calculate price using the same formula as in the component
-                      const roundedDistance =
-                        Math.round(formData.distance * 10) / 10;
+                      // Use the exact same distance value as displayed (no additional rounding)
+                      const displayDistance = formData.distance;
 
                       let total = 0;
-                      if (roundedDistance <= baseDistance) {
+                      if (displayDistance <= baseDistance) {
                         total = basicPrice + surcharge;
                       } else {
-                        const extraDistance = roundedDistance - baseDistance;
+                        const extraDistance = displayDistance - baseDistance;
                         total =
                           basicPrice + extraDistance * priceKm + surcharge;
                       }
@@ -2657,14 +2674,14 @@ Please prepare for the trip!`;
                         const calculateVehiclePrice = () => {
                           if (formData.distance <= 0) return 0;
                           const baseDistance = 8;
-                          const roundedDistance =
-                            Math.round(formData.distance * 10) / 10;
+                          // Use the exact same distance value as displayed in vehicle types section
+                          const displayDistance = formData.distance;
 
-                          if (roundedDistance <= baseDistance) {
+                          if (displayDistance <= baseDistance) {
                             return vehicle.basic_price + vehicle.surcharge;
                           } else {
                             const extraDistance =
-                              roundedDistance - baseDistance;
+                              displayDistance - baseDistance;
                             return (
                               vehicle.basic_price +
                               extraDistance * vehicle.price_km +
