@@ -555,7 +555,7 @@ export default function BookingManagement() {
         booking.kode_booking?.toLowerCase().includes(lowercasedSearch) ||
         booking.id.toString().includes(lowercasedSearch) ||
         booking.vehicle_id.toString().includes(lowercasedSearch) ||
-        booking.booking_status.toLowerCase().includes(lowercasedSearch) ||
+        booking.status.toLowerCase().includes(lowercasedSearch) ||
         booking.payment_status.toLowerCase().includes(lowercasedSearch),
     );
 
@@ -840,7 +840,7 @@ export default function BookingManagement() {
                       Approve
                     </Button>
                   )}
-                  {booking.booking_status === "confirmed" && (
+                  {booking.status === "confirmed" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -851,7 +851,7 @@ export default function BookingManagement() {
                       Picked Up
                     </Button>
                   )}
-                  {booking.booking_status === "onride" && (
+                  {booking.status === "onride" && (
                     <>
                       <Button
                         variant="outline"
@@ -877,9 +877,9 @@ export default function BookingManagement() {
                     </>
                   )}
 
-                  {booking.booking_status !== "onride" &&
-                    booking.booking_status !== "completed" &&
-                    booking.booking_status !== "cancelled" && (
+                  {booking.status !== "onride" &&
+                    booking.status !== "completed" &&
+                    booking.status !== "cancelled" && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -974,7 +974,7 @@ export default function BookingManagement() {
                   </p>
                   <p>
                     <span className="font-medium">Booking Status:</span>{" "}
-                    {currentBooking.booking_status}
+                    {currentBooking.status}
                   </p>
                   {currentBooking.pickup_time && (
                     <p>
