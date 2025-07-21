@@ -519,7 +519,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         console.log("User created:", authData.user.id);
 
         // Insert user into users table with role_id
-        const userInsertData = {
+        const userInsertData: any = {
           id: authData.user.id,
           email: authData.user.email,
           full_name: data.name,
@@ -528,11 +528,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-
-        // Add role_id if we have a valid one
-        if (roleId !== null && roleId !== undefined) {
-          userInsertData.role_id = roleId;
-        }
 
         const { error: userError } = await supabase
           .from("users")
@@ -550,7 +545,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         console.log("User inserted into users table with role_id:", roleId);
 
         // Insert customer record with user_id and role_id
-        const customerInsertData = {
+        const customerInsertData: any = {
           id: authData.user.id,
           user_id: authData.user.id,
           full_name: data.name,
@@ -558,11 +553,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
           phone_number: data.phone,
           created_at: new Date().toISOString(),
         };
-
-        // Add role_id if we have a valid one
-        if (roleId !== null && roleId !== undefined) {
-          customerInsertData.role_id = roleId;
-        }
 
         const { error: customerError } = await supabase
           .from("customers")

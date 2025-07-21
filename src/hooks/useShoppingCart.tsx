@@ -14,7 +14,7 @@ import { useSessionReady } from "@/hooks/useSessionReady";
 // Types for shopping cart items
 export type CartItem = {
   id: string;
-  item_type: "baggage" | "airport_transfer" | "car";
+  item_type: "baggage" | "airport_transfer" | "car" | "handling";
   item_id?: string;
   service_name: string;
   price: number;

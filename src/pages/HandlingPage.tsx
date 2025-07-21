@@ -306,7 +306,7 @@ const HandlingPage = () => {
     try {
       // Add to shopping cart
       await addToCart({
-        item_type: "handling",
+        item_type: "airport_transfer",
         service_name: `Handling Service - ${formData.passengerArea}`,
         price: totalPrice || 150000, // Use calculated total price or fallback
         details: {

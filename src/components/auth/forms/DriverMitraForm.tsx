@@ -71,7 +71,14 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
             <FormItem>
               <FormLabel>Year</FormLabel>
               <FormControl>
-                <Input placeholder="2020" type="number" {...field} />
+                <Input
+                  placeholder="2020"
+                  type="number"
+                  {...field}
+                  onChange={(e) =>
+                    field.onChange(Number(e.target.value) || e.target.value)
+                  }
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
