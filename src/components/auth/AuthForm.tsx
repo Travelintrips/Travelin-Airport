@@ -578,6 +578,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 ktpUrl: uploadResult.ktpUrl || documentUrls.ktpUrl,
                 licenseUrl: uploadResult.licenseUrl || documentUrls.licenseUrl,
                 idCardUrl: uploadResult.idCardUrl || documentUrls.idCardUrl,
+                kkUrl: uploadResult.kkUrl || documentUrls.kkUrl,
+                stnkUrl: uploadResult.stnkUrl || documentUrls.stnkUrl,
               };
 
               console.log("All documents uploaded successfully:", {
