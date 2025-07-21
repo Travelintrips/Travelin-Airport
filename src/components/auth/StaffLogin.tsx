@@ -67,7 +67,7 @@ const StaffLogin = () => {
       // Check if user has Staff role
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("role_id, roles(name)")
+        .select("role_id, roles(role_name)")
         .eq("id", authData.user.id)
         .single();
 
@@ -78,9 +78,9 @@ const StaffLogin = () => {
         return;
       }
 
-      const userRole = userData?.roles?.name || "";
+      const userRole = userData?.roles?.role_name || "";
 
-      if (userRole !== "Staff") {
+      if (!userRole.toLowerCase().includes("staff")) {
         setLoginError("Access denied. Only staff members can log in here.");
         await supabase.auth.signOut();
         return;

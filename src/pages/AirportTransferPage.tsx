@@ -735,6 +735,7 @@ function AirportTransferPageContent() {
   useEffect(() => {
     // Reset distance and duration when addresses change
     if (formData.fromAddress === "" || formData.toAddress === "") {
+      console.log("🔄 Resetting distance and duration - addresses cleared");
       setFormData((prev) => ({
         ...prev,
         distance: 0,
@@ -750,6 +751,12 @@ function AirportTransferPageContent() {
       formData.fromAddress &&
       formData.toAddress
     ) {
+      console.log(`🗺️ Calculating route for:`, {
+        from: formData.fromAddress,
+        to: formData.toAddress,
+        fromCoords: formData.fromLocation,
+        toCoords: formData.toLocation,
+      });
       getRouteDetails(formData.fromLocation, formData.toLocation);
     }
   }, [
@@ -762,109 +769,147 @@ function AirportTransferPageContent() {
   // Calculate price when distance, vehicle type, or vehicle price per km changes
   useEffect(() => {
     const calculatePriceFromData = async () => {
-      if (formData.distance <= 0) return;
+      if (formData.distance <= 0) {
+        console.log("Distance is 0 or negative, skipping price calculation");
+        return;
+      }
 
       try {
-        // If we have a selected driver with all pricing data, use that
-        if (selectedDriver) {
-          // Ensure all price values are properly converted to numbers
-          const price_km = Number(selectedDriver.price_km);
-          const basic_price = Number(selectedDriver.basic_price);
-          const surcharge = Number(selectedDriver.surcharge);
+        let price = 0;
+        let pricingSource = "unknown";
+        let finalPriceKm = 0;
+        let finalBasicPrice = 0;
+        let finalSurcharge = 0;
 
-          console.log(
-            `Calculating price for distance ${formData.distance}km with:`,
-            {
-              price_km,
-              basic_price,
-              surcharge,
-            },
-          );
+        console.log(
+          `🔍 Starting price calculation with distance: ${formData.distance}km`,
+        );
 
-          // Verify that we have valid numbers
-          let price;
-          if (isNaN(price_km) || isNaN(basic_price) || isNaN(surcharge)) {
-            console.error("Invalid driver pricing data:", selectedDriver);
-            // Fetch pricing data from database instead of using hardcoded defaults
-            const vehiclePricing = await getPricingFromDatabase(
-              formData.vehicleType,
-            );
-            price = calculatePrice(
-              formData.distance,
-              vehiclePricing.priceKm,
-              vehiclePricing.basicPrice,
-              vehiclePricing.surcharge,
-            );
-          } else {
-            price = calculatePrice(
-              formData.distance,
-              price_km,
-              basic_price,
-              surcharge,
-            );
-          }
-          setFormData((prev) => ({ ...prev, price }));
+        // Priority 1: Use selected vehicle driver pricing if available (for instant booking)
+        if (
+          selectedVehicleDriver &&
+          selectedVehicleDriver.price_km &&
+          selectedVehicleDriver.basic_price
+        ) {
+          finalPriceKm = Number(selectedVehicleDriver.price_km) || 0;
+          finalBasicPrice = Number(selectedVehicleDriver.basic_price) || 0;
+          finalSurcharge = Number(selectedVehicleDriver.surcharge) || 0;
+          pricingSource = "selectedVehicleDriver";
+          console.log(`🎯 Using selected vehicle driver pricing:`, {
+            driver: selectedVehicleDriver.driver_name,
+            vehicle: `${selectedVehicleDriver.make} ${selectedVehicleDriver.model}`,
+            distance: formData.distance,
+            priceKm: finalPriceKm,
+            basicPrice: finalBasicPrice,
+            surcharge: finalSurcharge,
+          });
         }
-        // Otherwise use the vehicle pricing data if available
-        else if (formData.vehiclePricePerKm > 0) {
-          // Ensure all price values are properly converted to numbers
-          const price_km = Number(formData.vehiclePricePerKm);
-          const basic_price = Number(formData.basicPrice);
-          const surcharge = Number(formData.surcharge);
-
-          console.log(
-            `Calculating price for distance ${formData.distance}km with vehicle type data:`,
-            {
-              price_km,
-              basic_price,
-              surcharge,
-            },
-          );
-
-          // Verify that we have valid numbers
-          let price;
-          if (isNaN(price_km) || isNaN(basic_price) || isNaN(surcharge)) {
-            console.error("Invalid vehicle pricing data in form:", {
-              price_km: formData.vehiclePricePerKm,
-              basic_price: formData.basicPrice,
-              surcharge: formData.surcharge,
-            });
-            // Fetch pricing data from database instead of using hardcoded defaults
-            const vehiclePricing = await getPricingFromDatabase(
-              formData.vehicleType,
-            );
-            price = calculatePrice(
-              formData.distance,
-              vehiclePricing.priceKm,
-              vehiclePricing.basicPrice,
-              vehiclePricing.surcharge,
-            );
-          } else {
-            price = calculatePrice(
-              formData.distance,
-              price_km,
-              basic_price,
-              surcharge,
-            );
-          }
-          setFormData((prev) => ({ ...prev, price }));
+        // Priority 2: Use selected driver pricing if available (for scheduled booking)
+        else if (
+          selectedDriver &&
+          selectedDriver.price_km &&
+          selectedDriver.basic_price
+        ) {
+          finalPriceKm = Number(selectedDriver.price_km) || 0;
+          finalBasicPrice = Number(selectedDriver.basic_price) || 0;
+          finalSurcharge = Number(selectedDriver.surcharge) || 0;
+          pricingSource = "selectedDriver";
+          console.log(`🎯 Using selected driver pricing:`, {
+            driver: selectedDriver.driver_name,
+            distance: formData.distance,
+            priceKm: finalPriceKm,
+            basicPrice: finalBasicPrice,
+            surcharge: finalSurcharge,
+          });
         }
-        // If no pricing data is available, get from vehicle types
-        else {
-          // Get pricing data from vehicle types
+        // Priority 3: Use form data pricing if available
+        else if (formData.vehiclePricePerKm > 0 && formData.basicPrice > 0) {
+          finalPriceKm = Number(formData.vehiclePricePerKm) || 0;
+          finalBasicPrice = Number(formData.basicPrice) || 0;
+          finalSurcharge = Number(formData.surcharge) || 0;
+          pricingSource = "formData";
+          console.log(`🎯 Using form data pricing:`, {
+            vehicleType: formData.vehicleType,
+            distance: formData.distance,
+            priceKm: finalPriceKm,
+            basicPrice: finalBasicPrice,
+            surcharge: finalSurcharge,
+          });
+        }
+        // Priority 4: Get pricing from vehicle types
+        else if (formData.vehicleType) {
           const vehiclePricing = getPricingFromVehicleTypes(
             formData.vehicleType,
           );
-          const price = calculatePrice(
-            formData.distance,
-            vehiclePricing.priceKm,
-            vehiclePricing.basicPrice,
-            vehiclePricing.surcharge,
+          if (vehiclePricing.priceKm > 0 && vehiclePricing.basicPrice > 0) {
+            finalPriceKm = vehiclePricing.priceKm;
+            finalBasicPrice = vehiclePricing.basicPrice;
+            finalSurcharge = vehiclePricing.surcharge;
+            pricingSource = "vehicleTypes";
+            console.log(`🎯 Using vehicle types pricing:`, {
+              vehicleType: formData.vehicleType,
+              distance: formData.distance,
+              priceKm: finalPriceKm,
+              basicPrice: finalBasicPrice,
+              surcharge: finalSurcharge,
+            });
+          }
+        }
+
+        // Priority 5: Fallback to database pricing
+        if (finalPriceKm === 0 && formData.vehicleType) {
+          const vehiclePricing = await getPricingFromDatabase(
+            formData.vehicleType,
           );
-          setFormData((prev) => ({ ...prev, price }));
+          if (vehiclePricing.priceKm > 0 && vehiclePricing.basicPrice > 0) {
+            finalPriceKm = vehiclePricing.priceKm;
+            finalBasicPrice = vehiclePricing.basicPrice;
+            finalSurcharge = vehiclePricing.surcharge;
+            pricingSource = "database";
+            console.log(`🎯 Using database pricing:`, {
+              vehicleType: formData.vehicleType,
+              distance: formData.distance,
+              priceKm: finalPriceKm,
+              basicPrice: finalBasicPrice,
+              surcharge: finalSurcharge,
+            });
+          }
+        }
+
+        // Calculate final price using consistent pricing data
+        if (finalPriceKm > 0 && finalBasicPrice > 0) {
+          price = calculatePrice(
+            formData.distance,
+            finalPriceKm,
+            finalBasicPrice,
+            finalSurcharge,
+          );
+
+          console.log(`💰 Final price calculation result:`, {
+            distance: formData.distance,
+            vehicleType: formData.vehicleType,
+            priceKm: finalPriceKm,
+            basicPrice: finalBasicPrice,
+            surcharge: finalSurcharge,
+            calculatedPrice: price,
+            pricingSource,
+            currentFormPrice: formData.price,
+            source: "main_calculation",
+          });
+
+          // Update form data with consistent pricing information
+          setFormData((prev) => ({
+            ...prev,
+            price,
+            vehiclePricePerKm: finalPriceKm,
+            basicPrice: finalBasicPrice,
+            surcharge: finalSurcharge,
+          }));
+        } else {
+          console.warn(`⚠️ No valid pricing data found for calculation`);
         }
       } catch (error) {
-        console.error("Error calculating price:", error);
+        console.error("❌ Error calculating price:", error);
         toast({
           title: "Price Calculation Error",
           description: "Could not calculate price. Please try again.",
@@ -876,11 +921,13 @@ function AirportTransferPageContent() {
     calculatePriceFromData();
   }, [
     formData.distance,
-    formData.vehiclePricePerKm,
-    formData.basicPrice,
-    formData.surcharge,
     formData.vehicleType,
-    selectedDriver,
+    selectedDriver?.price_km,
+    selectedDriver?.basic_price,
+    selectedDriver?.surcharge,
+    selectedVehicleDriver?.price_km,
+    selectedVehicleDriver?.basic_price,
+    selectedVehicleDriver?.surcharge,
   ]);
 
   // Update vehicle pricing data when vehicle type changes
@@ -1276,18 +1323,19 @@ function AirportTransferPageContent() {
     basicPrice: number,
     surcharge: number,
   ): number {
+    // Convert all inputs to numbers and validate
+    const distance = Number(distanceKm) || 0;
+    const priceKm = Number(pricePerKm) || 0;
+    const basic = Number(basicPrice) || 0;
+    const charge = Number(surcharge) || 0;
+
     // Validate inputs to prevent NaN results
-    if (
-      isNaN(distanceKm) ||
-      isNaN(pricePerKm) ||
-      isNaN(basicPrice) ||
-      isNaN(surcharge)
-    ) {
+    if (distance <= 0 || priceKm <= 0 || basic <= 0) {
       console.error("Invalid price calculation inputs:", {
-        distanceKm,
-        pricePerKm,
-        basicPrice,
-        surcharge,
+        distanceKm: distance,
+        pricePerKm: priceKm,
+        basicPrice: basic,
+        surcharge: charge,
       });
       return 0;
     }
@@ -1295,28 +1343,36 @@ function AirportTransferPageContent() {
     const baseDistance = 8; // First 8 km use basic_price
 
     // Round distance to 1 decimal place for accuracy
-    const roundedDistance = Math.round(distanceKm * 10) / 10;
+    const roundedDistance = Math.round(distance * 10) / 10;
 
     let total = 0;
 
-    // Apply pricing formula
+    // Apply pricing formula consistently
     if (roundedDistance <= baseDistance) {
-      total = basicPrice + surcharge;
+      total = basic + charge;
     } else {
       const extraDistance = roundedDistance - baseDistance;
-      total = basicPrice + extraDistance * pricePerKm + surcharge;
+      total = basic + extraDistance * priceKm + charge;
     }
 
-    console.log(`Price calculation for ${roundedDistance}km:`, {
-      basicPrice,
-      pricePerKm,
-      surcharge,
+    const finalPrice = Math.round(total);
+
+    console.log(`✅ Price calculation for ${roundedDistance}km:`, {
+      distance: roundedDistance,
+      pricePerKm: priceKm,
+      basicPrice: basic,
+      surcharge: charge,
+      baseDistance,
       extraDistance:
         roundedDistance > baseDistance ? roundedDistance - baseDistance : 0,
-      total,
+      total: finalPrice,
+      formula:
+        roundedDistance <= baseDistance
+          ? `${basic} + ${charge} = ${finalPrice}`
+          : `${basic} + (${roundedDistance - baseDistance} × ${priceKm}) + ${charge} = ${finalPrice}`,
     });
 
-    return total;
+    return finalPrice;
   }
 
   // Get route details using OSRM
@@ -1367,6 +1423,14 @@ function AirportTransferPageContent() {
           Math.ceil(data.routes[0].duration / 60),
         ); // convert to minutes, minimum 1
 
+        console.log(`🛣️ Route calculated:`, {
+          rawDistance: data.routes[0].distance,
+          distanceKm: distanceKm,
+          rawDuration: data.routes[0].duration,
+          durationMin: durationMin,
+          source: "OSRM",
+        });
+
         setFormData((prev) => ({
           ...prev,
           distance: distanceKm,
@@ -1381,6 +1445,13 @@ function AirportTransferPageContent() {
           toLat,
           toLng,
         );
+
+        console.log(`🛣️ No route found, using direct distance:`, {
+          directDistance: directDistance,
+          estimatedDuration: Math.ceil(directDistance * 2),
+          source: "direct_calculation",
+        });
+
         setFormData((prev) => ({
           ...prev,
           distance: directDistance,
@@ -1396,6 +1467,14 @@ function AirportTransferPageContent() {
         toLat,
         toLng,
       );
+
+      console.log(`🛣️ OSRM error, using direct distance fallback:`, {
+        error: err.message,
+        directDistance: directDistance,
+        estimatedDuration: Math.ceil(directDistance * 2),
+        source: "error_fallback",
+      });
+
       setFormData((prev) => ({
         ...prev,
         distance: directDistance,
@@ -2019,22 +2098,62 @@ function AirportTransferPageContent() {
 
     setIsLoadingBooking(true);
     try {
-      // Calculate price based on vehicle type
-      const vehiclePricing = getPricingFromVehicleTypes(formData.vehicleType);
-      const calculatedPrice = calculatePrice(
-        formData.distance,
-        vehiclePricing.priceKm,
-        vehiclePricing.basicPrice,
-        vehiclePricing.surcharge,
-      );
+      // Use the current form data pricing (which should already be consistent)
+      let finalPrice = formData.price;
+      let finalPriceKm = formData.vehiclePricePerKm;
+      let finalBasicPrice = formData.basicPrice;
+      let finalSurcharge = formData.surcharge;
 
-      // Update form data with calculated price
+      // If price is not set or pricing data is missing, calculate it
+      if (finalPrice <= 0 || finalPriceKm <= 0 || finalBasicPrice <= 0) {
+        console.log(`🔄 Recalculating price for direct booking`);
+
+        // Use selected vehicle driver pricing if available
+        if (
+          selectedVehicleDriver &&
+          selectedVehicleDriver.price_km &&
+          selectedVehicleDriver.basic_price
+        ) {
+          finalPriceKm = Number(selectedVehicleDriver.price_km);
+          finalBasicPrice = Number(selectedVehicleDriver.basic_price);
+          finalSurcharge = Number(selectedVehicleDriver.surcharge) || 0;
+          console.log(`✅ Using selected vehicle driver pricing for booking`);
+        } else {
+          // Fallback to vehicle type pricing
+          const vehiclePricing = getPricingFromVehicleTypes(
+            formData.vehicleType,
+          );
+          finalPriceKm = vehiclePricing.priceKm;
+          finalBasicPrice = vehiclePricing.basicPrice;
+          finalSurcharge = vehiclePricing.surcharge;
+          console.log(`✅ Using vehicle type pricing for booking`);
+        }
+
+        finalPrice = calculatePrice(
+          formData.distance,
+          finalPriceKm,
+          finalBasicPrice,
+          finalSurcharge,
+        );
+
+        console.log(`💰 Direct booking price calculation:`, {
+          distance: formData.distance,
+          priceKm: finalPriceKm,
+          basicPrice: finalBasicPrice,
+          surcharge: finalSurcharge,
+          calculatedPrice: finalPrice,
+        });
+      } else {
+        console.log(`✅ Using existing form data pricing: ${finalPrice}`);
+      }
+
+      // Update form data with final pricing
       setFormData((prev) => ({
         ...prev,
-        price: calculatedPrice,
-        vehiclePricePerKm: vehiclePricing.priceKm,
-        basicPrice: vehiclePricing.basicPrice,
-        surcharge: vehiclePricing.surcharge,
+        price: finalPrice,
+        vehiclePricePerKm: finalPriceKm,
+        basicPrice: finalBasicPrice,
+        surcharge: finalSurcharge,
       }));
 
       // Create booking data for Supabase
@@ -2048,7 +2167,7 @@ function AirportTransferPageContent() {
         pickup_date: formData.pickupDate,
         pickup_time: formData.pickupTime,
         type: formData.vehicleType,
-        price: calculatedPrice,
+        price: finalPrice,
         passenger: formData.passenger,
         driver_id: selectedVehicleDriver?.uuid || null, // ✅ UUID dari drivers.id
         id_driver: selectedVehicleDriver?.id_driver || null, // ✅ integer dari drivers.id_driver
@@ -2084,7 +2203,7 @@ function AirportTransferPageContent() {
       await addToCart({
         item_type: "airport_transfer",
         service_name: `Airport Transfer - ${formData.vehicleType}`,
-        price: calculatedPrice,
+        price: finalPrice,
         details: {
           bookingId: data.id,
           bookingCode: formData.bookingCode,
@@ -2475,7 +2594,10 @@ Please prepare for the trip!`;
                         Distance
                       </h4>
                       <p className="text-lg sm:text-2xl font-bold">
-                        {formData.distance.toFixed(1)} km
+                        {formData.distance > 0
+                          ? formData.distance.toFixed(1)
+                          : "0.0"}{" "}
+                        km
                       </p>
                     </div>
                   </CardContent>
@@ -2488,7 +2610,10 @@ Please prepare for the trip!`;
                         Duration
                       </h4>
                       <p className="text-lg sm:text-2xl font-bold">
-                        {formData.duration.toString()} min
+                        {formData.duration > 0
+                          ? formData.duration.toString()
+                          : "0"}{" "}
+                        min
                       </p>
                     </div>
                   </CardContent>
@@ -2545,30 +2670,69 @@ Please prepare for the trip!`;
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {vehicleTypes.map((type) => {
-                    // Calculate estimated price for this vehicle type
+                    // Calculate estimated price for this vehicle type using vehicle-specific pricing
                     const calculateEstimatedPrice = () => {
                       if (formData.distance <= 0) return 0;
 
-                      // Get pricing values from the current vehicle type
-                      const priceKm = type.price_per_km;
-                      const basicPrice = type.basic_price;
-                      const surcharge = type.surcharge;
-                      const baseDistance = type.minimum_distance || 8; // Use minimum_distance from price_km table
+                      // First try to get pricing from available vehicles with drivers for this type
+                      const matchingVehicle = availableVehiclesWithDrivers.find(
+                        (vehicle) =>
+                          vehicle.vehicle_type === type.name ||
+                          (type.name === "MPV" &&
+                            vehicle.make &&
+                            vehicle.model),
+                      );
 
-                      // Calculate price using the same formula as in the component
-                      const roundedDistance =
-                        Math.round(formData.distance * 10) / 10;
+                      let priceKm, basicPrice, surcharge;
 
-                      let total = 0;
-                      if (roundedDistance <= baseDistance) {
-                        total = basicPrice + surcharge;
+                      if (matchingVehicle) {
+                        // Use pricing from actual available vehicle
+                        priceKm = Number(matchingVehicle.price_km) || 0;
+                        basicPrice = Number(matchingVehicle.basic_price) || 0;
+                        surcharge = Number(matchingVehicle.surcharge) || 0;
+                        console.log(
+                          `Using vehicle-specific pricing for ${type.name} from ${matchingVehicle.make} ${matchingVehicle.model}`,
+                        );
                       } else {
-                        const extraDistance = roundedDistance - baseDistance;
-                        total =
-                          basicPrice + extraDistance * priceKm + surcharge;
+                        // Fallback to vehicle type pricing
+                        priceKm = Number(type.price_per_km) || 0;
+                        basicPrice = Number(type.basic_price) || 0;
+                        surcharge = Number(type.surcharge) || 0;
+                        console.log(
+                          `Using vehicle type pricing for ${type.name}`,
+                        );
                       }
 
-                      return total;
+                      // Validate pricing data
+                      if (priceKm <= 0 || basicPrice <= 0) {
+                        console.warn(`Invalid pricing data for ${type.name}:`, {
+                          priceKm,
+                          basicPrice,
+                          surcharge,
+                        });
+                        return 0;
+                      }
+
+                      // Use the same calculatePrice function for consistency
+                      const calculatedPrice = calculatePrice(
+                        formData.distance,
+                        priceKm,
+                        basicPrice,
+                        surcharge,
+                      );
+
+                      console.log(`Price calculation for ${type.name}:`, {
+                        distance: formData.distance,
+                        priceKm,
+                        basicPrice,
+                        surcharge,
+                        calculatedPrice,
+                        source: matchingVehicle
+                          ? "vehicle-specific"
+                          : "vehicle-type",
+                      });
+
+                      return calculatedPrice;
                     };
 
                     // Get icon based on vehicle type
@@ -2595,14 +2759,69 @@ Please prepare for the trip!`;
                             : "hover:border-blue-500"
                         }`}
                         onClick={() => {
+                          console.log(`🚗 Vehicle type ${type.name} selected`);
+
+                          // Calculate price for consistency
+                          const estimatedPrice = calculateEstimatedPrice();
+
+                          // Find matching vehicle for consistent pricing
+                          const matchingVehicle =
+                            availableVehiclesWithDrivers.find(
+                              (vehicle) =>
+                                vehicle.vehicle_type === type.name ||
+                                (type.name === "MPV" &&
+                                  vehicle.make &&
+                                  vehicle.model),
+                            );
+
+                          let finalPriceKm, finalBasicPrice, finalSurcharge;
+
+                          // Use vehicle-specific pricing if available, otherwise use type pricing
+                          if (matchingVehicle) {
+                            finalPriceKm = matchingVehicle.price_km;
+                            finalBasicPrice = matchingVehicle.basic_price;
+                            finalSurcharge = matchingVehicle.surcharge;
+                            console.log(
+                              `✅ Using matching vehicle pricing for ${type.name}:`,
+                              {
+                                vehicle: `${matchingVehicle.make} ${matchingVehicle.model}`,
+                                priceKm: finalPriceKm,
+                                basicPrice: finalBasicPrice,
+                                surcharge: finalSurcharge,
+                              },
+                            );
+                          } else {
+                            finalPriceKm = type.price_per_km;
+                            finalBasicPrice = type.basic_price;
+                            finalSurcharge = type.surcharge;
+                            console.log(
+                              `✅ Using vehicle type pricing for ${type.name}:`,
+                              {
+                                priceKm: finalPriceKm,
+                                basicPrice: finalBasicPrice,
+                                surcharge: finalSurcharge,
+                              },
+                            );
+                          }
+
                           // Set the selected vehicle type and its pricing
                           setFormData((prev) => ({
                             ...prev,
                             vehicleType: type.name,
-                            vehiclePricePerKm: type.price_per_km,
-                            basicPrice: type.basic_price,
-                            surcharge: type.surcharge,
+                            vehiclePricePerKm: finalPriceKm,
+                            basicPrice: finalBasicPrice,
+                            surcharge: finalSurcharge,
+                            price: estimatedPrice,
                           }));
+
+                          console.log(`💰 Vehicle type selection complete:`, {
+                            name: type.name,
+                            priceKm: finalPriceKm,
+                            basicPrice: finalBasicPrice,
+                            surcharge: finalSurcharge,
+                            estimatedPrice,
+                            distance: formData.distance,
+                          });
                         }}
                       >
                         <CardContent className="pt-4 sm:pt-6">
@@ -2655,8 +2874,14 @@ Please prepare for the trip!`;
                                   {type.name}
                                 </h4>
                                 <p className="text-xs sm:text-sm text-gray-500">
-                                  {formData.distance.toFixed(1)} km •{" "}
-                                  {formData.duration.toString()} min
+                                  {formData.distance > 0
+                                    ? formData.distance.toFixed(1)
+                                    : "0.0"}{" "}
+                                  km •{" "}
+                                  {formData.duration > 0
+                                    ? formData.duration.toString()
+                                    : "0"}{" "}
+                                  min
                                 </p>
                               </div>
                             </div>
@@ -2666,7 +2891,7 @@ Please prepare for the trip!`;
                                   const price = calculateEstimatedPrice();
                                   return isNaN(price) || price <= 0
                                     ? "Calculating..."
-                                    : `Rp ${price.toLocaleString()}`;
+                                    : `Rp ${Math.round(price).toLocaleString()}`;
                                 })()}
                               </p>
                               {isSelected && (
@@ -2698,21 +2923,46 @@ Please prepare for the trip!`;
                       {availableVehiclesWithDrivers.map((vehicle) => {
                         const calculateVehiclePrice = () => {
                           if (formData.distance <= 0) return 0;
-                          const baseDistance = 8;
-                          const roundedDistance =
-                            Math.round(formData.distance * 10) / 10;
 
-                          if (roundedDistance <= baseDistance) {
-                            return vehicle.basic_price + vehicle.surcharge;
-                          } else {
-                            const extraDistance =
-                              roundedDistance - baseDistance;
-                            return (
-                              vehicle.basic_price +
-                              extraDistance * vehicle.price_km +
-                              vehicle.surcharge
+                          // Ensure all values are numbers
+                          const priceKm = Number(vehicle.price_km) || 0;
+                          const basicPrice = Number(vehicle.basic_price) || 0;
+                          const surcharge = Number(vehicle.surcharge) || 0;
+
+                          // Validate pricing data
+                          if (priceKm <= 0 || basicPrice <= 0) {
+                            console.warn(
+                              `Invalid vehicle pricing data for ${vehicle.make} ${vehicle.model}:`,
+                              {
+                                priceKm,
+                                basicPrice,
+                                surcharge,
+                              },
                             );
+                            return 0;
                           }
+
+                          // Use the same calculatePrice function for consistency
+                          const calculatedPrice = calculatePrice(
+                            formData.distance,
+                            priceKm,
+                            basicPrice,
+                            surcharge,
+                          );
+
+                          console.log(
+                            `🚗 Vehicle price calculation for ${vehicle.make} ${vehicle.model}:`,
+                            {
+                              distance: formData.distance,
+                              priceKm,
+                              basicPrice,
+                              surcharge,
+                              calculatedPrice,
+                              source: "vehicle_selection",
+                            },
+                          );
+
+                          return calculatedPrice;
                         };
 
                         const isSelected =
@@ -2727,6 +2977,13 @@ Please prepare for the trip!`;
                                 : "hover:shadow-md hover:border-blue-300"
                             }`}
                             onClick={() => {
+                              console.log(
+                                `🚗 Vehicle driver selected: ${vehicle.driver_name} - ${vehicle.make} ${vehicle.model}`,
+                              );
+
+                              // Calculate price using the same function for consistency
+                              const calculatedPrice = calculateVehiclePrice();
+
                               // Set the selected vehicle and driver data
                               const vehicleData = {
                                 id: vehicle.id, // Vehicle ID
@@ -2740,7 +2997,7 @@ Please prepare for the trip!`;
                                 price_km: vehicle.price_km,
                                 basic_price: vehicle.basic_price,
                                 surcharge: vehicle.surcharge,
-                                calculated_price: calculateVehiclePrice(),
+                                calculated_price: calculatedPrice,
                               };
 
                               setSelectedVehicleDriver(vehicleData);
@@ -2757,8 +3014,22 @@ Please prepare for the trip!`;
                                 vehiclePricePerKm: vehicle.price_km,
                                 basicPrice: vehicle.basic_price,
                                 surcharge: vehicle.surcharge,
-                                price: calculateVehiclePrice(),
+                                price: calculatedPrice,
                               }));
+
+                              console.log(
+                                `💰 Selected vehicle driver pricing updated:`,
+                                {
+                                  driver: vehicle.driver_name,
+                                  vehicleName: `${vehicle.make} ${vehicle.model}`,
+                                  priceKm: vehicle.price_km,
+                                  basicPrice: vehicle.basic_price,
+                                  surcharge: vehicle.surcharge,
+                                  calculatedPrice,
+                                  distance: formData.distance,
+                                  formula: `${vehicle.basic_price} + (${formData.distance > 8 ? formData.distance - 8 : 0} × ${vehicle.price_km}) + ${vehicle.surcharge} = ${calculatedPrice}`,
+                                },
+                              );
                             }}
                           >
                             <CardContent className="pt-4 sm:pt-6">
@@ -2851,7 +3122,7 @@ Please prepare for the trip!`;
                                       const price = calculateVehiclePrice();
                                       return isNaN(price) || price <= 0
                                         ? "Calculating..."
-                                        : `Rp ${price.toLocaleString()}`;
+                                        : `Rp ${Math.round(price).toLocaleString()}`;
                                     })()}
                                   </span>
                                 </div>
@@ -3002,7 +3273,7 @@ Please prepare for the trip!`;
                   <p className="text-2xl font-bold text-green-600">
                     {isNaN(formData.price) || formData.price <= 0
                       ? "Price calculating..."
-                      : `Rp ${formData.price.toLocaleString()}`}
+                      : `Rp ${Math.round(formData.price).toLocaleString()}`}
                   </p>
                 </div>
               </CardContent>
@@ -3097,7 +3368,7 @@ Please prepare for the trip!`;
                 <span className="font-bold text-lg">
                   {isNaN(formData.price) || formData.price <= 0
                     ? "Price calculating..."
-                    : `Rp ${formData.price.toLocaleString()}`}
+                    : `Rp ${Math.round(formData.price).toLocaleString()}`}
                 </span>
               </div>
             </div>
@@ -3363,7 +3634,7 @@ Please prepare for the trip!`;
                     <span className="font-bold text-lg">
                       {isNaN(formData.price) || formData.price <= 0
                         ? "Price calculating..."
-                        : `Rp ${formData.price.toLocaleString()}`}
+                        : `Rp ${Math.round(formData.price).toLocaleString()}`}
                     </span>
                   </div>
                 </div>

@@ -100,14 +100,35 @@ export async function processPayment(paymentData: PaymentRequest) {
         });
 
       if (functionError) {
+        // Check if the error is related to journal entries
+        const errorMessage = functionError.message || "";
+        if (
+          errorMessage.includes("Journal entry") ||
+          errorMessage.includes("not found")
+        ) {
+          console.warn(
+            "Journal entry error detected, falling back to direct database operation",
+          );
+          throw new Error("Journal entry error - falling back");
+        }
         throw new Error(`Function error: ${functionError.message}`);
       }
 
       // Check if the response indicates success
       if (!functionData || functionData.success === false) {
-        throw new Error(
-          functionData?.message || "Unknown error from edge function",
-        );
+        const errorMessage =
+          functionData?.message || "Unknown error from edge function";
+        // Check if the error is related to journal entries
+        if (
+          errorMessage.includes("Journal entry") ||
+          errorMessage.includes("not found")
+        ) {
+          console.warn(
+            "Journal entry error in response, falling back to direct database operation",
+          );
+          throw new Error("Journal entry error - falling back");
+        }
+        throw new Error(errorMessage);
       }
 
       // If we got here, the function call was successful

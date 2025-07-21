@@ -35,6 +35,16 @@ if (hasValidCredentials) {
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+    global: {
+      headers: {
+        "X-Client-Info": "supabase-js-web",
+      },
+    },
   });
 } else {
   console.warn(

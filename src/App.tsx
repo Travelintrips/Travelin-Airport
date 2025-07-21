@@ -58,6 +58,8 @@ import TrainsPage from "./pages/TrainsPage";
 import BusPage from "./pages/BusPage";
 import ActivitiesPage from "./pages/ActivitiesPage";
 import HandlingPage from "./pages/HandlingPage";
+import HandlingBookingManagement from "./components/admin/HandlingBookingManagement";
+import HandlingServicesManagement from "./components/admin/HandlingServicesManagement";
 
 declare global {
   interface Window {
@@ -69,6 +71,7 @@ const ROLES = {
   ADMIN: "Admin",
   STAFF: "Staff",
   STAFF_TRIPS: "Staff Trips",
+  STAFF_TRAFFIC: "Staff Traffic",
   CUSTOMER: "Customer",
   DRIVER_MITRA: "Driver Mitra",
   DRIVER_PERUSAHAAN: "Driver Perusahaan",
@@ -358,8 +361,24 @@ function AppContent() {
           // Use navigate with replace: true to prevent back button issues
           navigate("/admin", { replace: true });
         }
-      } else if (userRole === ROLES.STAFF_TRIPS || userRole === ROLES.STAFF) {
-        // ✅ Staff users tetap berada di TravelPage, tidak redirect ke sub-account
+      } else if (userRole === ROLES.STAFF_TRIPS) {
+        console.log(
+          "Staff Trips user detected, redirecting to admin dashboard",
+        );
+        // Staff Trips users should be redirected to admin dashboard
+        if (!currentPath.includes("/admin")) {
+          navigate("/admin", { replace: true });
+        }
+      } else if (userRole === ROLES.STAFF_TRAFFIC) {
+        console.log(
+          "Staff Traffic user detected, redirecting to admin dashboard",
+        );
+        // Staff Traffic users should be redirected to admin dashboard
+        if (!currentPath.includes("/admin")) {
+          navigate("/admin", { replace: true });
+        }
+      } else if (userRole === ROLES.STAFF) {
+        // ✅ Regular Staff users tetap berada di TravelPage, tidak redirect ke sub-account
         if (
           currentPath !== "/" &&
           currentPath !== "/home" &&
@@ -505,7 +524,12 @@ function AppContent() {
             path="/new-booking"
             element={
               <ProtectedRoute
-                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                allowedRoles={[
+                  ROLES.ADMIN,
+                  ROLES.STAFF,
+                  ROLES.STAFF_TRIPS,
+                  ROLES.STAFF_TRAFFIC,
+                ]}
               >
                 <NewBookingPage />
               </ProtectedRoute>
@@ -516,7 +540,12 @@ function AppContent() {
             path="/admin"
             element={
               <ProtectedRoute
-                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                allowedRoles={[
+                  ROLES.ADMIN,
+                  ROLES.STAFF,
+                  ROLES.STAFF_TRIPS,
+                  ROLES.STAFF_TRAFFIC,
+                ]}
               >
                 <AdminLayout />
               </ProtectedRoute>
@@ -526,7 +555,12 @@ function AppContent() {
             path="/admin/*"
             element={
               <ProtectedRoute
-                allowedRoles={[ROLES.ADMIN, ROLES.STAFF, ROLES.STAFF_TRIPS]}
+                allowedRoles={[
+                  ROLES.ADMIN,
+                  ROLES.STAFF,
+                  ROLES.STAFF_TRIPS,
+                  ROLES.STAFF_TRAFFIC,
+                ]}
               >
                 <AdminLayout />
               </ProtectedRoute>
@@ -558,7 +592,16 @@ function AppContent() {
               path="baggage-booking"
               element={<BaggageBookingManagement />}
             />
+            <Route path="price-baggage" element={<PriceBaggage />} />
             <Route path="chart" element={<ChartManagement />} />
+            <Route
+              path="handling-booking"
+              element={<HandlingBookingManagement />}
+            />
+            <Route
+              path="handling-services"
+              element={<HandlingServicesManagement />}
+            />
             <Route
               path="damage-payment/:bookingId"
               element={<DamagePaymentForm />}

@@ -1,8 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.6";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin":
-    "https://distracted-archimedes8-kleh7.view-3.tempo-dev.app",
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -28,10 +27,26 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { userId, roleId } = await req.json();
+    const { userId, roleId, email } = await req.json();
 
-    if (!userId || !roleId) {
-      throw new Error("Missing userId or roleId");
+    let targetUserId = userId;
+
+    // If email is provided instead of userId, find the user by email
+    if (!targetUserId && email) {
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", email)
+        .single();
+
+      if (userError || !userData) {
+        throw new Error(`User with email ${email} not found`);
+      }
+      targetUserId = userData.id;
+    }
+
+    if (!targetUserId || !roleId) {
+      throw new Error("Missing userId/email or roleId");
     }
 
     const { data: roleData, error: roleError } = await supabase
@@ -50,8 +65,23 @@ Deno.serve(async (req) => {
         role_id: roleId,
         role_name: roleData.role_name,
       })
-      .eq("id", userId)
+      .eq("id", targetUserId)
       .select();
+
+    // Also update auth user metadata
+    const { error: authError } = await supabase.auth.admin.updateUserById(
+      targetUserId,
+      {
+        user_metadata: {
+          role: roleData.role_name,
+          role_id: roleId.toString(),
+        },
+      },
+    );
+
+    if (authError) {
+      console.warn("Failed to update auth metadata:", authError.message);
+    }
 
     if (error) {
       throw new Error("Failed to update user role: " + error.message);

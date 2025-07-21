@@ -101,22 +101,32 @@ const AuthForm: React.FC<AuthFormProps> = ({
     const userMeta = user?.user_metadata || {};
     console.log("📋 User metadata:", userMeta);
 
-    // Determine role from metadata or default to Customer
-    const userRole = userMeta.role || "Customer";
-
-    // Try to get name from users table first
-    console.log("🔍 Fetching user name from users table...");
+    // Try to get user data including role from users table first
+    console.log("🔍 Fetching user data from users table...");
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("full_name")
+      .select("full_name, role, role_name")
       .eq("id", user.id)
       .single();
 
     let userFullName = "";
+    let userRole = userMeta.role || "Customer";
 
-    if (!userError && userData?.full_name) {
-      userFullName = userData.full_name.trim();
-      console.log("✅ Found name in users table during login:", userFullName);
+    if (!userError && userData) {
+      if (userData.full_name) {
+        userFullName = userData.full_name.trim();
+        console.log("✅ Found name in users table during login:", userFullName);
+      }
+      if (userData.role) {
+        userRole = userData.role;
+        console.log("✅ Found role in users table during login:", userRole);
+      } else if (userData.role_name) {
+        userRole = userData.role_name;
+        console.log(
+          "✅ Found role_name in users table during login:",
+          userRole,
+        );
+      }
     } else {
       console.log("🔍 Checking customers table for name...");
       // Check if user is a customer, try customers table
@@ -144,6 +154,25 @@ const AuthForm: React.FC<AuthFormProps> = ({
       }
     }
 
+    // If still no role found, try staff table
+    if (!userRole || userRole === "Customer") {
+      console.log("🔍 Checking staff table for role...");
+      try {
+        const { data: staffData, error: staffError } = await supabase
+          .from("staff")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        if (!staffError && staffData?.role) {
+          userRole = staffData.role;
+          console.log("✅ Found role in staff table during login:", userRole);
+        }
+      } catch (staffError) {
+        console.warn("⚠️ Error checking staff table:", staffError);
+      }
+    }
+
     // Make sure we never use "Customer" as the name
     if (!userFullName || userFullName === "Customer") {
       userFullName = user.email?.split("@")[0] || "User";
@@ -168,6 +197,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
       email: user.email || "",
       name: userFullName,
     };
+
+    console.log("📋 Final user data object:", userDataObj);
 
     // Update user metadata to ensure consistency between UI and stored data
     const { error: updateMetadataError } = await supabase.auth.updateUser({
@@ -389,21 +420,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
       if (userRole === "Admin" || isAdmin) {
         console.log("🔀 Redirecting Admin user to admin panel");
         navigate("/admin");
-      } else if (userRole === "Staff Trips") {
-        console.log("🔀 Redirecting Staff user to sub-account panel");
-        const token = authData.session?.access_token; // ambil access_token dari session
-        const refresh_token = authData.session?.refresh_token;
-
-        if (token && refresh_token) {
-          window.open(
-            `https://agitated-chaplygin5-37ywx.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh_token}`,
-            "_blank",
-          );
-        } else {
-          console.error(
-            "❌ No access token or refresh token found for Staff Trips user.",
-          );
-        }
       } else {
         console.log("ℹ️ No redirect needed for role:", userRole);
       }
@@ -594,7 +610,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
         const { data: roleData, error: roleError } = await supabase
           .from("roles")
-          .select("id")
+          .select("role_id")
           .ilike("role_name", data.role)
           .single();
 
@@ -602,7 +618,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
           console.error("Error fetching role ID:", roleError);
         }
 
-        const roleId = roleData?.id || null;
+        const roleId = roleData?.role_id || null;
 
         if (roleId && authData.user) {
           try {

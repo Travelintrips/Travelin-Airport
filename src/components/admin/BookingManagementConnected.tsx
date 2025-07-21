@@ -38,11 +38,11 @@ import { format } from "date-fns";
 import { useLocation, useNavigate } from "react-router-dom";
 
 interface Booking {
-  id: number;
+  id: string;
   driver_name?: string;
   kode_booking?: string;
   user_id: string;
-  vehicle_id: number;
+  vehicle_id: string;
   start_date: string;
   end_date: string;
   total_amount: number;
@@ -51,13 +51,13 @@ interface Booking {
   created_at: string;
   pickup_time?: string;
   driver_option?: string;
-  driver_id?: number;
+  driver_id?: string;
   user: {
     full_name: string;
     email: string;
   };
   driver?: {
-    id: number;
+    id: string;
     driver_name: string;
     name?: string;
   };
@@ -69,8 +69,8 @@ interface Booking {
 }
 
 interface Payment {
-  id: number;
-  booking_id: number;
+  id: string;
+  booking_id: string;
   amount: number;
   payment_method: string;
   status: string;
@@ -94,7 +94,7 @@ export default function BookingManagement() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<string>("Cash");
-  const [selectedBookings, setSelectedBookings] = useState<number[]>([]);
+  const [selectedBookings, setSelectedBookings] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const { toast } = useToast();
   const location = useLocation();
@@ -206,7 +206,7 @@ export default function BookingManagement() {
     }
   };
 
-  const fetchPayments = async (bookingId: number) => {
+  const fetchPayments = async (bookingId: string) => {
     try {
       const { data, error } = await supabase
         .from("payments")
@@ -243,7 +243,7 @@ export default function BookingManagement() {
   };
 
   // Calculate the remaining amount to be paid
-  const calculateRemainingAmount = (bookingId: number, totalAmount: number) => {
+  const calculateRemainingAmount = (bookingId: string, totalAmount: number) => {
     const bookingPayments = payments.filter(
       (payment) => payment.booking_id === bookingId,
     );
@@ -253,7 +253,7 @@ export default function BookingManagement() {
 
   // Update booking payment status based on payments
   const updateBookingPaymentStatus = async (
-    bookingId: number,
+    bookingId: string,
     totalAmount: number,
     paymentsList: Payment[],
   ) => {
@@ -392,13 +392,53 @@ export default function BookingManagement() {
 
   const handleApproveBooking = async (booking: Booking) => {
     try {
+      console.log(
+        "Approving booking:",
+        booking.id,
+        "Current status:",
+        booking.status,
+      );
+
+      // First, let's check if the booking exists and get its current status
+      const { data: currentBooking, error: fetchError } = await supabase
+        .from("bookings")
+        .select("id, status")
+        .eq("id", booking.id)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching current booking:", fetchError);
+        throw fetchError;
+      }
+
+      console.log("Current booking in DB:", currentBooking);
+
+      // Now update the status - ensure we're using string comparison
       const { data, error } = await supabase
         .from("bookings")
         .update({ status: "confirmed" })
-        .eq("id", booking.id)
+        .eq("id", String(booking.id))
         .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase update error:", error);
+        throw error;
+      }
+
+      console.log("Update result:", data);
+
+      // Verify the update was successful
+      const { data: updatedBooking, error: verifyError } = await supabase
+        .from("bookings")
+        .select("id, status")
+        .eq("id", booking.id)
+        .single();
+
+      if (verifyError) {
+        console.error("Error verifying update:", verifyError);
+      } else {
+        console.log("Verified updated booking:", updatedBooking);
+      }
 
       toast({
         title: "Booking approved",
@@ -418,13 +458,13 @@ export default function BookingManagement() {
       );
 
       // Then refresh all bookings from the server
-      fetchBookings();
+      await fetchBookings();
     } catch (error) {
       console.error("Error approving booking:", error);
       toast({
         variant: "destructive",
         title: "Error approving booking",
-        description: error.message,
+        description: error?.message || "An unknown error occurred",
       });
     }
   };
@@ -435,10 +475,15 @@ export default function BookingManagement() {
   };
 
   const getStatusBadge = (status: string) => {
+    if (!status) {
+      return <Badge>Unknown</Badge>;
+    }
+
     switch (status.toLowerCase()) {
       case "confirmed":
         return <Badge className="bg-green-500">Confirmed</Badge>;
       case "pending":
+        return <Badge className="bg-yellow-500">Pending</Badge>;
       case "booked":
         return <Badge className="bg-pink-500">Booked</Badge>;
       case "cancelled":
@@ -510,7 +555,7 @@ export default function BookingManagement() {
         booking.kode_booking?.toLowerCase().includes(lowercasedSearch) ||
         booking.id.toString().includes(lowercasedSearch) ||
         booking.vehicle_id.toString().includes(lowercasedSearch) ||
-        booking.status.toLowerCase().includes(lowercasedSearch) ||
+        booking.booking_status.toLowerCase().includes(lowercasedSearch) ||
         booking.payment_status.toLowerCase().includes(lowercasedSearch),
     );
 
@@ -546,7 +591,7 @@ export default function BookingManagement() {
     }
   };
 
-  const handleSelectBooking = (bookingId: number) => {
+  const handleSelectBooking = (bookingId: string) => {
     setSelectedBookings((prev) => {
       if (prev.includes(bookingId)) {
         // Remove from selection
@@ -693,7 +738,7 @@ export default function BookingManagement() {
               <TableHead>Dates</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Payment</TableHead>
-              <TableHead>Driver Status</TableHead>
+              <TableHead>Booking Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -718,7 +763,6 @@ export default function BookingManagement() {
                   {booking.user?.full_name || "Unknown"}
                 </TableCell>
                 <TableCell>
-                  {/* Vehicle information is not available in the current schema */}
                   Vehicle: {booking.vehicle?.make} {booking.vehicle?.model}
                 </TableCell>
                 <TableCell>
@@ -784,7 +828,8 @@ export default function BookingManagement() {
                     <AlertTriangle className="h-4 w-4" />
                     Damage Payment
                   </Button>
-                  {booking.status === "pending" && (
+                  {(booking.status === "pending" ||
+                    booking.status === "booked") && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -795,7 +840,7 @@ export default function BookingManagement() {
                       Approve
                     </Button>
                   )}
-                  {booking.status === "confirmed" && (
+                  {booking.booking_status === "confirmed" && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -806,7 +851,7 @@ export default function BookingManagement() {
                       Picked Up
                     </Button>
                   )}
-                  {booking.status === "onride" && (
+                  {booking.booking_status === "onride" && (
                     <>
                       <Button
                         variant="outline"
@@ -832,9 +877,9 @@ export default function BookingManagement() {
                     </>
                   )}
 
-                  {booking.status !== "onride" &&
-                    booking.status !== "completed" &&
-                    booking.status !== "cancelled" && (
+                  {booking.booking_status !== "onride" &&
+                    booking.booking_status !== "completed" &&
+                    booking.booking_status !== "cancelled" && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -929,7 +974,7 @@ export default function BookingManagement() {
                   </p>
                   <p>
                     <span className="font-medium">Booking Status:</span>{" "}
-                    {currentBooking.status}
+                    {currentBooking.booking_status}
                   </p>
                   {currentBooking.pickup_time && (
                     <p>

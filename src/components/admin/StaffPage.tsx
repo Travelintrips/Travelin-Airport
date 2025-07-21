@@ -61,168 +61,169 @@ const StaffPage = () => {
         throw new Error(`User with email ${data.email} already exists`);
       }
 
-      // Create new user directly with auth API instead of edge function
-      console.log(`Creating auth user with email: ${data.email}`);
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      // Store current admin session before creating new user
+      const { data: currentSession } = await supabase.auth.getSession();
+      const currentAdminUser = currentSession?.session?.user;
+
+      console.log(
+        "🔐 Creating staff account - Current admin:",
+        currentAdminUser?.email,
+      );
+
+      // Store admin data in localStorage BEFORE creating new user
+      if (currentAdminUser) {
+        const adminUserData = {
+          id: currentAdminUser.id,
+          email: currentAdminUser.email,
+          name:
+            currentAdminUser.user_metadata?.name ||
+            currentAdminUser.email?.split("@")[0] ||
+            "Admin",
+          role: "Staff Admin",
+          phone: currentAdminUser.user_metadata?.phone || "",
+        };
+
+        localStorage.setItem("auth_user", JSON.stringify(adminUserData));
+        localStorage.setItem("userId", currentAdminUser.id);
+        localStorage.setItem("userEmail", currentAdminUser.email || "");
+        localStorage.setItem("userName", adminUserData.name);
+        localStorage.setItem("userRole", "Staff Admin");
+        localStorage.setItem("isAdmin", "false");
+
+        // CRITICAL: Set flags to prevent auth context from switching sessions
+        sessionStorage.setItem("adminCreatingUser", "true");
+        sessionStorage.setItem("currentAdminId", currentAdminUser.id);
+        sessionStorage.setItem(
+          "currentAdminEmail",
+          currentAdminUser.email || "",
+        );
+        sessionStorage.setItem("blockAuthStateChanges", "true");
+        sessionStorage.setItem("preventAutoLogin", "true");
+        sessionStorage.setItem("staffCreationInProgress", "true");
+
+        // Store current admin session data before creation
+        const currentSessionData = {
+          id: currentAdminUser.id,
+          email: currentAdminUser.email,
+          role: "Staff Admin",
+          name:
+            currentAdminUser.user_metadata?.name ||
+            currentAdminUser.email?.split("@")[0] ||
+            "Admin",
+        };
+        sessionStorage.setItem(
+          "preservedAdminSession",
+          JSON.stringify(currentSessionData),
+        );
+
+        console.log("💾 Admin data stored before creating staff user");
+      } else {
+        console.error("❌ No current admin user found!");
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "No admin session found. Please refresh and try again.",
+        });
+        return;
+      }
+
+      // Use edge function to create staff user without affecting current session
+      console.log("🚀 Calling edge function to create staff user...");
+      console.log("📝 Staff data being sent:", {
         email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.name,
-          },
-        },
+        fullName: data.name,
+        roleId: roleData.role_id,
+        roleName: data.role,
+        adminUserId: currentAdminUser.id,
+        phone: data.phone,
+        address: data.address,
+        referencePhone: data.referencePhone,
+        ktpNumber: data.ktpNumber,
+        skckImage: data.skckImage,
+        kkImage: data.kkImage,
+        simImage: data.simImage,
+        ktpImage: data.ktpImage,
+        department: data.department,
+        position: data.position,
+        employeeId: data.employeeId,
+        idCardImage: data.idCardImage,
+        religion: data.religion,
+        ethnicity: data.ethnicity,
+        firstName: data.firstName,
+        lastName: data.lastName,
       });
+      const { data: authData, error: authError } =
+        await supabase.functions.invoke(
+          "supabase-functions-create-staff-user",
+          {
+            body: {
+              email: data.email,
+              password: data.password,
+              fullName: data.name,
+              roleId: roleData.role_id,
+              roleName: data.role,
+              adminUserId: currentAdminUser.id,
+              phone: data.phone,
+              address: data.address,
+              referencePhone: data.referencePhone,
+              ktpNumber: data.ktpNumber,
+              skckImage: data.skckImage,
+              kkImage: data.kkImage,
+              simImage: data.simImage,
+              ktpImage: data.ktpImage,
+              department: data.department,
+              position: data.position,
+              employeeId: data.employeeId,
+              idCardImage: data.idCardImage,
+              religion: data.religion,
+              ethnicity: data.ethnicity,
+              firstName: data.firstName,
+              lastName: data.lastName,
+            },
+          },
+        );
 
       if (authError) {
-        console.error("Auth signup error:", authError);
+        console.error(
+          "❌ Edge function failed to create staff user:",
+          authError,
+        );
+        // Clear flags on error
+        sessionStorage.removeItem("adminCreatingUser");
+        sessionStorage.removeItem("currentAdminId");
+        sessionStorage.removeItem("currentAdminEmail");
+        sessionStorage.removeItem("blockAuthStateChanges");
+        sessionStorage.removeItem("preventAutoLogin");
+        sessionStorage.removeItem("staffCreationInProgress");
+        sessionStorage.removeItem("preservedAdminSession");
         throw authError;
       }
 
-      if (!authData || !authData.user) {
-        console.error("Auth data or user is null", authData);
-        throw new Error("Failed to create user account");
+      console.log(
+        "✅ Staff user created via edge function:",
+        authData?.user?.email,
+      );
+
+      if (authData?.user) {
+        // Edge function should have handled all database operations
+        console.log(
+          "✅ Staff user and database records created via edge function",
+        );
+
+        // Clear admin creation flags after successful creation
+        setTimeout(() => {
+          sessionStorage.removeItem("adminCreatingUser");
+          sessionStorage.removeItem("currentAdminId");
+          sessionStorage.removeItem("currentAdminEmail");
+          sessionStorage.removeItem("blockAuthStateChanges");
+          sessionStorage.removeItem("preventAutoLogin");
+          sessionStorage.removeItem("staffCreationInProgress");
+          sessionStorage.removeItem("preservedAdminSession");
+          console.log("🧹 Admin creation flags cleared");
+        }, 3000);
       }
 
-      console.log(`Auth user created with ID: ${authData.user.id}`);
-
-      if (authData.user) {
-        // Cek apakah user sudah ada di tabel users
-        const { data: existingUser, error: checkError } = await supabase
-          .from("users")
-          .select("id")
-          .eq("id", authData.user.id)
-          .maybeSingle(); // pakai maybeSingle supaya tidak error kalau tidak ketemu
-
-        if (checkError) {
-          console.error("Error checking existing user:", checkError);
-          throw new Error("Gagal mengecek data user di tabel users");
-        }
-
-        const { error: staffInsertError } = await supabase
-          .from("staff")
-          .insert({
-            id: authData.user.id,
-            email: data.email,
-            name: data.name,
-            full_name: data.name,
-            phone: data.phone,
-            role_id: roleData.role_id,
-            department: data.department || "",
-            position: data.position || "",
-            employee_id: data.employeeId || "",
-            selfie_url: data.selfieImage || null,
-            ktp_url: data.ktpImage || null,
-            kk_url: data.kkImage || null,
-            skck_url: data.skckImage || null,
-            relative_phone: data.referencePhone || "",
-          });
-
-        if (staffInsertError) {
-          console.error("Error inserting staff record:", staffInsertError);
-          throw new Error("Gagal menyimpan data staff");
-        }
-      }
-
-      // Check if user already exists in users table
-      console.log("Checking if user exists in users table");
-      const { data: existingUserRecord, error: existingUserRecordError } =
-        await supabase
-          .from("users")
-          .select("id")
-          .eq("id", authData.user.id)
-          .maybeSingle();
-
-      // Only insert if user doesn't exist
-      if (!existingUserRecord) {
-        console.log("Creating user record in users table");
-        const { error: userError } = await supabase.from("users").insert({
-          id: authData.user.id,
-          email: data.email,
-          full_name: data.name,
-          role_id: roleData.role_id,
-          phone: data.phone || "",
-        });
-
-        if (userError) {
-          console.error("User insert error:", userError);
-          throw userError;
-        }
-      } else {
-        console.log("User already exists in users table, updating instead");
-        const { error: userUpdateError } = await supabase
-          .from("users")
-          .update({
-            email: data.email,
-            full_name: data.name,
-            role_id: roleData.role_id,
-            phone: data.phone || "",
-          })
-          .eq("id", authData.user.id);
-
-        if (userUpdateError) {
-          console.error("User update error:", userUpdateError);
-          throw userUpdateError;
-        }
-      }
-
-      console.log("User record created successfully");
-
-      // Prepare staff data with null checks
-      const staffData = {
-        id: authData.user.id,
-        department: data.department || "",
-        position: data.position || "",
-        employee_id: data.employeeId || "",
-        id_card_url: data.idCardImage || null,
-        first_name: data.firstName || "",
-        last_name: data.lastName || "",
-        full_name: `${data.firstName || ""} ${data.lastName || ""}`,
-        address: data.address || "",
-        ktp_number: data.ktpNumber || "",
-        religion: data.religion || "",
-        ethnicity: data.ethnicity || "",
-        role: data.role || "",
-        role_id: roleData.role_id, // ✅ Tambahkan ini
-        name: data.name || "",
-        email: data.email || "",
-        phone: data.phone || "",
-        selfie_url: data.selfieImage || null,
-        kk_url: data.kkImage || null,
-        ktp_url: data.ktpImage || null,
-        skck_url: data.skckImage || null,
-        relative_phone: data.referencePhone || "",
-      };
-
-      console.log("Creating staff record with data:", staffData);
-
-      // Check if staff record already exists
-      const { data: existingStaff, error: existingStaffError } = await supabase
-        .from("staff")
-        .select("id")
-        .eq("id", authData.user.id)
-        .maybeSingle();
-
-      // Insert or update staff record
-      let staffError;
-      if (!existingStaff) {
-        console.log("Creating new staff record");
-        const { error } = await supabase.from("staff").insert(staffData);
-        staffError = error;
-      } else {
-        console.log("Updating existing staff record");
-        const { error } = await supabase
-          .from("staff")
-          .update(staffData)
-          .eq("id", authData.user.id);
-        staffError = error;
-      }
-
-      if (staffError) {
-        console.error("Staff insert error:", staffError);
-        throw staffError;
-      }
-
-      console.log("Staff record created successfully");
+      console.log("✅ Staff created successfully via edge function");
 
       // Show success notification
       toast({
@@ -277,7 +278,7 @@ const StaffPage = () => {
             isLoading={isSubmitting}
             showPassword={showPassword}
             togglePasswordVisibility={togglePasswordVisibility}
-            initialRole="Staff"
+            initialRole="Staff Admin"
           />
         </DialogContent>
       </Dialog>

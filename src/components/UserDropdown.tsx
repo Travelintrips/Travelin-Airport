@@ -102,10 +102,37 @@ const UserDropdown = () => {
     return null;
   }
 
+  // Get role from multiple sources with priority
+  const storedRole = localStorage.getItem("userRole");
+  const authUserStr = localStorage.getItem("auth_user");
+  let authUserRole = null;
+
+  try {
+    if (authUserStr) {
+      const authUser = JSON.parse(authUserStr);
+      authUserRole = authUser.role;
+    }
+  } catch (e) {
+    console.warn("Error parsing auth_user from localStorage:", e);
+  }
+
+  // Priority: AuthContext role > localStorage auth_user role > localStorage userRole > fallback
+  const effectiveRole = role || authUserRole || storedRole || "Customer";
+
   // Simplified admin check
   const effectiveIsAdmin =
-    isAdmin || localStorage.getItem("isAdmin") === "true";
-  const displayRole = effectiveIsAdmin ? "Admin" : role || "Customer";
+    isAdmin ||
+    localStorage.getItem("isAdmin") === "true" ||
+    effectiveRole === "Admin";
+  const displayRole = effectiveIsAdmin ? "Admin" : effectiveRole;
+
+  console.log("[UserDropdown] Role resolution:", {
+    contextRole: role,
+    authUserRole,
+    storedRole,
+    effectiveRole,
+    displayRole,
+  });
 
   const handleNavigate = (path: string) => {
     navigate(path);

@@ -119,6 +119,7 @@ export type Database = {
           services_departure: string
           terminal: string
           trip_type: string
+          updated_at: string | null
         }
         Insert: {
           additional: number
@@ -134,6 +135,7 @@ export type Database = {
           services_departure: string
           terminal: string
           trip_type: string
+          updated_at?: string | null
         }
         Update: {
           additional?: number
@@ -149,6 +151,7 @@ export type Database = {
           services_departure?: string
           terminal?: string
           trip_type?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -745,8 +748,10 @@ export type Database = {
           jumlah_hari: number | null
           jumlah_kamar: number | null
           jumlah_malam: number | null
+          kelebihan_bagasi: number | null
           keterangan: string | null
           kode_booking: string | null
+          kode_transaksi: string | null
           license_plate: string | null
           lokasi: string | null
           lokasi_hotel: string | null
@@ -784,8 +789,10 @@ export type Database = {
           jumlah_hari?: number | null
           jumlah_kamar?: number | null
           jumlah_malam?: number | null
+          kelebihan_bagasi?: number | null
           keterangan?: string | null
           kode_booking?: string | null
+          kode_transaksi?: string | null
           license_plate?: string | null
           lokasi?: string | null
           lokasi_hotel?: string | null
@@ -823,8 +830,10 @@ export type Database = {
           jumlah_hari?: number | null
           jumlah_kamar?: number | null
           jumlah_malam?: number | null
+          kelebihan_bagasi?: number | null
           keterangan?: string | null
           kode_booking?: string | null
+          kode_transaksi?: string | null
           license_plate?: string | null
           lokasi?: string | null
           lokasi_hotel?: string | null
@@ -1147,34 +1156,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "damages_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "damages_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "damages_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
+          },
         ]
-      }
-      debug_log: {
-        Row: {
-          data: Json | null
-          id: number
-          message: string | null
-          timestamp: string | null
-        }
-        Insert: {
-          data?: Json | null
-          id?: number
-          message?: string | null
-          timestamp?: string | null
-        }
-        Update: {
-          data?: Json | null
-          id?: number
-          message?: string | null
-          timestamp?: string | null
-        }
-        Relationships: []
       }
       divisions: {
         Row: {
@@ -1999,6 +2001,7 @@ export type Database = {
           journal_entry_id: string | null
           journal_entry_item_id: string | null
           manual_entry: boolean | null
+          normal_balance: string | null
           payment_id: string | null
           period_month: string | null
           reference_number: string | null
@@ -2025,6 +2028,7 @@ export type Database = {
           journal_entry_id?: string | null
           journal_entry_item_id?: string | null
           manual_entry?: boolean | null
+          normal_balance?: string | null
           payment_id?: string | null
           period_month?: string | null
           reference_number?: string | null
@@ -2051,6 +2055,7 @@ export type Database = {
           journal_entry_id?: string | null
           journal_entry_item_id?: string | null
           manual_entry?: boolean | null
+          normal_balance?: string | null
           payment_id?: string | null
           period_month?: string | null
           reference_number?: string | null
@@ -2088,6 +2093,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
           },
         ]
       }
@@ -2630,6 +2642,7 @@ export type Database = {
         Row: {
           account_code: string | null
           account_id: string | null
+          account_name: string | null
           amount: number | null
           balance_total: number | null
           booking_id: string | null
@@ -2642,6 +2655,7 @@ export type Database = {
           entry_date: string | null
           entry_type: string
           id: string
+          journal_entry_id: string | null
           jurnal_id: string | null
           payment_id: string | null
           reference_id: string | null
@@ -2657,6 +2671,7 @@ export type Database = {
         Insert: {
           account_code?: string | null
           account_id?: string | null
+          account_name?: string | null
           amount?: number | null
           balance_total?: number | null
           booking_id?: string | null
@@ -2669,6 +2684,7 @@ export type Database = {
           entry_date?: string | null
           entry_type: string
           id?: string
+          journal_entry_id?: string | null
           jurnal_id?: string | null
           payment_id?: string | null
           reference_id?: string | null
@@ -2684,6 +2700,7 @@ export type Database = {
         Update: {
           account_code?: string | null
           account_id?: string | null
+          account_name?: string | null
           amount?: number | null
           balance_total?: number | null
           booking_id?: string | null
@@ -2696,6 +2713,7 @@ export type Database = {
           entry_date?: string | null
           entry_type?: string
           id?: string
+          journal_entry_id?: string | null
           jurnal_id?: string | null
           payment_id?: string | null
           reference_id?: string | null
@@ -2708,69 +2726,107 @@ export type Database = {
           transaction_date?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "journal_entries_jurnal_id_fkey"
-            columns: ["jurnal_id"]
-            isOneToOne: false
-            referencedRelation: "jurnal"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       journal_entry_items: {
         Row: {
+          account_code: string | null
           account_id: string
           created_at: string
           credit: number | null
           debit: number | null
           id: string
+          item_created_at: string | null
           journal_entry_id: string
+          normal_balance: string | null
           updated_at: string
         }
         Insert: {
+          account_code?: string | null
           account_id: string
           created_at?: string
           credit?: number | null
           debit?: number | null
           id?: string
+          item_created_at?: string | null
           journal_entry_id: string
+          normal_balance?: string | null
           updated_at?: string
         }
         Update: {
+          account_code?: string | null
           account_id?: string
           created_at?: string
           credit?: number | null
           debit?: number | null
           id?: string
+          item_created_at?: string | null
           journal_entry_id?: string
+          normal_balance?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
       }
-      jurnal: {
+      journal_entry_status_changes: {
         Row: {
-          created_at: string | null
-          description: string | null
+          changed_at: string | null
           id: string
-          name: string
-          updated_at: string | null
+          journal_entry_id: string | null
+          new_status: string | null
+          old_status: string | null
         }
         Insert: {
-          created_at?: string | null
-          description?: string | null
+          changed_at?: string | null
           id?: string
-          name: string
-          updated_at?: string | null
+          journal_entry_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
         }
         Update: {
-          created_at?: string | null
-          description?: string | null
+          changed_at?: string | null
           id?: string
-          name?: string
-          updated_at?: string | null
+          journal_entry_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_status_changes_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_status_changes_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
       }
       leave_requests: {
         Row: {
@@ -2815,6 +2871,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ledger_summaries: {
+        Row: {
+          account_code: string
+          account_name: string
+          closing_balance: number | null
+          id: string
+          item_created_at: string | null
+          normal_balance: string | null
+          opening_balance: number | null
+          period: string
+          total_credit: number | null
+          total_debit: number | null
+        }
+        Insert: {
+          account_code: string
+          account_name: string
+          closing_balance?: number | null
+          id?: string
+          item_created_at?: string | null
+          normal_balance?: string | null
+          opening_balance?: number | null
+          period: string
+          total_credit?: number | null
+          total_debit?: number | null
+        }
+        Update: {
+          account_code?: string
+          account_name?: string
+          closing_balance?: number | null
+          id?: string
+          item_created_at?: string | null
+          normal_balance?: string | null
+          opening_balance?: number | null
+          period?: string
+          total_credit?: number | null
+          total_debit?: number | null
+        }
+        Relationships: []
       }
       modules: {
         Row: {
@@ -2934,6 +3029,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "notifications_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "notifications_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
@@ -2946,6 +3048,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
           },
         ]
       }
@@ -2999,6 +3108,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_bookings_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
           },
         ]
       }
@@ -3070,7 +3186,8 @@ export type Database = {
           due_date: string | null
           id: string
           is_damage_payment: boolean | null
-          is_partial_payment: string | null
+          is_partial_payment: boolean | null
+          journal_entry_id: string | null
           kode_booking: string | null
           license_plate: string | null
           make: string | null
@@ -3100,7 +3217,8 @@ export type Database = {
           due_date?: string | null
           id?: string
           is_damage_payment?: boolean | null
-          is_partial_payment?: string | null
+          is_partial_payment?: boolean | null
+          journal_entry_id?: string | null
           kode_booking?: string | null
           license_plate?: string | null
           make?: string | null
@@ -3130,7 +3248,8 @@ export type Database = {
           due_date?: string | null
           id?: string
           is_damage_payment?: boolean | null
-          is_partial_payment?: string | null
+          is_partial_payment?: boolean | null
+          journal_entry_id?: string | null
           kode_booking?: string | null
           license_plate?: string | null
           make?: string | null
@@ -3157,6 +3276,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bookings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_booking"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
           },
         ]
       }
@@ -3265,6 +3405,13 @@ export type Database = {
             referencedRelation: "bookings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "post_rental_inspections_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
         ]
       }
       price_km: {
@@ -3340,11 +3487,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_booking"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "fk_remaining_to_payments"
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_remaining_to_payments"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
           },
         ]
       }
@@ -3695,52 +3856,41 @@ export type Database = {
       trial_balance: {
         Row: {
           account_code: string
-          account_id: string
-          account_name: string
+          account_id: string | null
+          amount: number
           created_at: string | null
-          credit_balance: number | null
-          debit_balance: number | null
           id: string
-          net_balance: number | null
-          period_end: string
-          period_start: string
+          period: string
+          period_end: string | null
+          period_start: string | null
+          total_amount: number | null
           updated_at: string | null
         }
         Insert: {
           account_code: string
-          account_id: string
-          account_name: string
+          account_id?: string | null
+          amount?: number
           created_at?: string | null
-          credit_balance?: number | null
-          debit_balance?: number | null
           id?: string
-          net_balance?: number | null
-          period_end: string
-          period_start: string
+          period: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount?: number | null
           updated_at?: string | null
         }
         Update: {
           account_code?: string
-          account_id?: string
-          account_name?: string
+          account_id?: string | null
+          amount?: number
           created_at?: string | null
-          credit_balance?: number | null
-          debit_balance?: number | null
           id?: string
-          net_balance?: number | null
-          period_end?: string
-          period_start?: string
+          period?: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount?: number | null
           updated_at?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "trial_balance_account_id_fkey"
-            columns: ["account_id"]
-            isOneToOne: false
-            referencedRelation: "chart_of_accounts"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -4242,24 +4392,131 @@ export type Database = {
       }
     }
     Views: {
-      debug_log_view: {
+      bookings_trips_with_user: {
         Row: {
-          data: Json | null
-          id: number | null
-          message: string | null
-          timestamp: string | null
+          additional_data: string | null
+          bank_account: string | null
+          created_at: string | null
+          driver_name: string | null
+          fee_sales: number | null
+          harga_basic: number | null
+          harga_jual: number | null
+          id: string | null
+          jam_checkin: string | null
+          jam_checkout: string | null
+          jenis_kendaraan: string | null
+          jumlah_hari: number | null
+          jumlah_kamar: number | null
+          jumlah_malam: number | null
+          keterangan: string | null
+          kode_booking: string | null
+          license_plate: string | null
+          lokasi: string | null
+          lokasi_hotel: string | null
+          nama_penumpang: string | null
+          no_telepon: number | null
+          nomor_plat: string | null
+          payment_method: string | null
+          price: number | null
+          profit: number | null
+          quantity: number | null
+          service_details: string | null
+          service_name: string | null
+          service_type: string | null
+          status: string | null
+          tanggal: string | null
+          tanggal_checkin: string | null
+          tanggal_checkout: string | null
+          total_amount: number | null
+          tujuan: string | null
+          type_unit: string | null
+          user_email: string | null
+          user_full_name: string | null
+          user_id: string | null
+          user_role: string | null
         }
-        Insert: {
-          data?: Json | null
-          id?: number | null
-          message?: string | null
-          timestamp?: string | null
+        Relationships: []
+      }
+      general_ledger_with_type: {
+        Row: {
+          account_code: string | null
+          account_id: string | null
+          account_name: string | null
+          account_type: string | null
+          balance: number | null
+          booking_id: string | null
+          created_at: string | null
+          credit: number | null
+          date: string | null
+          debit: number | null
+          description: string | null
+          entry_type: string | null
+          id: string | null
+          is_manual_entry: string | null
+          journal_entry_id: string | null
+          journal_entry_item_id: string | null
+          manual_entry: boolean | null
+          normal_balance: string | null
+          payment_id: string | null
+          period_month: string | null
+          reference_number: string | null
+          running_balance: number | null
+          total_credit: number | null
+          total_debit: number | null
+          transaction_date: string | null
+          updated_at: string | null
         }
-        Update: {
-          data?: Json | null
-          id?: number | null
-          message?: string | null
-          timestamp?: string | null
+        Relationships: [
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items_with_ledger"
+            referencedColumns: ["journal_entry_item_id"]
+          },
+          {
+            foreignKeyName: "general_ledger_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
+      }
+      journal_entries_with_bookings: {
+        Row: {
+          booking_amount: number | null
+          booking_created_at: string | null
+          booking_id: string | null
+          description: string | null
+          entry_date: string | null
+          entry_type: string | null
+          journal_entry_id: string | null
+          payment_status: string | null
+          reference_number: string | null
+          total_amount: number | null
+          vehicle_name: string | null
         }
         Relationships: []
       }
@@ -4298,6 +4555,62 @@ export type Database = {
             referencedRelation: "chart_of_accounts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "journal_entry_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
+      }
+      payments_with_journal_items: {
+        Row: {
+          account_id: string | null
+          credit: number | null
+          debit: number | null
+          journal_entry_id: string | null
+          payment_id: string | null
+          payment_status: string | null
+          total_amount: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
         ]
       }
       profit_loss_view: {
@@ -4312,11 +4625,86 @@ export type Database = {
         }
         Relationships: []
       }
+      trial_balance_view: {
+        Row: {
+          account_code: string | null
+          account_name: string | null
+          closing_balance: number | null
+          credit: number | null
+          debit: number | null
+          period: string | null
+        }
+        Insert: {
+          account_code?: string | null
+          account_name?: string | null
+          closing_balance?: number | null
+          credit?: number | null
+          debit?: number | null
+          period?: string | null
+        }
+        Update: {
+          account_code?: string | null
+          account_name?: string | null
+          closing_balance?: number | null
+          credit?: number | null
+          debit?: number | null
+          period?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      auto_create_journal_entries_if_missing: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       auto_post_jurnal_from_mutasi: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      check_booking_journal_entries: {
+        Args: { p_booking_id: string }
+        Returns: {
+          has_entries: boolean
+          entry_count: number
+          journal_ids: string[]
+        }[]
+      }
+      close_period: {
+        Args: { p_period: string }
+        Returns: undefined
+      }
+      create_journal_entry_for_booking: {
+        Args: { p_booking_id: string }
+        Returns: string
+      }
+      fix_missing_journal_entries: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          booking_id: string
+          status: string
+        }[]
+      }
+      generate_balance_sheet: {
+        Args: { p_period: string }
+        Returns: {
+          total_assets: number
+          total_liabilities: number
+          total_equity: number
+          is_balanced: boolean
+        }[]
+      }
+      generate_ledger_summary: {
+        Args: { p_period: string }
+        Returns: undefined
+      }
+      generate_profit_loss: {
+        Args: { p_period: string }
+        Returns: {
+          total_income: number
+          total_expense: number
+          net_profit: number
+        }[]
       }
       get_table_info: {
         Args: { table_name: string }
@@ -4332,13 +4720,9 @@ export type Database = {
           table_name: string
         }[]
       }
-      get_trial_balance_summary: {
-        Args: { p_period_start: string; p_period_end: string }
-        Returns: {
-          total_debit: number
-          total_credit: number
-          is_balanced: boolean
-        }[]
+      my_function: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       populate_trial_balance: {
         Args: { p_period_start: string; p_period_end: string }
@@ -4355,6 +4739,10 @@ export type Database = {
         Args: { p_journal_entry_id: string }
         Returns: undefined
       }
+      recalculate_all_balances: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       test_user_insert: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -4369,6 +4757,21 @@ export type Database = {
       }
       update_coa_balance: {
         Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      update_journal_entry_after_payment: {
+        Args: { p_booking_id: string }
+        Returns: undefined
+      }
+      upsert_ledger_summaries: {
+        Args: { payload: Json } | { payload: string }
+        Returns: undefined
+      }
+      upsert_trial_balances: {
+        Args:
+          | { p_account_code: string; p_period: string; p_amount: number }
+          | { payload: Json }
+          | { payload: string }
         Returns: undefined
       }
     }

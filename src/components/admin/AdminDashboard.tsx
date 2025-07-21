@@ -42,6 +42,8 @@ import {
   Calendar,
   CreditCard as CreditCardIcon,
   Key,
+  Luggage,
+  Plane,
 } from "lucide-react";
 import CustomerManagement from "./CustomerManagement";
 import DriverManagement from "./DriverManagement";
@@ -52,6 +54,7 @@ import StaffPage from "./StaffPage";
 import StatCard from "./StatCard";
 import DashboardCharts from "./DashboardCharts";
 import VehicleInventory from "./VehicleInventory";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DashboardStats {
   totalVehicles: number;
@@ -101,6 +104,7 @@ interface FilterOptions {
 }
 
 const AdminDashboard = () => {
+  const { userRole } = useAuth();
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     totalVehicles: 0,
     bookedVehicles: 0,
@@ -130,7 +134,7 @@ const AdminDashboard = () => {
     [],
   );
   const [loading, setLoading] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     date: "",
@@ -149,6 +153,9 @@ const AdminDashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Show limited dashboard content for Staff Trips role
+  const shouldShowFullDashboard = userRole !== "Staff Trips";
+
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -159,6 +166,12 @@ const AdminDashboard = () => {
   };
 
   useEffect(() => {
+    // Only fetch dashboard data for non-Staff Trips users
+    if (userRole === "Staff Trips") {
+      setLoading(false);
+      return;
+    }
+
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
@@ -173,13 +186,28 @@ const AdminDashboard = () => {
         console.log("Vehicles data:", vehicles); // Debug log to check vehicles data
 
         // Fetch all required data separately to avoid foreign key issues
-        const [bookingsResult, customersResult, staffResult, usersResult] =
-          await Promise.all([
-            supabase.from("bookings").select("*"),
-            supabase.from("customers").select("*"),
-            supabase.from("staff").select("*"),
-            supabase.from("users").select("*"),
-          ]);
+        // Only fetch users data if user is Admin to avoid permission issues
+        const fetchPromises = [
+          supabase.from("bookings").select("*"),
+          supabase.from("customers").select("*"),
+        ];
+
+        // Only fetch staff and users data if user has admin privileges
+        if (userRole === "Admin") {
+          fetchPromises.push(supabase.from("staff").select("*"));
+          fetchPromises.push(supabase.from("users").select("*"));
+        }
+
+        const results = await Promise.all(fetchPromises);
+        let bookingsResult, customersResult, staffResult, usersResult;
+
+        if (userRole === "Admin") {
+          [bookingsResult, customersResult, staffResult, usersResult] = results;
+        } else {
+          [bookingsResult, customersResult] = results;
+          staffResult = { data: [], error: null };
+          usersResult = { data: [], error: null };
+        }
 
         if (bookingsResult.error) {
           console.error("Error fetching bookings:", bookingsResult.error);
@@ -189,19 +217,19 @@ const AdminDashboard = () => {
           console.error("Error fetching customers:", customersResult.error);
           throw customersResult.error;
         }
-        if (staffResult.error) {
+        if (staffResult && staffResult.error) {
           console.error("Error fetching staff:", staffResult.error);
           throw staffResult.error;
         }
-        if (usersResult.error) {
+        if (usersResult && usersResult.error) {
           console.error("Error fetching users:", usersResult.error);
           throw usersResult.error;
         }
 
         const bookings = bookingsResult.data || [];
         const customers = customersResult.data || [];
-        const staff = staffResult.data || [];
-        const users = usersResult.data || [];
+        const staff = staffResult ? staffResult.data || [] : [];
+        const users = usersResult ? usersResult.data || [] : [];
 
         console.log("Bookings data:", bookings); // Debug log
         console.log("Customers data:", customers); // Debug log
@@ -458,8 +486,11 @@ const AdminDashboard = () => {
 
         // Connect bookings with customer and user data
         const enhancedBookings = bookings.map((booking) => {
-          // Find the user associated with this booking
-          const user = users.find((user) => user.id === booking.user_id);
+          // Find the user associated with this booking (only if users data is available)
+          const user =
+            users && users.length > 0
+              ? users.find((user) => user.id === booking.user_id)
+              : null;
 
           // Find the customer associated with this booking's user_id
           const customer = customers.find(
@@ -467,7 +498,10 @@ const AdminDashboard = () => {
           );
 
           // Find the staff member who might be handling this booking
-          const staffMember = staff.find((s) => s.id === booking.driver_id);
+          const staffMember =
+            staff && staff.length > 0
+              ? staff.find((s) => s.id === booking.driver_id)
+              : null;
 
           // Get customer name from multiple possible sources
           let customerName = "Unknown Customer";
@@ -493,12 +527,18 @@ const AdminDashboard = () => {
           // Get staff name
           let staffName = null;
           if (staffMember) {
-            const staffUser = users.find((u) => u.id === staffMember.user_id);
-            staffName =
-              staffUser?.full_name ||
-              staffMember.full_name ||
-              staffMember.name ||
-              "Unknown Staff";
+            // Try to get staff name from staff table first, then from users if available
+            if (users && users.length > 0) {
+              const staffUser = users.find((u) => u.id === staffMember.user_id);
+              staffName =
+                staffUser?.full_name ||
+                staffMember.full_name ||
+                staffMember.name ||
+                "Unknown Staff";
+            } else {
+              staffName =
+                staffMember.full_name || staffMember.name || "Unknown Staff";
+            }
           }
 
           return {
@@ -566,746 +606,650 @@ const AdminDashboard = () => {
     };
 
     fetchDashboardData();
-  }, []);
-
-  const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
-  };
+  }, [userRole]);
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar */}
-      <div
-        className={`${sidebarOpen ? "w-64" : "w-20"} bg-gradient-to-b from-primary-tosca to-primary-dark backdrop-blur-sm border-r border-white/10 transition-all duration-300 h-screen overflow-y-auto fixed left-0 top-0 z-10 shadow-lg`}
-      >
-        <div className="p-5 border-b border-white/20 flex items-center justify-between bg-gradient-to-r from-primary-dark to-primary-tosca">
-          <div
-            className={`flex items-center ${!sidebarOpen ? "justify-center w-full" : ""}`}
-          >
-            <Car className="h-6 w-6 text-white" />
-            {sidebarOpen && (
-              <span className="ml-2 font-bold text-lg tracking-tight text-white">
-                Admin Panel
-              </span>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleSidebar}
-            className={!sidebarOpen ? "hidden" : ""}
-          >
-            {sidebarOpen ? (
-              <X className="h-4 w-4 text-white" />
-            ) : (
-              <Menu className="h-4 w-4 text-white" />
-            )}
-          </Button>
-        </div>
-
-        {/* Sidebar Menu */}
-        <div className="p-4 mt-2">
-          <nav className="space-y-2">
-            <Link
-              to=""
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname === "/admin" || location.pathname === "/admin/" ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <BarChart3 className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Dashboard</span>}
-            </Link>
-
-            <Link
-              to="customers"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/customers") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <User className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Customers</span>}
-            </Link>
-            <Link
-              to="drivers"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/drivers") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <UserCog className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Drivers</span>}
-            </Link>
-
-            <Link
-              to="bookings"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/bookings") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <CalendarDays className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Bookings</span>}
-            </Link>
-            {/*Airport Transfer*/}
-            <Link
-              to="cars"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/cars") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <Car className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Cars</span>}
-            </Link>
-            <Link
-              to="vehicle-inventory"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/vehicle-inventory") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <Car className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Vehicle Inventory</span>}
-            </Link>
-            <Link
-              to="staff"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/staff") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <Users className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Staff Admin</span>}
-            </Link>
-            <Link
-              to="payments"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/payments") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <CreditCard className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Payments</span>}
-            </Link>
-            <Link
-              to="inspections"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/inspections") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <ClipboardCheck className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Inspection</span>}
-            </Link>
-            <Link
-              to="damages"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/damages") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <AlertTriangle className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Damage</span>}
-            </Link>
-            <Link
-              to="/admin/api-settings"
-              className={`flex items-center p-3 rounded-lg hover:bg-white/20 transition-colors duration-200 ${location.pathname.includes("/admin/api-settings") ? "bg-white/20 font-medium text-white" : "text-white/80"} ${!sidebarOpen ? "justify-center" : ""}`}
-            >
-              <Key className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">API Settings</span>}
-            </Link>
-          </nav>
-
-          {/* Sign Out Button */}
-          <div className="mt-8 border-t border-white/20 pt-4">
-            <button
-              onClick={handleSignOut}
-              className="w-full flex items-center p-3 rounded-lg bg-white/10 hover:bg-white/20 transition-colors duration-200 text-white"
-            >
-              <X className="h-5 w-5 text-white" />
-              {sidebarOpen && <span className="ml-3">Sign Out</span>}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div
-        className={`flex-1 ${sidebarOpen ? "ml-64" : "ml-20"} transition-all duration-300`}
-      >
-        <div className="p-8">
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {[...Array(6)].map((_, i) => (
-                <Card
-                  key={i}
-                  className="bg-white dark:bg-gray-800 h-32 animate-pulse border-0 shadow-lg overflow-hidden"
-                  style={{
-                    borderRadius: "16px",
-                    boxShadow:
-                      "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
-                  }}
+    <div className="bg-background">
+      <div className="p-8">
+        {/* Show different content based on user role */}
+        {userRole === "Staff Trips" ? (
+          <div className="text-center py-16">
+            <div className="max-w-md mx-auto">
+              <Plane className="h-16 w-16 mx-auto text-primary-tosca mb-4" />
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Welcome to Staff Trips Dashboard
+              </h2>
+              <p className="text-gray-600 mb-8">
+                Access your assigned services using the menu on the left.
+              </p>
+              <div className="grid grid-cols-1 gap-4">
+                <Link
+                  to="/admin/airport-transfer"
+                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <CardContent className="p-6">
-                    <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                    <div className="h-8 bg-muted rounded w-1/2"></div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                <StatCard
-                  title="Total Vehicles"
-                  value={dashboardStats.totalVehicles}
-                  description="Total vehicles in fleet"
-                  icon={<Car className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/cars"
-                  bgColor="linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)"
-                />
-                <StatCard
-                  title="Available Vehicles"
-                  value={dashboardStats.availableVehicles}
-                  description="Vehicles available for booking"
-                  icon={<Car className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/cars?is_available=true"
-                  bgColor="linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
-                />
-                <StatCard
-                  title="Booked Vehicles"
-                  value={dashboardStats.bookedVehicles}
-                  description="Vehicles with confirmed booking status"
-                  icon={<Calendar className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/bookings?status=confirmed"
-                  bgColor="linear-gradient(135deg, #34d399 0%, #10b981 100%)"
-                />
-
-                <StatCard
-                  title="Onride Vehicles"
-                  value={dashboardStats.onRideVehicles}
-                  description="Vehicles currently on ride"
-                  icon={<CarFront className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/bookings?status=onride"
-                  bgColor="linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)"
-                />
-
-                <StatCard
-                  title="Maintenance"
-                  value={dashboardStats.maintenanceVehicles}
-                  description="Vehicles under maintenance"
-                  icon={<Wrench className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/cars?status=maintenance"
-                  bgColor="linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)"
-                />
-
-                <StatCard
-                  title="Total Not Paid"
-                  value={dashboardStats.totalUnpaid.count}
-                  description={`${dashboardStats.totalUnpaid.amount.toLocaleString()} pending`}
-                  icon={<CreditCardIcon className="h-6 w-6" />}
-                  trend="neutral"
-                  trendValue=""
-                  to="/admin/payments?status=unpaid"
-                  bgColor="linear-gradient(135deg, #fb7185 0%, #e11d48 100%)"
-                />
+                  <Plane className="h-8 w-8 text-primary-tosca mx-auto mb-2" />
+                  <h3 className="font-medium text-gray-900">
+                    Airport Transfer
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Manage airport transfers
+                  </p>
+                </Link>
+                <Link
+                  to="/admin/baggage-booking"
+                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Luggage className="h-8 w-8 text-primary-tosca mx-auto mb-2" />
+                  <h3 className="font-medium text-gray-900">Baggage Service</h3>
+                  <p className="text-sm text-gray-600">
+                    Handle baggage bookings
+                  </p>
+                </Link>
+                <Link
+                  to="/admin/handling-booking"
+                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Users className="h-8 w-8 text-primary-tosca mx-auto mb-2" />
+                  <h3 className="font-medium text-gray-900">
+                    Handling Service
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Manage handling services
+                  </p>
+                </Link>
               </div>
-
-              {/* Charts Section */}
-              <DashboardCharts
-                vehicleStatusData={chartData.vehicleStatusData}
-                paymentData={chartData.paymentData}
-                bookingTrendData={chartData.bookingTrendData}
-                paymentMethodData={chartData.paymentMethodData}
-                isLoading={loading}
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[...Array(6)].map((_, i) => (
+              <Card
+                key={i}
+                className="bg-white dark:bg-gray-800 h-32 animate-pulse border-0 shadow-lg overflow-hidden"
+                style={{
+                  borderRadius: "16px",
+                  boxShadow:
+                    "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+                }}
+              >
+                <CardContent className="p-6">
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-muted rounded w-1/2"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <StatCard
+                title="Total Vehicles"
+                value={dashboardStats.totalVehicles}
+                description="Total vehicles in fleet"
+                icon={<Car className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/cars"
+                bgColor="linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)"
+              />
+              <StatCard
+                title="Available Vehicles"
+                value={dashboardStats.availableVehicles}
+                description="Vehicles available for booking"
+                icon={<Car className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/cars?is_available=true"
+                bgColor="linear-gradient(135deg, #22c55e 0%, #16a34a 100%)"
+              />
+              <StatCard
+                title="Booked Vehicles"
+                value={dashboardStats.bookedVehicles}
+                description="Vehicles with confirmed booking status"
+                icon={<Calendar className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/bookings?status=confirmed"
+                bgColor="linear-gradient(135deg, #34d399 0%, #10b981 100%)"
               />
 
-              {/* Vehicle Inventory Section */}
-              <div className="mt-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Vehicle Inventory</CardTitle>
-                    <CardDescription>
-                      Quick overview of vehicle inventory status
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-[400px] overflow-auto">
-                      <VehicleInventory />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex justify-end">
-                    <Button asChild variant="outline">
-                      <Link to="/admin/vehicle-inventory">
-                        View Full Inventory
-                      </Link>
-                    </Button>
-                  </CardFooter>
-                </Card>
-              </div>
+              <StatCard
+                title="Onride Vehicles"
+                value={dashboardStats.onRideVehicles}
+                description="Vehicles currently on ride"
+                icon={<CarFront className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/bookings?status=onride"
+                bgColor="linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)"
+              />
 
-              {/* Detailed Data Table Section */}
-              <div className="mt-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Detailed Booking Data</CardTitle>
-                    <CardDescription>
-                      Comprehensive view of all bookings with filtering and
-                      sorting options
-                    </CardDescription>
+              <StatCard
+                title="Maintenance"
+                value={dashboardStats.maintenanceVehicles}
+                description="Vehicles under maintenance"
+                icon={<Wrench className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/cars?status=maintenance"
+                bgColor="linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)"
+              />
 
-                    {/* Filtering Controls */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Date Filter
-                        </label>
-                        <Input
-                          type="date"
-                          value={filterOptions.date}
-                          onChange={(e) =>
-                            setFilterOptions({
-                              ...filterOptions,
-                              date: e.target.value,
-                            })
-                          }
-                          className="w-full"
-                        />
-                      </div>
+              <StatCard
+                title="Total Not Paid"
+                value={dashboardStats.totalUnpaid.count}
+                description={`${dashboardStats.totalUnpaid.amount.toLocaleString()} pending`}
+                icon={<CreditCardIcon className="h-6 w-6" />}
+                trend="neutral"
+                trendValue=""
+                to="/admin/payments?status=unpaid"
+                bgColor="linear-gradient(135deg, #fb7185 0%, #e11d48 100%)"
+              />
+            </div>
 
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Vehicle Type
-                        </label>
-                        <select
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                          value={filterOptions.vehicleType}
-                          onChange={(e) =>
-                            setFilterOptions({
-                              ...filterOptions,
-                              vehicleType: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">All Types</option>
-                          <option value="Sedan">Sedan</option>
-                          <option value="SUV">SUV</option>
-                          <option value="MPV">MPV</option>
-                          <option value="Hatchback">Hatchback</option>
-                        </select>
-                      </div>
+            {/* Charts Section */}
+            <DashboardCharts
+              vehicleStatusData={chartData.vehicleStatusData}
+              paymentData={chartData.paymentData}
+              bookingTrendData={chartData.bookingTrendData}
+              paymentMethodData={chartData.paymentMethodData}
+              isLoading={loading}
+            />
 
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Booking Status
-                        </label>
-                        <select
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                          value={filterOptions.bookingStatus}
-                          onChange={(e) =>
-                            setFilterOptions({
-                              ...filterOptions,
-                              bookingStatus: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">All Statuses</option>
-                          <option value="Booked">Booked</option>
-                          <option value="On Ride">On Ride</option>
-                          <option value="Completed">Completed</option>
-                          <option value="Cancelled">Cancelled</option>
-                        </select>
-                      </div>
+            {/* Vehicle Inventory Section */}
+            <div className="mt-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Vehicle Inventory</CardTitle>
+                  <CardDescription>
+                    Quick overview of vehicle inventory status
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[400px] overflow-auto">
+                    <VehicleInventory />
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-end">
+                  <Button asChild variant="outline">
+                    <Link to="/admin/vehicle-inventory">
+                      View Full Inventory
+                    </Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
 
-                      <div>
-                        <label className="text-sm font-medium mb-1 block">
-                          Payment Status
-                        </label>
-                        <select
-                          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                          value={filterOptions.paymentType}
-                          onChange={(e) =>
-                            setFilterOptions({
-                              ...filterOptions,
-                              paymentType: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="">All Statuses</option>
-                          <option value="Paid">Paid</option>
-                          <option value="Partial">Partial</option>
-                          <option value="Unpaid">Unpaid</option>
-                        </select>
-                      </div>
-                    </div>
+            {/* Detailed Data Table Section */}
+            <div className="mt-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Detailed Booking Data</CardTitle>
+                  <CardDescription>
+                    Comprehensive view of all bookings with filtering and
+                    sorting options
+                  </CardDescription>
 
-                    {/* Search and Reset Filters */}
-                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search by customer name..."
-                          className="pl-8"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        onClick={() => {
+                  {/* Filtering Controls */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Date Filter
+                      </label>
+                      <Input
+                        type="date"
+                        value={filterOptions.date}
+                        onChange={(e) =>
                           setFilterOptions({
-                            date: "",
-                            vehicleType: "",
-                            bookingStatus: "",
-                            paymentType: "",
-                          });
-                          setSearchQuery("");
-                          setFilteredBookingData(bookingData);
-                        }}
-                      >
-                        Reset Filters
-                      </Button>
-                      <Button
-                        variant="default"
-                        onClick={() => {
-                          let filtered = [...bookingData];
-
-                          // Apply date filter
-                          if (filterOptions.date) {
-                            filtered = filtered.filter((booking) => {
-                              return (
-                                booking.startDate.includes(
-                                  filterOptions.date,
-                                ) ||
-                                booking.endDate.includes(filterOptions.date) ||
-                                booking.createdAt.includes(filterOptions.date)
-                              );
-                            });
-                          }
-
-                          // Apply vehicle type filter
-                          if (filterOptions.vehicleType) {
-                            filtered = filtered.filter(
-                              (booking) =>
-                                booking.vehicleType ===
-                                filterOptions.vehicleType,
-                            );
-                          }
-
-                          // Apply booking status filter
-                          if (filterOptions.bookingStatus) {
-                            filtered = filtered.filter(
-                              (booking) =>
-                                booking.bookingStatus ===
-                                filterOptions.bookingStatus,
-                            );
-                          }
-
-                          // Apply payment status filter
-                          if (filterOptions.paymentType) {
-                            filtered = filtered.filter(
-                              (booking) =>
-                                booking.paymentStatus ===
-                                filterOptions.paymentType,
-                            );
-                          }
-
-                          // Apply search query
-                          if (searchQuery) {
-                            const query = searchQuery.toLowerCase();
-                            filtered = filtered.filter(
-                              (booking) =>
-                                booking.customer
-                                  .toLowerCase()
-                                  .includes(query) ||
-                                booking.id.toLowerCase().includes(query),
-                            );
-                          }
-
-                          setFilteredBookingData(filtered);
-                        }}
-                      >
-                        Apply Filters
-                      </Button>
+                            ...filterOptions,
+                            date: e.target.value,
+                          })
+                        }
+                        className="w-full"
+                      />
                     </div>
-                  </CardHeader>
 
-                  <CardContent>
-                    <div className="rounded-md border">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b bg-muted/50 font-medium">
-                              <th className="py-3 px-4 text-left">
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  onClick={() => {
-                                    if (sortConfig.key === "vehicleType") {
-                                      setSortConfig({
-                                        key: "vehicleType",
-                                        direction:
-                                          sortConfig.direction === "asc"
-                                            ? "desc"
-                                            : "asc",
-                                      });
-                                    } else {
-                                      setSortConfig({
-                                        key: "vehicleType",
-                                        direction: "asc",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Vehicle Type
-                                  {sortConfig.key === "vehicleType" &&
-                                    (sortConfig.direction === "asc" ? (
-                                      <SortAsc className="h-4 w-4" />
-                                    ) : (
-                                      <SortDesc className="h-4 w-4" />
-                                    ))}
-                                </div>
-                              </th>
-                              <th className="py-3 px-4 text-left">
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  onClick={() => {
-                                    if (sortConfig.key === "bookingStatus") {
-                                      setSortConfig({
-                                        key: "bookingStatus",
-                                        direction:
-                                          sortConfig.direction === "asc"
-                                            ? "desc"
-                                            : "asc",
-                                      });
-                                    } else {
-                                      setSortConfig({
-                                        key: "bookingStatus",
-                                        direction: "asc",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Booking Status
-                                  {sortConfig.key === "bookingStatus" &&
-                                    (sortConfig.direction === "asc" ? (
-                                      <SortAsc className="h-4 w-4" />
-                                    ) : (
-                                      <SortDesc className="h-4 w-4" />
-                                    ))}
-                                </div>
-                              </th>
-                              <th className="py-3 px-4 text-left">
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  onClick={() => {
-                                    if (sortConfig.key === "paymentStatus") {
-                                      setSortConfig({
-                                        key: "paymentStatus",
-                                        direction:
-                                          sortConfig.direction === "asc"
-                                            ? "desc"
-                                            : "asc",
-                                      });
-                                    } else {
-                                      setSortConfig({
-                                        key: "paymentStatus",
-                                        direction: "asc",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Payment Status
-                                  {sortConfig.key === "paymentStatus" &&
-                                    (sortConfig.direction === "asc" ? (
-                                      <SortAsc className="h-4 w-4" />
-                                    ) : (
-                                      <SortDesc className="h-4 w-4" />
-                                    ))}
-                                </div>
-                              </th>
-                              <th className="py-3 px-4 text-left">
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  onClick={() => {
-                                    if (sortConfig.key === "nominalPaid") {
-                                      setSortConfig({
-                                        key: "nominalPaid",
-                                        direction:
-                                          sortConfig.direction === "asc"
-                                            ? "desc"
-                                            : "asc",
-                                      });
-                                    } else {
-                                      setSortConfig({
-                                        key: "nominalPaid",
-                                        direction: "asc",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Nominal Paid
-                                  {sortConfig.key === "nominalPaid" &&
-                                    (sortConfig.direction === "asc" ? (
-                                      <SortAsc className="h-4 w-4" />
-                                    ) : (
-                                      <SortDesc className="h-4 w-4" />
-                                    ))}
-                                </div>
-                              </th>
-                              <th className="py-3 px-4 text-left">
-                                <div
-                                  className="flex items-center gap-1 cursor-pointer"
-                                  onClick={() => {
-                                    if (sortConfig.key === "nominalUnpaid") {
-                                      setSortConfig({
-                                        key: "nominalUnpaid",
-                                        direction:
-                                          sortConfig.direction === "asc"
-                                            ? "desc"
-                                            : "asc",
-                                      });
-                                    } else {
-                                      setSortConfig({
-                                        key: "nominalUnpaid",
-                                        direction: "asc",
-                                      });
-                                    }
-                                  }}
-                                >
-                                  Nominal Unpaid
-                                  {sortConfig.key === "nominalUnpaid" &&
-                                    (sortConfig.direction === "asc" ? (
-                                      <SortAsc className="h-4 w-4" />
-                                    ) : (
-                                      <SortDesc className="h-4 w-4" />
-                                    ))}
-                                </div>
-                              </th>
-                              <th className="py-3 px-4 text-left">Customer</th>
-                              <th className="py-3 px-4 text-left">Staff</th>
-                              <th className="py-3 px-4 text-left">Dates</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredBookingData.length > 0 ? (
-                              // Sort the data based on the sort configuration
-                              [...filteredBookingData]
-                                .sort((a, b) => {
-                                  if (!sortConfig.key) return 0;
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Vehicle Type
+                      </label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={filterOptions.vehicleType}
+                        onChange={(e) =>
+                          setFilterOptions({
+                            ...filterOptions,
+                            vehicleType: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">All Types</option>
+                        <option value="Sedan">Sedan</option>
+                        <option value="SUV">SUV</option>
+                        <option value="MPV">MPV</option>
+                        <option value="Hatchback">Hatchback</option>
+                      </select>
+                    </div>
 
-                                  const aValue = a[sortConfig.key];
-                                  const bValue = b[sortConfig.key];
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Booking Status
+                      </label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={filterOptions.bookingStatus}
+                        onChange={(e) =>
+                          setFilterOptions({
+                            ...filterOptions,
+                            bookingStatus: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="Booked">Booked</option>
+                        <option value="On Ride">On Ride</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                      </select>
+                    </div>
 
-                                  if (aValue < bValue) {
-                                    return sortConfig.direction === "asc"
-                                      ? -1
-                                      : 1;
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">
+                        Payment Status
+                      </label>
+                      <select
+                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                        value={filterOptions.paymentType}
+                        onChange={(e) =>
+                          setFilterOptions({
+                            ...filterOptions,
+                            paymentType: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="">All Statuses</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Partial">Partial</option>
+                        <option value="Unpaid">Unpaid</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Search and Reset Filters */}
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by customer name..."
+                        className="pl-8"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setFilterOptions({
+                          date: "",
+                          vehicleType: "",
+                          bookingStatus: "",
+                          paymentType: "",
+                        });
+                        setSearchQuery("");
+                        setFilteredBookingData(bookingData);
+                      }}
+                    >
+                      Reset Filters
+                    </Button>
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        let filtered = [...bookingData];
+
+                        // Apply date filter
+                        if (filterOptions.date) {
+                          filtered = filtered.filter((booking) => {
+                            return (
+                              booking.startDate.includes(filterOptions.date) ||
+                              booking.endDate.includes(filterOptions.date) ||
+                              booking.createdAt.includes(filterOptions.date)
+                            );
+                          });
+                        }
+
+                        // Apply vehicle type filter
+                        if (filterOptions.vehicleType) {
+                          filtered = filtered.filter(
+                            (booking) =>
+                              booking.vehicleType === filterOptions.vehicleType,
+                          );
+                        }
+
+                        // Apply booking status filter
+                        if (filterOptions.bookingStatus) {
+                          filtered = filtered.filter(
+                            (booking) =>
+                              booking.bookingStatus ===
+                              filterOptions.bookingStatus,
+                          );
+                        }
+
+                        // Apply payment status filter
+                        if (filterOptions.paymentType) {
+                          filtered = filtered.filter(
+                            (booking) =>
+                              booking.paymentStatus ===
+                              filterOptions.paymentType,
+                          );
+                        }
+
+                        // Apply search query
+                        if (searchQuery) {
+                          const query = searchQuery.toLowerCase();
+                          filtered = filtered.filter(
+                            (booking) =>
+                              booking.customer.toLowerCase().includes(query) ||
+                              booking.id.toLowerCase().includes(query),
+                          );
+                        }
+
+                        setFilteredBookingData(filtered);
+                      }}
+                    >
+                      Apply Filters
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="rounded-md border">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/50 font-medium">
+                            <th className="py-3 px-4 text-left">
+                              <div
+                                className="flex items-center gap-1 cursor-pointer"
+                                onClick={() => {
+                                  if (sortConfig.key === "vehicleType") {
+                                    setSortConfig({
+                                      key: "vehicleType",
+                                      direction:
+                                        sortConfig.direction === "asc"
+                                          ? "desc"
+                                          : "asc",
+                                    });
+                                  } else {
+                                    setSortConfig({
+                                      key: "vehicleType",
+                                      direction: "asc",
+                                    });
                                   }
-                                  if (aValue > bValue) {
-                                    return sortConfig.direction === "asc"
-                                      ? 1
-                                      : -1;
+                                }}
+                              >
+                                Vehicle Type
+                                {sortConfig.key === "vehicleType" &&
+                                  (sortConfig.direction === "asc" ? (
+                                    <SortAsc className="h-4 w-4" />
+                                  ) : (
+                                    <SortDesc className="h-4 w-4" />
+                                  ))}
+                              </div>
+                            </th>
+                            <th className="py-3 px-4 text-left">
+                              <div
+                                className="flex items-center gap-1 cursor-pointer"
+                                onClick={() => {
+                                  if (sortConfig.key === "bookingStatus") {
+                                    setSortConfig({
+                                      key: "bookingStatus",
+                                      direction:
+                                        sortConfig.direction === "asc"
+                                          ? "desc"
+                                          : "asc",
+                                    });
+                                  } else {
+                                    setSortConfig({
+                                      key: "bookingStatus",
+                                      direction: "asc",
+                                    });
                                   }
-                                  return 0;
-                                })
-                                .map((booking) => (
-                                  <tr
-                                    key={booking.id}
-                                    className="border-b hover:bg-muted/50 transition-colors"
-                                  >
-                                    <td className="py-3 px-4">
-                                      {booking.vehicleType}
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      <span
-                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                          booking.bookingStatus === "Completed"
-                                            ? "bg-green-100 text-green-800"
-                                            : booking.bookingStatus ===
-                                                "On Ride"
-                                              ? "bg-blue-100 text-blue-800"
-                                              : booking.bookingStatus ===
-                                                  "Booked"
-                                                ? "bg-yellow-100 text-yellow-800"
-                                                : "bg-red-100 text-red-800"
-                                        }`}
-                                      >
-                                        {booking.bookingStatus}
-                                      </span>
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      <span
-                                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                          booking.paymentStatus === "Paid"
-                                            ? "bg-green-100 text-green-800"
-                                            : booking.paymentStatus ===
-                                                "Partial"
+                                }}
+                              >
+                                Booking Status
+                                {sortConfig.key === "bookingStatus" &&
+                                  (sortConfig.direction === "asc" ? (
+                                    <SortAsc className="h-4 w-4" />
+                                  ) : (
+                                    <SortDesc className="h-4 w-4" />
+                                  ))}
+                              </div>
+                            </th>
+                            <th className="py-3 px-4 text-left">
+                              <div
+                                className="flex items-center gap-1 cursor-pointer"
+                                onClick={() => {
+                                  if (sortConfig.key === "paymentStatus") {
+                                    setSortConfig({
+                                      key: "paymentStatus",
+                                      direction:
+                                        sortConfig.direction === "asc"
+                                          ? "desc"
+                                          : "asc",
+                                    });
+                                  } else {
+                                    setSortConfig({
+                                      key: "paymentStatus",
+                                      direction: "asc",
+                                    });
+                                  }
+                                }}
+                              >
+                                Payment Status
+                                {sortConfig.key === "paymentStatus" &&
+                                  (sortConfig.direction === "asc" ? (
+                                    <SortAsc className="h-4 w-4" />
+                                  ) : (
+                                    <SortDesc className="h-4 w-4" />
+                                  ))}
+                              </div>
+                            </th>
+                            <th className="py-3 px-4 text-left">
+                              <div
+                                className="flex items-center gap-1 cursor-pointer"
+                                onClick={() => {
+                                  if (sortConfig.key === "nominalPaid") {
+                                    setSortConfig({
+                                      key: "nominalPaid",
+                                      direction:
+                                        sortConfig.direction === "asc"
+                                          ? "desc"
+                                          : "asc",
+                                    });
+                                  } else {
+                                    setSortConfig({
+                                      key: "nominalPaid",
+                                      direction: "asc",
+                                    });
+                                  }
+                                }}
+                              >
+                                Nominal Paid
+                                {sortConfig.key === "nominalPaid" &&
+                                  (sortConfig.direction === "asc" ? (
+                                    <SortAsc className="h-4 w-4" />
+                                  ) : (
+                                    <SortDesc className="h-4 w-4" />
+                                  ))}
+                              </div>
+                            </th>
+                            <th className="py-3 px-4 text-left">
+                              <div
+                                className="flex items-center gap-1 cursor-pointer"
+                                onClick={() => {
+                                  if (sortConfig.key === "nominalUnpaid") {
+                                    setSortConfig({
+                                      key: "nominalUnpaid",
+                                      direction:
+                                        sortConfig.direction === "asc"
+                                          ? "desc"
+                                          : "asc",
+                                    });
+                                  } else {
+                                    setSortConfig({
+                                      key: "nominalUnpaid",
+                                      direction: "asc",
+                                    });
+                                  }
+                                }}
+                              >
+                                Nominal Unpaid
+                                {sortConfig.key === "nominalUnpaid" &&
+                                  (sortConfig.direction === "asc" ? (
+                                    <SortAsc className="h-4 w-4" />
+                                  ) : (
+                                    <SortDesc className="h-4 w-4" />
+                                  ))}
+                              </div>
+                            </th>
+                            <th className="py-3 px-4 text-left">Customer</th>
+                            <th className="py-3 px-4 text-left">Staff</th>
+                            <th className="py-3 px-4 text-left">Dates</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredBookingData.length > 0 ? (
+                            // Sort the data based on the sort configuration
+                            [...filteredBookingData]
+                              .sort((a, b) => {
+                                if (!sortConfig.key) return 0;
+
+                                const aValue = a[sortConfig.key];
+                                const bValue = b[sortConfig.key];
+
+                                if (aValue < bValue) {
+                                  return sortConfig.direction === "asc"
+                                    ? -1
+                                    : 1;
+                                }
+                                if (aValue > bValue) {
+                                  return sortConfig.direction === "asc"
+                                    ? 1
+                                    : -1;
+                                }
+                                return 0;
+                              })
+                              .map((booking) => (
+                                <tr
+                                  key={booking.id}
+                                  className="border-b hover:bg-muted/50 transition-colors"
+                                >
+                                  <td className="py-3 px-4">
+                                    {booking.vehicleType}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span
+                                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                        booking.bookingStatus === "Completed"
+                                          ? "bg-green-100 text-green-800"
+                                          : booking.bookingStatus === "On Ride"
+                                            ? "bg-blue-100 text-blue-800"
+                                            : booking.bookingStatus === "Booked"
                                               ? "bg-yellow-100 text-yellow-800"
                                               : "bg-red-100 text-red-800"
-                                        }`}
-                                      >
-                                        {booking.paymentStatus}
+                                      }`}
+                                    >
+                                      {booking.bookingStatus}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span
+                                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                        booking.paymentStatus === "Paid"
+                                          ? "bg-green-100 text-green-800"
+                                          : booking.paymentStatus === "Partial"
+                                            ? "bg-yellow-100 text-yellow-800"
+                                            : "bg-red-100 text-red-800"
+                                      }`}
+                                    >
+                                      {booking.paymentStatus}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    {new Intl.NumberFormat("id-ID", {
+                                      style: "currency",
+                                      currency: "IDR",
+                                      minimumFractionDigits: 0,
+                                    }).format(booking.nominalPaid)}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    {new Intl.NumberFormat("id-ID", {
+                                      style: "currency",
+                                      currency: "IDR",
+                                      minimumFractionDigits: 0,
+                                    }).format(booking.nominalUnpaid)}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">
+                                        {booking.customer}
                                       </span>
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      {new Intl.NumberFormat("id-ID", {
-                                        style: "currency",
-                                        currency: "IDR",
-                                        minimumFractionDigits: 0,
-                                      }).format(booking.nominalPaid)}
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      {new Intl.NumberFormat("id-ID", {
-                                        style: "currency",
-                                        currency: "IDR",
-                                        minimumFractionDigits: 0,
-                                      }).format(booking.nominalUnpaid)}
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      <div className="flex flex-col">
-                                        <span className="font-medium">
-                                          {booking.customer}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">
-                                          {booking.customerEmail}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">
-                                          {booking.customerPhone}
-                                        </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {booking.customerEmail}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {booking.customerPhone}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    {booking.staffName ? (
+                                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
+                                        {booking.staffName}
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs">
+                                        No staff assigned
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="text-xs">
+                                      <div>
+                                        Start:{" "}
+                                        {new Date(
+                                          booking.startDate,
+                                        ).toLocaleDateString()}
                                       </div>
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      {booking.staffName ? (
-                                        <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-blue-100 text-blue-800">
-                                          {booking.staffName}
-                                        </span>
-                                      ) : (
-                                        <span className="text-muted-foreground text-xs">
-                                          No staff assigned
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="py-3 px-4">
-                                      <div className="text-xs">
-                                        <div>
-                                          Start:{" "}
-                                          {new Date(
-                                            booking.startDate,
-                                          ).toLocaleDateString()}
-                                        </div>
-                                        <div>
-                                          End:{" "}
-                                          {new Date(
-                                            booking.endDate,
-                                          ).toLocaleDateString()}
-                                        </div>
+                                      <div>
+                                        End:{" "}
+                                        {new Date(
+                                          booking.endDate,
+                                        ).toLocaleDateString()}
                                       </div>
-                                    </td>
-                                  </tr>
-                                ))
-                            ) : (
-                              <tr>
-                                <td
-                                  colSpan={7}
-                                  className="py-6 text-center text-muted-foreground"
-                                >
-                                  No bookings found matching the current
-                                  filters.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                          ) : (
+                            <tr>
+                              <td
+                                colSpan={7}
+                                className="py-6 text-center text-muted-foreground"
+                              >
+                                No bookings found matching the current filters.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </>
-          )}
-        </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
