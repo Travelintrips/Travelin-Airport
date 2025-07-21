@@ -598,6 +598,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
                     ktpUrl: documentUrls.ktpUrl,
                     licenseUrl: documentUrls.licenseUrl,
                     idCardUrl: documentUrls.idCardUrl,
+                    kkUrl: documentUrls.kkUrl,
+                    stnkUrl: documentUrls.stnkUrl,
                   });
                 }
               }
@@ -740,6 +742,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
             status: "active",
             ktp_url: documentUrls.ktpUrl,
             sim_url: documentUrls.licenseUrl,
+            kk_url: documentUrls.kkUrl,
+            stnk_url: documentUrls.stnkUrl,
             first_name: data.firstName,
             last_name: data.lastName,
             address: data.address,

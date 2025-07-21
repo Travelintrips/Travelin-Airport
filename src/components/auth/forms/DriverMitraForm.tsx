@@ -77,8 +77,12 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
                   {...field}
                   onChange={(e) => {
                     const value = e.target.value;
-                    const numValue = Number(value);
-                    field.onChange(isNaN(numValue) ? value : numValue);
+                    if (value === "") {
+                      field.onChange("");
+                    } else {
+                      const numValue = parseInt(value, 10);
+                      field.onChange(isNaN(numValue) ? value : numValue);
+                    }
                   }}
                 />
               </FormControl>
