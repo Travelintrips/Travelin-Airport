@@ -715,7 +715,24 @@ const RentCar = () => {
                       disabled={!vehicle.available}
                       onClick={() => {
                         if (vehicle.available) {
-                          handleSelectVehicle(vehicle as any);
+                          handleSelectVehicle({
+                            id: vehicle.id,
+                            model: vehicle.model,
+                            name: vehicle.name,
+                            price: vehicle.price,
+                            image: vehicle.image,
+                            seats: vehicle.seats,
+                            transmission: vehicle.transmission,
+                            fuelType: vehicle.fuelType,
+                            available: vehicle.available,
+                            features: vehicle.features,
+                            make: vehicle.make,
+                            year: vehicle.year,
+                            license_plate: vehicle.license_plate,
+                            color: vehicle.color,
+                            vehicle_type_id: vehicle.vehicle_type_id,
+                            vehicle_type_name: vehicle.vehicle_type_name,
+                          });
                         }
                       }}
                     >
