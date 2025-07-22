@@ -69,7 +69,7 @@ const VehicleInventory = () => {
         vehicle.make?.toLowerCase().includes(query) ||
         vehicle.model?.toLowerCase().includes(query) ||
         vehicle.license_plate?.toLowerCase().includes(query) ||
-        vehicle.vehicle_name?.toLowerCase().includes(query),
+        vehicle.name?.toLowerCase().includes(query),
     );
 
     setFilteredVehicles(filtered);
@@ -167,10 +167,10 @@ const VehicleInventory = () => {
                       <th className="py-3 px-4 text-left">
                         <div
                           className="flex items-center gap-1 cursor-pointer"
-                          onClick={() => handleSort("vehicle_name")}
+                          onClick={() => handleSort("name")}
                         >
                           Vehicle
-                          {sortConfig.key === "vehicle_name" &&
+                          {sortConfig.key === "name" &&
                             (sortConfig.direction === "asc" ? (
                               <SortAsc className="h-4 w-4" />
                             ) : (
@@ -251,7 +251,7 @@ const VehicleInventory = () => {
                               </div>
                               <div>
                                 <div className="font-medium">
-                                  {vehicle.vehicle_name ||
+                                  {vehicle.name ||
                                     `${vehicle.make} ${vehicle.model}`}
                                 </div>
                                 <div className="text-xs text-muted-foreground">

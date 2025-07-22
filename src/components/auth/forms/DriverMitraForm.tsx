@@ -75,15 +75,7 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
                   placeholder="2020"
                   type="number"
                   {...field}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === "") {
-                      field.onChange("");
-                    } else {
-                      const numValue = parseInt(value, 10);
-                      field.onChange(isNaN(numValue) ? value : numValue);
-                    }
-                  }}
+                  onChange={(e) => field.onChange(e.target.value)}
                 />
               </FormControl>
               <FormMessage />
@@ -129,8 +121,8 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
               <FormLabel>Type</FormLabel>
               <Select
                 onValueChange={field.onChange}
-                defaultValue={field.value}
-                value={field.value}
+                defaultValue={field.value || ""}
+                value={field.value || ""}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -157,8 +149,8 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
               <FormLabel>Category</FormLabel>
               <Select
                 onValueChange={field.onChange}
-                defaultValue={field.value}
-                value={field.value}
+                defaultValue={field.value || ""}
+                value={field.value || ""}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -186,9 +178,9 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
             <FormItem>
               <FormLabel>Seats</FormLabel>
               <Select
-                onValueChange={field.onChange}
-                defaultValue={field.value}
-                value={field.value}
+                onValueChange={(value) => field.onChange(parseInt(value))}
+                defaultValue={field.value?.toString()}
+                value={field.value?.toString()}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -216,8 +208,8 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
               <FormLabel>Transmission</FormLabel>
               <Select
                 onValueChange={field.onChange}
-                defaultValue={field.value}
-                value={field.value}
+                defaultValue={field.value || ""}
+                value={field.value || ""}
               >
                 <FormControl>
                   <SelectTrigger>
@@ -244,8 +236,8 @@ const DriverMitraForm: React.FC<DriverMitraFormProps> = ({
             <FormLabel>Fuel Type</FormLabel>
             <Select
               onValueChange={field.onChange}
-              defaultValue={field.value}
-              value={field.value}
+              defaultValue={field.value || ""}
+              value={field.value || ""}
             >
               <FormControl>
                 <SelectTrigger>

@@ -31,18 +31,18 @@ import { useForceLogoutRedirect } from "@/hooks/useForceLogoutRedirect";
 import AuthRequiredModal from "./auth/AuthRequiredModal";
 
 interface Vehicle {
-  id: string;
-  name: string;
-  type: "sedan" | "suv" | "truck" | "luxury";
+  id: string | number;
+  model: string;
+  name?: string;
+  type?: "sedan" | "suv" | "truck" | "luxury";
   price: number;
-  image: string;
-  seats: number;
-  transmission: "automatic" | "manual";
-  fuelType: "petrol" | "diesel" | "electric" | "hybrid";
-  available: boolean;
-  features: string[];
+  image?: string;
+  seats?: number;
+  transmission?: "automatic" | "manual";
+  fuelType?: "petrol" | "diesel" | "electric" | "hybrid";
+  available?: boolean;
+  features?: string[];
   make: string;
-  model?: string;
   year?: number;
   license_plate?: string;
   color?: string;

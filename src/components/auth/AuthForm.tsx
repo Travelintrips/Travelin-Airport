@@ -545,8 +545,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
           ktpUrl: "",
           licenseUrl: "",
           idCardUrl: "",
-          kkUrl: "",
-          stnkUrl: "",
         };
 
         const needsUpload =
@@ -578,8 +576,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 ktpUrl: uploadResult.ktpUrl || documentUrls.ktpUrl,
                 licenseUrl: uploadResult.licenseUrl || documentUrls.licenseUrl,
                 idCardUrl: uploadResult.idCardUrl || documentUrls.idCardUrl,
-                kkUrl: uploadResult.kkUrl || documentUrls.kkUrl,
-                stnkUrl: uploadResult.stnkUrl || documentUrls.stnkUrl,
+                kkUrl: uploadResult.kkUrl || "",
+                stnkUrl: uploadResult.stnkUrl || "",
               };
 
               console.log("All documents uploaded successfully:", {
@@ -597,7 +595,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
                   console.log("Document URLs after upload:", {
                     ktpUrl: documentUrls.ktpUrl,
                     licenseUrl: documentUrls.licenseUrl,
-                    idCardUrl: documentUrls.idCardUrl,
                     kkUrl: documentUrls.kkUrl,
                     stnkUrl: documentUrls.stnkUrl,
                   });

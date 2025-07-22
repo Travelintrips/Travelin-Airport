@@ -343,7 +343,13 @@ const InspectionManagement = () => {
                   </label>
                   <textarea
                     className="w-full p-2 border rounded-md min-h-[100px]"
-                    defaultValue={selectedInspection.condition_notes || ""}
+                    defaultValue={
+                      typeof selectedInspection.condition_notes === "string"
+                        ? selectedInspection.condition_notes
+                        : selectedInspection.condition_notes
+                          ? JSON.stringify(selectedInspection.condition_notes)
+                          : ""
+                    }
                   />
                 </div>
               </div>

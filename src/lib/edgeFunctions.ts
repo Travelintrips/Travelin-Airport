@@ -62,17 +62,7 @@ export async function uploadDocumentImages(
   kkImage?: string,
   stnkImage?: string,
   skckImage?: string,
-): Promise<{
-  data: {
-    ktpUrl?: string;
-    licenseUrl?: string;
-    idCardUrl?: string;
-    kkUrl?: string;
-    stnkUrl?: string;
-    skckUrl?: string;
-  } | null;
-  error: Error | null;
-}> {
+) {
   return invokeEdgeFunction("supabase-functions-uploadDocuments", {
     userId,
     ktpImage,

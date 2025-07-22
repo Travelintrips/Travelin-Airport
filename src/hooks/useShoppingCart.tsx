@@ -1784,7 +1784,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 export const useShoppingCart = () => {
   try {
     const context = useContext(ShoppingCartContext);
-    if (context === undefined) {
+    if (context === undefined || context === null) {
       console.warn(
         "useShoppingCart called outside of ShoppingCartProvider, providing fallback context",
       );

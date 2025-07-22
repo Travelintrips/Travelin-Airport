@@ -105,7 +105,7 @@ export default function BookingManagement() {
 
     // Check URL for status filter
     const urlParams = new URLSearchParams(location.search);
-    const statusParam = urlParams.get("status");
+    const statusParam = urlParams.get("bookings_status");
 
     if (statusParam) {
       setSearchTerm(statusParam);
@@ -184,7 +184,7 @@ export default function BookingManagement() {
 
       // Apply URL status filter if present
       const urlParams = new URLSearchParams(location.search);
-      const statusParam = urlParams.get("status");
+      const statusParam = urlParams.get("bookings_status");
 
       if (statusParam) {
         const normalizedStatus = statusParam.toLowerCase().replace("-", "");
@@ -430,7 +430,7 @@ export default function BookingManagement() {
       // Verify the update was successful
       const { data: updatedBooking, error: verifyError } = await supabase
         .from("bookings")
-        .select("id, status")
+        .select("id, bookings_status")
         .eq("id", booking.id)
         .single();
 
@@ -448,12 +448,12 @@ export default function BookingManagement() {
       // Update local state immediately to reflect changes
       setBookings((prevBookings) =>
         prevBookings.map((b) =>
-          b.id === booking.id ? { ...b, status: "confirmed" } : b,
+          b.id === booking.id ? { ...b, bookings_status: "confirmed" } : b,
         ),
       );
       setFilteredBookings((prevBookings) =>
         prevBookings.map((b) =>
-          b.id === booking.id ? { ...b, status: "confirmed" } : b,
+          b.id === booking.id ? { ...b, bookings_status: "confirmed" } : b,
         ),
       );
 
@@ -555,8 +555,8 @@ export default function BookingManagement() {
         booking.kode_booking?.toLowerCase().includes(lowercasedSearch) ||
         booking.id.toString().includes(lowercasedSearch) ||
         booking.vehicle_id.toString().includes(lowercasedSearch) ||
-        booking.status.toLowerCase().includes(lowercasedSearch) ||
-        booking.payment_status.toLowerCase().includes(lowercasedSearch),
+        booking.status?.toLowerCase().includes(lowercasedSearch) ||
+        booking.payment_status?.toLowerCase().includes(lowercasedSearch),
     );
 
     setFilteredBookings(filtered);
@@ -974,7 +974,7 @@ export default function BookingManagement() {
                   </p>
                   <p>
                     <span className="font-medium">Booking Status:</span>{" "}
-                    {currentBooking.status}
+                    {currentBooking.booking_status}
                   </p>
                   {currentBooking.pickup_time && (
                     <p>
