@@ -279,7 +279,10 @@ const InspectionManagement = () => {
                 <div>
                   <h3 className="text-lg font-semibold">Condition Notes</h3>
                   <p className="whitespace-pre-wrap">
-                    {selectedInspection.condition_notes || "No notes provided"}
+                    {typeof selectedInspection.condition_notes === "string"
+                      ? selectedInspection.condition_notes
+                      : JSON.stringify(selectedInspection.condition_notes) ||
+                        "No notes provided"}
                   </p>
                 </div>
               </div>
@@ -340,7 +343,13 @@ const InspectionManagement = () => {
                   </label>
                   <textarea
                     className="w-full p-2 border rounded-md min-h-[100px]"
-                    defaultValue={selectedInspection.condition_notes || ""}
+                    defaultValue={
+                      typeof selectedInspection.condition_notes === "string"
+                        ? selectedInspection.condition_notes
+                        : selectedInspection.condition_notes
+                          ? JSON.stringify(selectedInspection.condition_notes)
+                          : ""
+                    }
                   />
                 </div>
               </div>

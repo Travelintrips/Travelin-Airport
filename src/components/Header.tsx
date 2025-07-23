@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useShoppingCart } from "@/hooks/useShoppingCart";
@@ -8,9 +9,44 @@ import { Badge } from "./ui/badge";
 import { ShoppingCart as CartIcon } from "lucide-react";
 
 const Header = () => {
-  const {} = useAuth();
-  const isAuthenticated = false; // Temporarily disable authentication
+  const { isAuthenticated, isLoading } = useAuth();
   const { cartCount } = useShoppingCart();
+  const [mounted, setMounted] = useState(false);
+
+  // Ensure we're properly mounted to avoid hydration issues
+  useEffect(() => {
+    setMounted(true);
+
+    // Check for forced logout
+    const forceLogout = sessionStorage.getItem("forceLogout");
+    if (forceLogout) {
+      console.log("Force logout detected in Header, clearing flag");
+      sessionStorage.removeItem("forceLogout");
+    }
+
+    // Listen for storage changes (for cross-tab logout)
+    const handleStorageChange = (e) => {
+      if (e.key === "auth_user" && !e.newValue) {
+        // User logged out in another tab
+        console.log("[Header] Logout detected in another tab");
+        window.location.reload();
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  // Prevent header from disappearing during auth state transitions
+  if (!mounted) {
+    return null;
+  }
+
+  // Show header even during loading to prevent layout shift
+  const showAuthenticatedUI = isAuthenticated && !isLoading;
 
   return (
     <>
@@ -39,9 +75,12 @@ const Header = () => {
             <Link to="/corporates" className="hover:text-green-200">
               For Corporates
             </Link>
-            <Link to="/bookings" className="hover:text-green-200">
-              Bookings
-            </Link>
+            {/* Show auth-dependent UI when authenticated */}
+            {mounted && showAuthenticatedUI && (
+              <Link to="/bookings" className="hover:text-green-200">
+                Bookings
+              </Link>
+            )}
           </nav>
 
           <div className="flex items-center space-x-4">
@@ -53,7 +92,7 @@ const Header = () => {
                 className="relative text-white hover:bg-green-700"
               >
                 <CartIcon className="h-5 w-5" />
-                {cartCount > 0 && (
+                {mounted && cartCount > 0 && (
                   <Badge
                     variant="destructive"
                     className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs"
@@ -64,18 +103,21 @@ const Header = () => {
               </Button>
             </Link>
 
-            {/* Temporarily show login/register buttons for all users */}
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                className="bg-transparent text-white border-white hover:bg-white hover:text-green-800"
-              >
-                <Link to="/login">Sign In</Link>
-              </Button>
-              <Button className="bg-white text-green-800 hover:bg-gray-100">
-                <Link to="/register">Register</Link>
-              </Button>
-            </div>
+            {mounted && showAuthenticatedUI ? (
+              <UserDropdown />
+            ) : (
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  className="bg-transparent text-white border-white hover:bg-white hover:text-green-800"
+                >
+                  <Link to="/login">Sign In</Link>
+                </Button>
+                <Button className="bg-white text-green-800 hover:bg-gray-100">
+                  <Link to="/register">Register</Link>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>

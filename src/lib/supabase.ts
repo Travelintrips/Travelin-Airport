@@ -1,12 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
-// Get environment variables with fallbacks
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL ||
-  "https://placeholder-project.supabase.co";
-const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY || "placeholder-key";
+// Get environment variables with fallbacks and validation
+const getEnvVar = (key: string, fallback: string = ""): string => {
+  // Vite Runtime
+  if (
+    typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env[key]
+  ) {
+    return import.meta.env[key];
+  }
+
+  // Node / SSR
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
+    return process.env[key];
+  }
+
+  // Browser runtime injected
+  if (
+    typeof window !== "undefined" &&
+    (window as any).__ENV__ &&
+    (window as any).__ENV__[key]
+  ) {
+    return (window as any).__ENV__[key];
+  }
+
+  return fallback;
+};
+
+const supabaseUrl = getEnvVar(
+  "VITE_SUPABASE_URL",
+  "https://placeholder-project.supabase.co",
+);
+const supabaseAnonKey = getEnvVar("VITE_SUPABASE_ANON_KEY", "placeholder-key");
 
 // Validate URL format before using it
 function isValidUrl(string: string): boolean {
@@ -17,6 +44,30 @@ function isValidUrl(string: string): boolean {
     return false;
   }
 }
+
+// Debug logging for environment variables
+console.log("Supabase configuration:", {
+  url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : "undefined",
+  key: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : "undefined",
+  isValidUrl: isValidUrl(supabaseUrl),
+  env: {
+    importMeta: (() => {
+      try {
+        return import.meta && import.meta.env ? "available" : "unavailable";
+      } catch (e) {
+        return "unavailable";
+      }
+    })(),
+    processEnv:
+      typeof process !== "undefined" && process.env
+        ? "available"
+        : "unavailable",
+    windowEnv:
+      typeof window !== "undefined" && (window as any).__ENV__
+        ? "available"
+        : "unavailable",
+  },
+});
 
 const hasValidCredentials =
   supabaseUrl &&
@@ -34,6 +85,16 @@ if (hasValidCredentials) {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+    global: {
+      headers: {
+        "X-Client-Info": "supabase-js-web",
+      },
     },
   });
 } else {
@@ -55,7 +116,7 @@ if (hasValidCredentials) {
         const mockUser = {
           id: "mock-user-id-" + Date.now(),
           email: params.email,
-          user_metadata: params.options?.data || {},
+          user_metadata: (params.options && params.options.data) || {},
         };
         return Promise.resolve({
           data: { user: mockUser, session: { user: mockUser } },

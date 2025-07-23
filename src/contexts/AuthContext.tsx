@@ -3,10 +3,10 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   useRef,
 } from "react";
 import { supabase } from "@/lib/supabase";
-import { useNavigate } from "react-router-dom";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -14,9 +14,15 @@ interface AuthContextType {
   userId: string | null;
   userEmail: string | null;
   userName: string | null;
+  userPhone: string | null;
   isAdmin: boolean;
   isLoading: boolean;
-  signOut: () => Promise<boolean>;
+  isHydrated: boolean;
+  isCheckingSession: boolean;
+  isSessionReady: boolean;
+  signOut: () => Promise<void>;
+  forceRefreshSession: () => Promise<void>;
+  ensureSessionReady: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,799 +30,1302 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  console.log("[AuthProvider] Initialized once");
-
-  const navigate = useNavigate();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
+  const [session, setSession] = useState<any>(null);
+  const [user, setUser] = useState<any>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [loadingTimeout, setLoadingTimeout] = useState<NodeJS.Timeout | null>(
-    null,
-  );
-  const isMountedRef = useRef(true);
-  const isCheckingRef = useRef(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
+  const initializationRef = useRef(false);
+  const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Function to fetch user role from database
-  const fetchUserRole = async (userId: string) => {
-    console.log("[AuthProvider] Starting to fetch user role for ID:", userId);
+  const initializeSession = useCallback(async () => {
+    if (initializationRef.current) {
+      console.log("[AuthContext] Session initialization already in progress");
+      return;
+    }
+
+    initializationRef.current = true;
+    setIsLoading(true);
+    setIsSessionReady(false);
+
     try {
-      console.log("[AuthProvider] Invoking update-user-metadata edge function");
-      // First get user metadata from auth.users using edge function
-      const { data: authUserData, error: authUserError } =
-        await supabase.functions.invoke("update-user-metadata", {
-          body: {
-            userId: userId,
-            action: "get",
-          },
-        });
+      console.log("[AuthContext] Starting session initialization...");
 
-      if (authUserError) {
-        console.error(
-          "[AuthProvider] Error from update-user-metadata:",
-          authUserError,
-        );
+      // Clear any existing timeout
+      if (sessionTimeoutRef.current) {
+        clearTimeout(sessionTimeoutRef.current);
       }
 
-      if (!authUserError && authUserData?.user) {
-        console.log("[AuthProvider] Auth user data found:", authUserData.user);
+      // Get current session from Supabase with timeout
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Session check timeout")), 5000);
+      });
 
-        // Get user metadata
-        const userMetadata = authUserData.user.user_metadata || {};
+      const { data, error } = (await Promise.race([
+        sessionPromise,
+        timeoutPromise,
+      ])) as any;
 
-        // Get display name from metadata
-        if (userMetadata.full_name) {
-          localStorage.setItem("userName", userMetadata.full_name);
-          setUserName(userMetadata.full_name);
+      if (error || !data.session) {
+        console.log("[AuthContext] No valid Supabase session found");
+
+        // Try localStorage fallback only if truly offline
+        const storedUser = localStorage.getItem("auth_user");
+        const storedUserId = localStorage.getItem("userId");
+        const storedUserEmail = localStorage.getItem("userEmail");
+        const storedUserRole = localStorage.getItem("userRole");
+
+        if (
+          storedUser &&
+          storedUserId &&
+          storedUserEmail &&
+          navigator.onLine === false
+        ) {
           console.log(
-            "[AuthProvider] Setting user name from auth metadata:",
-            userMetadata.full_name,
+            "[AuthContext] Using localStorage fallback (offline mode)",
           );
+          try {
+            const userData = JSON.parse(storedUser);
+            const storedUserPhone = localStorage.getItem("userPhone");
+
+            setUser({
+              id: storedUserId,
+              email: storedUserEmail,
+              user_metadata: {
+                name:
+                  userData.name || localStorage.getItem("userName") || "User",
+                role: storedUserRole || "Customer",
+                phone: storedUserPhone || userData.phone || "",
+              },
+            });
+            setRole(storedUserRole || "Customer");
+
+            // Create a mock session for offline mode
+            setSession({
+              user: {
+                id: storedUserId,
+                email: storedUserEmail,
+                user_metadata: {
+                  name: userData.name,
+                  role: storedUserRole,
+                  phone: storedUserPhone || userData.phone,
+                },
+              },
+              access_token: "offline_mode",
+            });
+          } catch (parseError) {
+            console.warn(
+              "[AuthContext] Error parsing stored user data:",
+              parseError,
+            );
+            setSession(null);
+            setUser(null);
+            setRole(null);
+          }
+        } else {
+          // Clear everything if no valid session
+          setSession(null);
+          setUser(null);
+          setRole(null);
+
+          // Clear localStorage if session is invalid
+          localStorage.removeItem("auth_user");
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userEmail");
+          localStorage.removeItem("userName");
+          localStorage.removeItem("userPhone");
+          localStorage.removeItem("userRole");
         }
+      } else {
+        console.log(
+          "[AuthContext] Valid Supabase session found, updating state",
+        );
+        setSession(data.session);
+        setUser(data.session.user);
 
-        console.log("[AuthProvider] Checking users table");
-        // Fallback to checking users table
-        const { data: userData, error: userError } = await supabase
-          .from("users")
-          .select("role_id, roles(name), email, full_name")
-          .eq("id", userId)
-          .single();
+        // Get user role from database first, then fallback to metadata
+        let userRole = "Customer";
+        let userName =
+          data.session.user.user_metadata?.name ||
+          data.session.user.email?.split("@")[0] ||
+          "User";
+        let userPhone = data.session.user.user_metadata?.phone || "";
 
-        if (userError) {
-          console.error("[AuthProvider] Error from users table:", userError);
-        }
+        // Check if this is during admin user creation to preserve admin role
+        const adminCreatingUser = sessionStorage.getItem("adminCreatingUser");
+        const currentAdminId = sessionStorage.getItem("currentAdminId");
+        const blockAuthChanges = sessionStorage.getItem(
+          "blockAuthStateChanges",
+        );
 
-        if (!userError && userData) {
+        if (
+          (adminCreatingUser === "true" &&
+            currentAdminId === data.session.user.id) ||
+          blockAuthChanges === "true"
+        ) {
           console.log(
-            "[AuthProvider] User data found in users table:",
-            userData,
+            "[AuthContext] Preserving admin role during user creation process",
           );
+          userRole = "Admin";
+        } else {
+          // Try to get user data from database with timeout
+          try {
+            const userDataPromise = supabase
+              .from("users")
+              .select("full_name, phone, role_id, role:roles(role_name)")
+              .eq("id", data.session.user.id)
+              .single();
 
-          // Only use users table name if we didn't get it from auth metadata
-          if (!userMetadata.full_name && userData.full_name) {
-            localStorage.setItem("userName", userData.full_name);
-            setUserName(userData.full_name);
+            const dbTimeoutPromise = new Promise((_, reject) => {
+              setTimeout(
+                () => reject(new Error("Database fetch timeout")),
+                3000,
+              );
+            });
+
+            const { data: dbUserData } = (await Promise.race([
+              userDataPromise,
+              dbTimeoutPromise,
+            ])) as any;
+
+            if (dbUserData) {
+              if (dbUserData.full_name) userName = dbUserData.full_name;
+              if (dbUserData.phone) userPhone = dbUserData.phone;
+
+              // CRITICAL: Prioritize database role over metadata for consistency
+              if (dbUserData.role?.role_name) {
+                userRole = dbUserData.role.role_name;
+                console.log("[AuthContext] Using database role:", userRole);
+              } else if (dbUserData.role_name) {
+                userRole = dbUserData.role_name;
+                console.log("[AuthContext] Using direct role_name:", userRole);
+              } else {
+                // Only fallback to metadata if no database role found
+                userRole = data.session.user?.user_metadata?.role || "Customer";
+                console.log(
+                  "[AuthContext] Fallback to metadata role:",
+                  userRole,
+                );
+              }
+            } else {
+              // Fallback to metadata role if no database data
+              userRole = data.session.user?.user_metadata?.role || "Customer";
+              console.log(
+                "[AuthContext] No database data, using metadata role:",
+                userRole,
+              );
+            }
+          } catch (dbError) {
+            console.warn(
+              "[AuthContext] Error fetching user data from database:",
+              dbError,
+            );
+            // Fallback to metadata role
+            userRole = data.session.user?.user_metadata?.role || "Customer";
             console.log(
-              "[AuthProvider] Setting user name from users table:",
-              userData.full_name,
+              "[AuthContext] Database error, fallback to metadata role:",
+              userRole,
             );
           }
 
-          if (userData.email) {
-            localStorage.setItem("userEmail", userData.email);
-            setUserEmail(userData.email);
+          // If still no role found, try to get from staff table
+          if (!userRole || userRole === "Customer") {
+            try {
+              const staffDataPromise = supabase
+                .from("staff")
+                .select("role")
+                .eq("id", data.session.user.id)
+                .single();
+
+              const staffTimeoutPromise = new Promise((_, reject) => {
+                setTimeout(
+                  () => reject(new Error("Staff fetch timeout")),
+                  3000,
+                );
+              });
+
+              const { data: staffData } = (await Promise.race([
+                staffDataPromise,
+                staffTimeoutPromise,
+              ])) as any;
+
+              if (staffData && staffData.role) {
+                userRole = staffData.role;
+                console.log("[AuthContext] Found staff role:", userRole);
+              }
+            } catch (staffError) {
+              console.warn(
+                "[AuthContext] Error fetching staff data:",
+                staffError,
+              );
+            }
           }
-
-          if (userData.roles?.name === "Admin") {
-            console.log("[AuthProvider] ADMIN ROLE FOUND in users table");
-            setIsAdmin(true);
-            localStorage.setItem("isAdmin", "true");
-          }
-
-          console.log(
-            "[AuthProvider] Returning role from users table:",
-            userData.roles?.name || "Customer",
-          );
-          return userData.roles?.name || "Customer";
-        }
-      }
-
-      console.log("[AuthProvider] Checking drivers table");
-      // If not found or no role, check drivers table
-      const { data: driverData, error: driverError } = await supabase
-        .from("drivers")
-        .select(
-          "driver_type, email, name, phone, reference_phone, license_number, license_expiry, stnk_expiry, selfie_url, sim_url, stnk_url, kk_url, status, created_at, updated_at",
-        )
-        .eq("id", userId)
-        .single();
-
-      if (driverError) {
-        console.error("[AuthProvider] Error from drivers table:", driverError);
-      }
-
-      if (!driverError && driverData?.driver_type) {
-        // Convert driver_type to role name
-        const roleName =
-          driverData.driver_type === "mitra"
-            ? "Driver Mitra"
-            : "Driver Perusahaan";
-        console.log("[AuthProvider] Role found in drivers table:", roleName);
-
-        // Store email if available
-        if (driverData.email) {
-          localStorage.setItem("userEmail", driverData.email);
-          setUserEmail(driverData.email);
         }
 
-        // Store additional driver information in localStorage
-        localStorage.setItem(
-          "driverData",
-          JSON.stringify({
-            id: userId,
-            name: driverData.name,
-            email: driverData.email,
-            phone: driverData.phone,
-            reference_phone: driverData.reference_phone,
-            license_number: driverData.license_number,
-            license_expiry: driverData.license_expiry,
-            stnk_expiry: driverData.stnk_expiry,
-            selfie_url: driverData.selfie_url,
-            sim_url: driverData.sim_url,
-            stnk_url: driverData.stnk_url,
-            kk_url: driverData.kk_url,
-            status: driverData.status,
-            driver_type: driverData.driver_type,
-            created_at: driverData.created_at,
-            updated_at: driverData.updated_at,
+        // Set the role in state after determining it
+        setRole(userRole);
+
+        // Update localStorage with fresh session data
+        const userData = {
+          id: data.session.user.id,
+          email: data.session.user.email,
+          name: userName,
+          phone: userPhone,
+          role: userRole,
+        };
+
+        // Update localStorage
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+        localStorage.setItem("userId", data.session.user.id);
+        localStorage.setItem("userEmail", data.session.user.email || "");
+        localStorage.setItem("userName", userName);
+        localStorage.setItem("userPhone", userPhone);
+        localStorage.setItem("userRole", userRole);
+
+        // Check if user is admin - prioritize role over email pattern
+        const isAdminByRole = userRole === "Admin";
+        const isAdminEmail =
+          data.session.user.email?.includes("admin") ||
+          data.session.user.email === "divatranssoetta@gmail.com";
+        const isAdmin = isAdminByRole || isAdminEmail;
+
+        localStorage.setItem("isAdmin", isAdmin ? "true" : "false");
+
+        console.log("[AuthContext] Admin status determined:", {
+          isAdminByRole,
+          isAdminEmail,
+          isAdmin,
+          userRole,
+        });
+
+        // Dispatch session restored event
+        window.dispatchEvent(
+          new CustomEvent("sessionRestored", {
+            detail: {
+              id: data.session.user.id,
+              email: data.session.user.email,
+              name: userName,
+              role: userRole,
+              phone: userPhone,
+            },
           }),
         );
-
-        return roleName;
       }
+    } catch (err) {
+      console.error("[AuthContext] Error during session initialization:", err);
 
-      console.log("[AuthProvider] Checking staff table");
-      // Check if user exists in staff table
-      const { data: staffData, error: staffError } = await supabase
-        .from("staff")
-        .select("id, email")
-        .eq("id", userId)
-        .single();
+      // Only use localStorage as absolute fallback when offline
+      if (navigator.onLine === false) {
+        const storedUser = localStorage.getItem("auth_user");
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser);
+            console.log(
+              "[AuthContext] Using localStorage fallback (error + offline)",
+            );
 
-      if (staffError) {
-        console.error("[AuthProvider] Error from staff table:", staffError);
+            setUser({
+              id: userData.id,
+              email: userData.email,
+              user_metadata: {
+                name: userData.name,
+                role: userData.role || "Customer",
+                phone: userData.phone || "",
+              },
+            });
+            setRole(userData.role || "Customer");
+            setSession({
+              user: userData,
+              access_token: "offline_mode",
+            });
+          } catch (parseError) {
+            console.warn(
+              "[AuthContext] Error parsing stored user in error fallback:",
+              parseError,
+            );
+            setSession(null);
+            setUser(null);
+            setRole(null);
+          }
+        }
+      } else {
+        // Clear everything if online but failed
+        setSession(null);
+        setUser(null);
+        setRole(null);
       }
+    } finally {
+      setIsLoading(false);
+      setIsHydrated(true);
+      setIsSessionReady(true);
+      initializationRef.current = false;
+      console.log("[AuthContext] Session initialization completed");
+    }
+  }, []);
 
-      if (!staffError && staffData) {
-        console.log(
-          "[AuthProvider] User found in staff table, assigning Staff role",
+  const forceRefreshSession = useCallback(async () => {
+    setIsCheckingSession(true);
+    try {
+      console.log("[AuthContext] Starting force refresh session...");
+
+      // Create timeout promise with reduced duration
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Session check timeout")), 5000);
+      });
+
+      // First try to get current session without refresh
+      const sessionPromise = supabase.auth.getSession();
+      const { data: currentData, error: currentError } = (await Promise.race([
+        sessionPromise,
+        timeoutPromise,
+      ])) as any;
+
+      if (!currentError && currentData.session?.user) {
+        console.log("[AuthContext] Valid session found without refresh");
+        setSession(currentData.session);
+        setUser(currentData.session.user);
+        setRole(currentData.session.user?.user_metadata?.role || null);
+        setIsSessionReady(true);
+
+        // Update localStorage with fresh session data
+        const userData = {
+          id: currentData.session.user.id,
+          email: currentData.session.user.email,
+          name:
+            currentData.session.user.user_metadata?.name ||
+            currentData.session.user.email?.split("@")[0] ||
+            "User",
+          phone: currentData.session.user.user_metadata?.phone || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+        localStorage.setItem("userId", currentData.session.user.id);
+        localStorage.setItem("userEmail", currentData.session.user.email || "");
+        localStorage.setItem("userName", userData.name);
+        localStorage.setItem("userPhone", userData.phone);
+        localStorage.setItem(
+          "userRole",
+          currentData.session.user?.user_metadata?.role || "Customer",
         );
 
-        // Store email if available
-        if (staffData.email) {
-          localStorage.setItem("userEmail", staffData.email);
-          setUserEmail(staffData.email);
+        // Re-dispatch session restored event after validation
+        window.dispatchEvent(
+          new CustomEvent("sessionRestored", {
+            detail: {
+              id: currentData.session.user.id,
+              email: currentData.session.user.email,
+              name: userData.name,
+              role: currentData.session.user?.user_metadata?.role || "Customer",
+            },
+          }),
+        );
+        return;
+      }
+
+      // If no valid session, try refresh with timeout
+      console.log("[AuthContext] No current session, attempting refresh...");
+      const refreshPromise = supabase.auth.refreshSession();
+      const refreshTimeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Refresh timeout")), 8000);
+      });
+      const { data, error } = (await Promise.race([
+        refreshPromise,
+        refreshTimeoutPromise,
+      ])) as any;
+
+      if (error) {
+        console.warn("[AuthContext] Session refresh failed:", error);
+        // Try to restore from localStorage as fallback
+        const storedUser = localStorage.getItem("auth_user");
+        if (storedUser) {
+          try {
+            const userData = JSON.parse(storedUser);
+            console.log(
+              "[AuthContext] Attempting to restore from localStorage:",
+              userData.email,
+            );
+            // Don't clear session state, keep existing data
+            setIsSessionReady(true);
+            return;
+          } catch (parseError) {
+            console.warn(
+              "[AuthContext] Error parsing stored user:",
+              parseError,
+            );
+          }
         }
 
-        return "Staff";
-      }
+        // Clear invalid session state only if no localStorage fallback
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setIsSessionReady(true);
+      } else if (data.session) {
+        console.log("[AuthContext] Session refreshed successfully");
+        setSession(data.session);
+        setUser(data.session.user);
+        setRole(data.session.user?.user_metadata?.role || null);
+        setIsSessionReady(true);
 
-      console.log("[AuthProvider] Checking customers table");
-      // Check if user exists in customers table
-      const { data: customerData, error: customerError } = await supabase
-        .from("customers")
-        .select("id, email, full_name")
-        .eq("id", userId)
-        .single();
-
-      if (customerError) {
-        console.error(
-          "[AuthProvider] Error from customers table:",
-          customerError,
+        // Update localStorage with refreshed session data
+        const userData = {
+          id: data.session.user.id,
+          email: data.session.user.email,
+          name:
+            data.session.user.user_metadata?.name ||
+            data.session.user.email?.split("@")[0] ||
+            "User",
+          phone: data.session.user.user_metadata?.phone || "",
+        };
+        localStorage.setItem("auth_user", JSON.stringify(userData));
+        localStorage.setItem("userId", data.session.user.id);
+        localStorage.setItem("userEmail", data.session.user.email || "");
+        localStorage.setItem("userName", userData.name);
+        localStorage.setItem("userPhone", userData.phone);
+        localStorage.setItem(
+          "userRole",
+          data.session.user?.user_metadata?.role || "Customer",
         );
-      }
 
-      if (!customerError && customerData) {
-        console.log(
-          "[AuthProvider] User found in customers table, assigning Customer role",
+        // Re-dispatch session restored event after refresh
+        window.dispatchEvent(
+          new CustomEvent("sessionRestored", {
+            detail: {
+              id: data.session.user.id,
+              email: data.session.user.email,
+              name: userData.name,
+              role: data.session.user?.user_metadata?.role || "Customer",
+            },
+          }),
         );
-
-        if (customerData.email) {
-          localStorage.setItem("userEmail", customerData.email);
-          setUserEmail(customerData.email);
-        }
-
-        if (customerData.full_name) {
-          localStorage.setItem("userName", customerData.full_name);
-          setUserName(customerData.full_name);
+      } else {
+        // No session available
+        console.log("[AuthContext] No session available after refresh");
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setIsSessionReady(true);
+      }
+    } catch (error) {
+      console.error("[AuthContext] Failed to refresh session", error);
+      // Try localStorage fallback before clearing everything
+      const storedUser = localStorage.getItem("auth_user");
+      if (storedUser) {
+        try {
+          const userData = JSON.parse(storedUser);
           console.log(
-            "[AuthProvider] Setting user name from customers table:",
-            customerData.full_name,
+            "[AuthContext] Using localStorage fallback after error:",
+            userData.email,
+          );
+          setIsSessionReady(true);
+          return;
+        } catch (parseError) {
+          console.warn(
+            "[AuthContext] Error parsing stored user in fallback:",
+            parseError,
           );
         }
-
-        return "Customer";
       }
 
-      console.log(
-        "[AuthProvider] User has no role assigned in database, using default Customer role",
-      );
-      return "Customer";
-    } catch (error) {
-      console.error("[AuthProvider] Critical error fetching user role:", error);
-      console.error(
-        "[AuthProvider] Error stack:",
-        error instanceof Error ? error.stack : "No stack trace",
-      );
-      return null;
+      // Always set session ready to prevent stuck state
+      setSession(null);
+      setUser(null);
+      setRole(null);
+      setIsSessionReady(true);
+    } finally {
+      // CRITICAL: Always reset checking state
+      setIsCheckingSession(false);
     }
-  };
+  }, []);
 
-  // Function to clear authentication storage
-  const clearAuthStorage = () => {
+  const ensureSessionReady = useCallback(async () => {
+    if (!isSessionReady || isLoading) {
+      console.log("[AuthContext] Ensuring session is ready...");
+      await initializeSession();
+    }
+  }, [isSessionReady, isLoading, initializeSession]);
+
+  const signOut = async () => {
+    sessionStorage.setItem("loggedOut", "true");
+
+    setSession(null);
+    setUser(null);
+    setRole(null);
+    setIsHydrated(true);
+    setIsSessionReady(true);
+
     localStorage.removeItem("auth_user");
     localStorage.removeItem("userId");
     localStorage.removeItem("userRole");
     localStorage.removeItem("userEmail");
-    localStorage.removeItem("isAdmin");
     localStorage.removeItem("userName");
+    localStorage.removeItem("userPhone");
+    localStorage.removeItem("isAdmin");
+
+    await supabase.auth.signOut();
+    window.location.href = "/";
   };
 
-  // Function to sign out the user
-  const signOut = async () => {
-    console.log("[AuthProvider] Starting comprehensive sign out process");
-
-    try {
-      // Sign out from Supabase
-      await supabase.auth.signOut({ scope: "global" });
-    } catch (error) {
-      console.warn("[AuthProvider] Error signing out from Supabase:", error);
-    }
-
-    // Clear all React state
-    setIsAuthenticated(false);
-    setUserRole(null);
-    setUserId(null);
-    setUserEmail(null);
-    setUserName(null);
-    setIsAdmin(false);
-
-    // Clear storages
-    localStorage.clear();
-    sessionStorage.clear();
-
-    // IndexedDB
-    if (typeof indexedDB !== "undefined") {
-      const databases = ["supabase", "supabase-js", "keyval-store"];
-      databases.forEach((dbName) => {
-        try {
-          indexedDB.deleteDatabase(dbName);
-        } catch (e) {
-          console.warn(`[AuthProvider] Error clearing ${dbName}:`, e);
-        }
-      });
-    }
-
-    // Clear caches
-    if ("caches" in window) {
-      try {
-        const cacheNames = await caches.keys();
-        await Promise.all(
-          cacheNames.map((cacheName) => caches.delete(cacheName)),
-        );
-      } catch (cacheError) {
-        console.warn("[AuthProvider] Error clearing caches:", cacheError);
-      }
-    }
-
-    // Clear cookies
-    document.cookie.split(";").forEach((c) => {
-      const eqPos = c.indexOf("=");
-      const name = eqPos > -1 ? c.substr(0, eqPos) : c;
-      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-      document.cookie =
-        name +
-        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
-      document.cookie =
-        name +
-        `=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.${window.location.hostname}`;
-    });
-
-    console.log(
-      "[AuthProvider] Logout cleanup completed. Forcing full reload...",
-    );
-
-    // ✅ Tambahkan tanda logout agar tidak ada looping di useEffect App
-    sessionStorage.setItem("loggedOut", "true");
-
-    // ⛔️ Jangan hanya pakai reload — pakai replace untuk mencegah back navigation
-    window.location.replace(window.location.origin);
-
-    return true;
-  };
-
-  const saveUserDataToLocalStorage = (userData: {
-    id: string;
-    role: string;
-    email: string;
-    name?: string;
-  }) => {
-    localStorage.setItem("auth_user", JSON.stringify(userData));
-    localStorage.setItem("userId", userData.id);
-    if (userData.email) {
-      localStorage.setItem("userEmail", userData.email);
-    }
-
-    // Always prioritize a real name over "Customer" or "User"
-    if (userData.name && userData.name.trim() !== "") {
-      if (userData.name !== "Customer" && userData.name !== "User") {
-        localStorage.setItem("userName", userData.name);
-        console.log(
-          "[AuthProvider] Saved user name to localStorage:",
-          userData.name,
-        );
-      } else if (userData.email) {
-        // If name is "Customer" or "User", use email username instead
-        const emailName = userData.email.split("@")[0];
-        localStorage.setItem("userName", emailName);
-        console.log(
-          "[AuthProvider] Saved email username to localStorage instead of 'Customer'/'User':",
-          emailName,
-        );
-
-        // Update the userData object as well
-        userData.name = emailName;
-        localStorage.setItem("auth_user", JSON.stringify(userData));
-      }
-    } else if (userData.email) {
-      // If no name, use email username
-      const emailName = userData.email.split("@")[0];
-      localStorage.setItem("userName", emailName);
-      console.log(
-        "[AuthProvider] No name provided, saved email username to localStorage:",
-        emailName,
-      );
-
-      // Update the userData object as well
-      userData.name = emailName;
-      localStorage.setItem("auth_user", JSON.stringify(userData));
-    }
-  };
-
-  // Main checkAuth function - runs only once
   useEffect(() => {
-    // Set a timeout to prevent infinite loading
-    const timeout = setTimeout(() => {
-      console.log("[AuthProvider] Timeout reached, forcing loading to false");
-      setIsLoading(false);
-      isCheckingRef.current = false;
-    }, 20000); // 20 second timeout
+    // Initialize session on mount
+    initializeSession();
 
-    setLoadingTimeout(timeout);
+    // Set up auth state change listener with error handling
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log(`[AuthContext] Auth state changed: ${event}`);
 
-    // Check if user is already authenticated
-    const checkAuth = async () => {
-      if (isCheckingRef.current) {
-        console.log("[AuthProvider] Already checking, skipping...");
-        return;
-      }
-      isCheckingRef.current = true;
-      console.log("[AuthProvider] Starting authentication check");
+        // CRITICAL: Block all auth state changes during staff creation
+        const blockAuthChanges = sessionStorage.getItem(
+          "blockAuthStateChanges",
+        );
+        const preventAutoLogin = sessionStorage.getItem("preventAutoLogin");
+        const staffCreationInProgress = sessionStorage.getItem(
+          "staffCreationInProgress",
+        );
+        const adminCreatingUser = sessionStorage.getItem("adminCreatingUser");
+        const currentAdminId = sessionStorage.getItem("currentAdminId");
 
-      try {
-        console.log("[AuthProvider] Getting Supabase session...");
-        // Get Supabase session first with error handling
-        const { data, error } = await supabase.auth.getSession();
-
-        // Manual check for session errors
-        if (error !== null) {
-          console.error("[AuthProvider] Session error detected:", error);
+        if (
+          blockAuthChanges === "true" ||
+          preventAutoLogin === "true" ||
+          staffCreationInProgress === "true" ||
+          adminCreatingUser === "true"
+        ) {
           console.log(
-            "[AuthProvider] Clearing auth storage and signing out due to session error",
+            "[AuthContext] BLOCKING auth state change during staff creation",
+            {
+              blockAuthChanges,
+              preventAutoLogin,
+              staffCreationInProgress,
+              adminCreatingUser,
+            },
           );
-          clearAuthStorage();
-          await supabase.auth.signOut({ scope: "global" });
-          setIsAuthenticated(false);
-          setUserRole(null);
-          setUserId(null);
-          setUserEmail(null);
-          setUserName(null);
-          setIsAdmin(false);
+
+          // If this is a SIGNED_IN event during staff creation, immediately sign out the new user
+          if (event === "SIGNED_IN" && session?.user) {
+            console.log(
+              "[AuthContext] Detected SIGNED_IN event during staff creation - blocking and restoring admin",
+              { newUserId: session.user.id, newUserEmail: session.user.email },
+            );
+
+            // Immediately sign out the new user session to prevent auto-login
+            try {
+              console.log(
+                "[AuthContext] Signing out newly created staff user immediately",
+              );
+              await supabase.auth.signOut({ scope: "global" });
+              console.log(
+                "[AuthContext] Successfully signed out new staff user",
+              );
+            } catch (signOutError) {
+              console.warn(
+                "[AuthContext] Failed to sign out new staff user:",
+                signOutError,
+              );
+            }
+
+            // Restore admin session from preserved data or localStorage
+            const preservedAdminSession = sessionStorage.getItem(
+              "preservedAdminSession",
+            );
+
+            let adminData = null;
+            if (preservedAdminSession) {
+              try {
+                adminData = JSON.parse(preservedAdminSession);
+              } catch (parseError) {
+                console.warn(
+                  "[AuthContext] Error parsing preserved admin session:",
+                  parseError,
+                );
+              }
+            }
+
+            // Fallback to localStorage if no preserved session
+            if (!adminData) {
+              const storedUser = localStorage.getItem("auth_user");
+              if (storedUser) {
+                try {
+                  adminData = JSON.parse(storedUser);
+                  if (adminData.role !== "Admin") {
+                    adminData.role = "Admin"; // Force admin role
+                  }
+                } catch (parseError) {
+                  console.warn(
+                    "[AuthContext] Error parsing stored user:",
+                    parseError,
+                  );
+                }
+              }
+            }
+
+            if (adminData && adminData.id && adminData.email) {
+              console.log(
+                "[AuthContext] Restoring admin session after blocking staff auto-login",
+                { adminId: adminData.id, adminEmail: adminData.email },
+              );
+
+              // Restore admin session state
+              setUser({
+                id: adminData.id,
+                email: adminData.email,
+                user_metadata: {
+                  name: adminData.name || "Admin",
+                  role: "Admin",
+                  phone: adminData.phone || "",
+                },
+              });
+              setRole("Admin");
+              setSession({
+                user: {
+                  id: adminData.id,
+                  email: adminData.email,
+                  user_metadata: {
+                    name: adminData.name || "Admin",
+                    role: "Admin",
+                    phone: adminData.phone || "",
+                  },
+                },
+                access_token: "admin_restored_after_staff_creation",
+              });
+
+              // Update localStorage to ensure consistency
+              localStorage.setItem("auth_user", JSON.stringify(adminData));
+              localStorage.setItem("userId", adminData.id);
+              localStorage.setItem("userEmail", adminData.email);
+              localStorage.setItem("userName", adminData.name || "Admin");
+              localStorage.setItem("userRole", "Admin");
+              localStorage.setItem("isAdmin", "true");
+
+              console.log(
+                "[AuthContext] Admin session restored successfully after blocking staff auto-login",
+              );
+            } else {
+              console.error(
+                "[AuthContext] No admin data found to restore session!",
+              );
+            }
+          }
+
           return;
         }
 
-        console.log(
-          "[AuthProvider] Session data:",
-          data?.session ? "Session exists" : "No session",
-        );
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          if (session?.user) {
+            // Check if this is an admin creating a staff account
+            const currentUserId = user?.id;
+            const newUserId = session.user.id;
+            const currentUserRole = role;
 
-        // Check localStorage for shared authentication
-        console.log("[AuthProvider] Checking localStorage for auth_user...");
-        const authUserStr = localStorage.getItem("auth_user");
-        let authUser = null;
-        let needsFallback = false;
+            // Check session storage flags for admin creating user
+            const adminCreatingUser =
+              sessionStorage.getItem("adminCreatingUser");
+            const currentAdminId = sessionStorage.getItem("currentAdminId");
+            const currentAdminEmail =
+              sessionStorage.getItem("currentAdminEmail");
 
-        if (authUserStr) {
-          console.log(
-            "[AuthProvider] Found auth_user in localStorage, parsing...",
-          );
-          try {
-            authUser = JSON.parse(authUserStr);
-            console.log("[AuthProvider] Parsed auth_user:", {
-              id: authUser?.id,
-              role: authUser?.role,
-            });
+            console.log(
+              `[AuthContext] Session change detected - Current: ${currentUserId} (${currentUserRole}), New: ${newUserId}`,
+            );
+            console.log(
+              `[AuthContext] Admin flags - Creating: ${adminCreatingUser}, Admin ID: ${currentAdminId}`,
+            );
 
-            // Check if localStorage data matches session
-            if (data?.session && authUser?.id !== data.session.user.id) {
+            // CRITICAL: Enhanced admin session protection
+            const currentUserIsAdmin =
+              currentUserRole === "Admin" ||
+              user?.email?.includes("admin") ||
+              user?.email === "divatranssoetta@gmail.com" ||
+              localStorage.getItem("isAdmin") === "true";
+
+            // CRITICAL: Always prioritize admin session restoration during user creation
+            if (adminCreatingUser === "true" && currentAdminId) {
               console.log(
-                "[AuthProvider] 🔄 localStorage mismatch with session, using fallback",
+                `[AuthContext] Admin creating user - BLOCKING session switch completely`,
               );
-              needsFallback = true;
-            } else if (authUser && authUser.id && !data?.session) {
+
+              // IMMEDIATELY sign out any new session to prevent auto-login
+              try {
+                console.log(
+                  "[AuthContext] Immediately signing out new user session",
+                );
+                // Use global scope to ensure complete sign out
+                await supabase.auth.signOut({ scope: "global" });
+                console.log(
+                  "[AuthContext] Successfully signed out newly created user",
+                );
+              } catch (signOutError) {
+                console.warn(
+                  "[AuthContext] Failed to sign out new user:",
+                  signOutError,
+                );
+              }
+
+              // Force restore admin session immediately from localStorage
+              const storedAdminUser = localStorage.getItem("auth_user");
+              if (storedAdminUser) {
+                try {
+                  const adminUserData = JSON.parse(storedAdminUser);
+                  if (
+                    adminUserData.id === currentAdminId &&
+                    adminUserData.role === "Admin"
+                  ) {
+                    console.log(
+                      "[AuthContext] FORCE restoring admin session immediately",
+                    );
+
+                    // Restore admin session state immediately
+                    setUser({
+                      id: adminUserData.id,
+                      email: adminUserData.email,
+                      user_metadata: {
+                        name: adminUserData.name,
+                        role: "Admin",
+                        phone: adminUserData.phone || "",
+                      },
+                    });
+                    setRole("Admin");
+                    setSession({
+                      user: {
+                        id: adminUserData.id,
+                        email: adminUserData.email,
+                        user_metadata: {
+                          name: adminUserData.name,
+                          role: "Admin",
+                          phone: adminUserData.phone || "",
+                        },
+                      },
+                      access_token: "admin_restored_immediate",
+                    });
+
+                    // Update localStorage to ensure admin role is preserved
+                    localStorage.setItem("userRole", "Admin");
+                    localStorage.setItem("isAdmin", "true");
+
+                    console.log(
+                      "[AuthContext] Admin session restored immediately - BLOCKING new user session",
+                    );
+                  }
+                } catch (parseError) {
+                  console.warn(
+                    "[AuthContext] Failed to parse admin user:",
+                    parseError,
+                  );
+                }
+              }
+
+              // CRITICAL: Completely block this session change and prevent any state updates
               console.log(
-                "[AuthProvider] 🔄 localStorage exists but no session, clearing storage",
-              );
-              clearAuthStorage();
-              setIsAuthenticated(false);
-              setUserRole(null);
-              setUserId(null);
-              setUserEmail(null);
-              setUserName(null);
-              setIsAdmin(false);
-              console.log(
-                "[AuthProvider] Cleared storage and state, returning early",
+                "[AuthContext] BLOCKING all session state changes during staff creation",
               );
               return;
             }
-          } catch (e) {
-            console.error(
-              "[AuthProvider] ❌ Error parsing auth_user from localStorage:",
-              e,
+
+            // Enhanced protection for admin sessions (even without creation flags)
+            if (
+              currentUserId &&
+              currentUserId !== newUserId &&
+              currentUserIsAdmin
+            ) {
+              console.log(
+                `[AuthContext] Protecting admin session from being overwritten`,
+                { currentUserId, newUserId, currentUserRole },
+              );
+
+              // Check if stored user is admin and matches current user
+              const storedUser = localStorage.getItem("auth_user");
+              if (storedUser) {
+                try {
+                  const userData = JSON.parse(storedUser);
+                  if (
+                    userData.role === "Admin" &&
+                    userData.id === currentUserId
+                  ) {
+                    console.log(
+                      "[AuthContext] Maintaining admin session - blocking session change",
+                    );
+
+                    // Immediately sign out the new session to prevent it from taking over
+                    try {
+                      await supabase.auth.signOut();
+                      console.log(
+                        "[AuthContext] Signed out conflicting session",
+                      );
+                    } catch (signOutError) {
+                      console.warn(
+                        "[AuthContext] Failed to sign out conflicting session:",
+                        signOutError,
+                      );
+                    }
+
+                    // Force maintain current admin session state
+                    setUser({
+                      id: userData.id,
+                      email: userData.email,
+                      user_metadata: {
+                        name: userData.name,
+                        role: "Admin",
+                        phone: userData.phone || "",
+                      },
+                    });
+                    setRole("Admin");
+                    setSession({
+                      user: {
+                        id: userData.id,
+                        email: userData.email,
+                        user_metadata: {
+                          name: userData.name,
+                          role: "Admin",
+                          phone: userData.phone || "",
+                        },
+                      },
+                      access_token: "admin_protected_session",
+                    });
+
+                    return; // Don't update session
+                  }
+                } catch (parseError) {
+                  console.warn(
+                    "[AuthContext] Error parsing stored user:",
+                    parseError,
+                  );
+                }
+              }
+            }
+
+            setSession(session);
+            setUser(session.user);
+            setRole(session.user?.user_metadata?.role || "Customer");
+            setIsSessionReady(true);
+
+            // Update localStorage with fresh data
+            const userData = {
+              id: session.user.id,
+              email: session.user.email,
+              name:
+                session.user.user_metadata?.name ||
+                session.user.email?.split("@")[0] ||
+                "User",
+              phone: session.user.user_metadata?.phone || "",
+              role: session.user.user_metadata?.role || "Customer",
+            };
+
+            localStorage.setItem("auth_user", JSON.stringify(userData));
+            localStorage.setItem("userId", session.user.id);
+            localStorage.setItem("userEmail", session.user.email || "");
+            localStorage.setItem("userName", userData.name);
+            localStorage.setItem("userPhone", userData.phone);
+            localStorage.setItem("userRole", userData.role);
+
+            // Dispatch session restored event
+            window.dispatchEvent(
+              new CustomEvent("sessionRestored", {
+                detail: userData,
+              }),
             );
-            console.log(
-              "[AuthProvider] 🔄 JSON parse error, clearing storage and using fallback",
-            );
-            clearAuthStorage();
-            needsFallback = true;
           }
-        } else {
-          console.log("[AuthProvider] No auth_user found in localStorage");
         }
 
-        // Use fallback if needed or if no localStorage data
-        if (needsFallback || !authUser) {
-          console.log("[AuthProvider] Using fallback authentication flow");
-          if (data?.session) {
-            console.log(
-              "[AuthProvider] 🔄 Session exists, processing fallback login",
-            );
-
-            const sessionUser = data.session.user;
-            console.log("[AuthProvider] Session user ID:", sessionUser.id);
-            setIsAuthenticated(true);
-            setUserId(sessionUser.id);
-            setUserEmail(sessionUser.email || null);
-
-            // Check if user email indicates admin status
-            const email = sessionUser.email || "";
-            const isAdminEmail =
-              email.includes("admin") || email === "divatranssoetta@gmail.com";
-
-            let finalRole = "Customer";
-            if (isAdminEmail) {
-              console.log(
-                "[AuthProvider] Admin email detected in session:",
-                email,
-              );
-              finalRole = "Admin";
-              setIsAdmin(true);
-              localStorage.setItem("isAdmin", "true");
-            } else {
-              console.log("[AuthProvider] Fetching role from database...");
-              // Fetch role from database
-              const fetchedRole = await fetchUserRole(sessionUser.id);
-              if (fetchedRole) {
-                finalRole = fetchedRole;
-                console.log("[AuthProvider] Fetched role:", finalRole);
-              } else {
-                console.log(
-                  "[AuthProvider] No role fetched, using default Customer",
-                );
-              }
-              const isAdminRole = finalRole === "Admin";
-              setIsAdmin(isAdminRole);
-              localStorage.setItem("isAdmin", isAdminRole ? "true" : "false");
-            }
-
-            setUserRole(finalRole);
-            localStorage.setItem("userRole", finalRole);
-
-            console.log("[AuthProvider] Getting user name...");
-            // Get user name
-            let userName = "";
-
-            // First try to get name from users table
-            const { data: userTableData, error: userTableError } =
-              await supabase
-                .from("users")
-                .select("full_name")
-                .eq("id", sessionUser.id)
-                .single();
-
-            if (userTableError) {
-              console.log(
-                "[AuthProvider] Error getting name from users table:",
-                userTableError.message,
-              );
-            }
-
-            if (!userTableError && userTableData?.full_name) {
-              userName = userTableData.full_name;
-              console.log(
-                "[AuthProvider] Found name in users table:",
-                userName,
-              );
-            } else if (finalRole === "Customer") {
-              console.log("[AuthProvider] Trying customers table for name...");
-              // If user is a customer, try customers table
-              const { data: customerData, error: customerError } =
-                await supabase
-                  .from("customers")
-                  .select("full_name, name")
-                  .eq("id", sessionUser.id)
-                  .single();
-
-              if (customerError) {
-                console.log(
-                  "[AuthProvider] Error getting name from customers table:",
-                  customerError.message,
-                );
-              }
-
-              if (
-                !customerError &&
-                (customerData?.full_name || customerData?.name)
-              ) {
-                userName = customerData.full_name || customerData.name;
-                console.log(
-                  "[AuthProvider] Found name in customers table:",
-                  userName,
-                );
-              }
-            }
-
-            // Fallback to metadata
-            if (!userName) {
-              userName =
-                sessionUser.user_metadata?.full_name ||
-                sessionUser.user_metadata?.name ||
-                "";
-              console.log(
-                "[AuthProvider] Using fallback name from metadata:",
-                userName,
-              );
-            }
-
-            // Don't use "Customer" as the name if we have no actual name
-            if (!userName || userName === "Customer" || userName === "User") {
-              userName = sessionUser.email?.split("@")[0] || "User";
-              console.log(
-                "[AuthProvider] Using email username instead of 'Customer'/'User':",
-                userName,
-              );
-            }
-
-            setUserName(userName);
-            localStorage.setItem("userName", userName);
-
-            // Create and save userData
-            const userData = {
-              id: sessionUser.id,
-              role: finalRole,
-              email: sessionUser.email || "",
-              name: userName,
-            };
-            saveUserDataToLocalStorage(userData);
-
-            console.log("[AuthProvider] ✅ Fallback auth completed:", userData);
-          } else {
-            // No session and no valid localStorage
-            console.log(
-              "[AuthProvider] ❌ No session found, user not authenticated",
-            );
-            setIsAuthenticated(false);
-            setUserRole(null);
-            setUserId(null);
-            setUserEmail(null);
-            setUserName(null);
-            setIsAdmin(false);
-          }
-        } else if (authUser && authUser.id && data?.session) {
-          console.log(
-            "[AuthProvider] Using localStorage data (matches session)",
+        if (event === "SIGNED_OUT") {
+          // Check if this is a sign out during admin user creation
+          const adminCreatingUser = sessionStorage.getItem("adminCreatingUser");
+          const currentAdminId = sessionStorage.getItem("currentAdminId");
+          const blockAuthChanges = sessionStorage.getItem(
+            "blockAuthStateChanges",
           );
-          // Use localStorage data if valid and matches session
-          setIsAuthenticated(true);
-          setUserId(authUser.id);
-          setUserEmail(authUser.email || null);
+          const preventAutoLogin = sessionStorage.getItem("preventAutoLogin");
+          const staffCreationInProgress = sessionStorage.getItem(
+            "staffCreationInProgress",
+          );
 
-          // Resolve Name
-          const storedUserName = localStorage.getItem("userName");
-          let resolvedUserName = "User";
           if (
-            storedUserName &&
-            !["customer", "user"].includes(storedUserName.toLowerCase())
+            (adminCreatingUser === "true" && currentAdminId) ||
+            blockAuthChanges === "true" ||
+            preventAutoLogin === "true" ||
+            staffCreationInProgress === "true"
           ) {
-            resolvedUserName = storedUserName;
-          } else if (
-            authUser.name &&
-            !["customer", "user"].includes(authUser.name.toLowerCase())
-          ) {
-            resolvedUserName = authUser.name;
-          } else if (authUser.email) {
-            resolvedUserName = authUser.email.split("@")[0];
+            console.log(
+              "[AuthContext] Sign out during admin user creation - maintaining admin session",
+              {
+                adminCreatingUser,
+                blockAuthChanges,
+                preventAutoLogin,
+                staffCreationInProgress,
+              },
+            );
+
+            // Restore admin session from preserved data if available
+            const preservedAdminSession = sessionStorage.getItem(
+              "preservedAdminSession",
+            );
+            if (preservedAdminSession) {
+              try {
+                const adminData = JSON.parse(preservedAdminSession);
+                console.log(
+                  "[AuthContext] Restoring admin session after sign out during staff creation",
+                );
+
+                setUser({
+                  id: adminData.id,
+                  email: adminData.email,
+                  user_metadata: {
+                    name: adminData.name,
+                    role: "Admin",
+                    phone: "",
+                  },
+                });
+                setRole("Admin");
+                setSession({
+                  user: {
+                    id: adminData.id,
+                    email: adminData.email,
+                    user_metadata: {
+                      name: adminData.name,
+                      role: "Admin",
+                      phone: "",
+                    },
+                  },
+                  access_token: "admin_restored_after_signout",
+                });
+              } catch (parseError) {
+                console.warn(
+                  "[AuthContext] Error parsing preserved admin session:",
+                  parseError,
+                );
+              }
+            }
+
+            // Don't clear admin session during user creation
+            return;
           }
 
-          // Resolve Role
-          const storedRole = localStorage.getItem("userRole");
-          let resolvedUserRole = authUser.role || storedRole || "Customer";
+          setSession(null);
+          setUser(null);
+          setRole(null);
+          setIsSessionReady(false);
 
-          // Admin override
-          const email = authUser.email || "";
-          if (
-            email.includes("admin") ||
-            email === "divatranssoetta@gmail.com"
-          ) {
-            resolvedUserRole = "Admin";
-            setIsAdmin(true);
-            localStorage.setItem("isAdmin", "true");
-          } else {
-            const isAdminRole = resolvedUserRole === "Admin";
-            setIsAdmin(isAdminRole);
-            localStorage.setItem("isAdmin", isAdminRole ? "true" : "false");
+          // Clear localStorage
+          localStorage.removeItem("auth_user");
+          localStorage.removeItem("userId");
+          localStorage.removeItem("userEmail");
+          localStorage.removeItem("userName");
+          localStorage.removeItem("userPhone");
+          localStorage.removeItem("userRole");
+          localStorage.removeItem("isAdmin");
+        }
+      },
+    );
+
+    // Enhanced visibility change listener with admin session protection
+    const handleVisibilityChange = async () => {
+      if (
+        document.visibilityState === "visible" &&
+        !initializationRef.current
+      ) {
+        console.log(
+          "[AuthContext] Tab became visible, checking session state...",
+        );
+
+        // Check if admin is creating user to prevent session switching
+        const adminCreatingUser = sessionStorage.getItem("adminCreatingUser");
+        const currentAdminId = sessionStorage.getItem("currentAdminId");
+        const currentAdminEmail = sessionStorage.getItem("currentAdminEmail");
+
+        // Enhanced admin session protection
+        const currentUserIsAdmin =
+          role === "Admin" ||
+          user?.email?.includes("admin") ||
+          user?.email === "divatranssoetta@gmail.com" ||
+          localStorage.getItem("isAdmin") === "true";
+
+        if (adminCreatingUser === "true" && currentAdminId) {
+          console.log(
+            "[AuthContext] Admin creating user detected, maintaining admin session",
+          );
+
+          // Restore admin session from localStorage
+          const storedAdminUser = localStorage.getItem("auth_user");
+          if (storedAdminUser) {
+            try {
+              const adminUserData = JSON.parse(storedAdminUser);
+              if (
+                adminUserData.id === currentAdminId &&
+                adminUserData.role === "Admin"
+              ) {
+                console.log(
+                  "[AuthContext] Restoring admin session on tab switch",
+                );
+
+                setUser({
+                  id: adminUserData.id,
+                  email: adminUserData.email,
+                  user_metadata: {
+                    name: adminUserData.name,
+                    role: adminUserData.role,
+                    phone: adminUserData.phone || "",
+                  },
+                });
+                setRole(adminUserData.role);
+                setSession({
+                  user: {
+                    id: adminUserData.id,
+                    email: adminUserData.email,
+                    user_metadata: {
+                      name: adminUserData.name,
+                      role: adminUserData.role,
+                      phone: adminUserData.phone || "",
+                    },
+                  },
+                  access_token: "admin_restored_tab_switch",
+                });
+
+                console.log(
+                  "[AuthContext] Admin session restored successfully on tab switch",
+                );
+                return;
+              }
+            } catch (parseError) {
+              console.warn(
+                "[AuthContext] Failed to parse stored admin user on tab switch:",
+                parseError,
+              );
+            }
+          }
+        }
+
+        // Additional protection for admin users even without creation flags
+        if (currentUserIsAdmin) {
+          console.log(
+            "[AuthContext] Current user is admin, protecting session on tab switch",
+            { role, userEmail: user?.email, userId: user?.id },
+          );
+
+          // Check if Supabase session matches current admin user
+          try {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+
+            if (session?.user?.id && session.user.id !== user?.id) {
+              console.log(
+                "[AuthContext] Admin session mismatch on tab switch, maintaining admin session",
+                { currentUserId: user?.id, sessionUserId: session.user.id },
+              );
+
+              // Force maintain admin session from localStorage
+              const storedUser = localStorage.getItem("auth_user");
+              if (storedUser) {
+                try {
+                  const adminUserData = JSON.parse(storedUser);
+                  if (
+                    adminUserData.role === "Admin" &&
+                    adminUserData.id === user?.id
+                  ) {
+                    console.log(
+                      "[AuthContext] Maintaining admin session from localStorage on tab switch",
+                    );
+                    // Don't reinitialize session, keep current admin state
+                    return;
+                  }
+                } catch (parseError) {
+                  console.warn(
+                    "[AuthContext] Error parsing stored admin user:",
+                    parseError,
+                  );
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(
+              "[AuthContext] Error checking session on admin tab switch:",
+              error,
+            );
           }
 
-          // Set all state
-          setUserName(resolvedUserName);
-          setUserRole(resolvedUserRole);
+          // For admin users, don't proceed with session reinitialization
+          return;
+        }
 
-          // Save back to storage
-          localStorage.setItem("userName", resolvedUserName);
-          localStorage.setItem("userRole", resolvedUserRole);
+        // Add small delay to prevent rapid fire (for non-admin users only)
+        setTimeout(async () => {
+          if (!initializationRef.current && isHydrated && !currentUserIsAdmin) {
+            try {
+              const {
+                data: { session },
+              } = await supabase.auth.getSession();
 
-          // Save combined
-          const userData = {
-            id: authUser.id,
-            role: resolvedUserRole,
-            email: authUser.email || "",
-            name: resolvedUserName,
-          };
-          localStorage.setItem("auth_user", JSON.stringify(userData));
+              // Only update if session state has changed and not during admin user creation
+              if (
+                session?.user?.id !== user?.id &&
+                adminCreatingUser !== "true"
+              ) {
+                console.log(
+                  "[AuthContext] Non-admin session state changed, reinitializing...",
+                );
+                await initializeSession();
+              } else if (adminCreatingUser === "true") {
+                console.log(
+                  "[AuthContext] BLOCKING session reinitialization during admin user creation",
+                );
+                // Force maintain admin session during user creation
+                const storedAdminUser = localStorage.getItem("auth_user");
+                if (storedAdminUser) {
+                  try {
+                    const adminUserData = JSON.parse(storedAdminUser);
+                    if (adminUserData.role === "Admin") {
+                      console.log(
+                        "[AuthContext] Maintaining admin session during user creation",
+                      );
+                      setUser({
+                        id: adminUserData.id,
+                        email: adminUserData.email,
+                        user_metadata: {
+                          name: adminUserData.name,
+                          role: "Admin",
+                          phone: adminUserData.phone || "",
+                        },
+                      });
+                      setRole("Admin");
+                      setSession({
+                        user: {
+                          id: adminUserData.id,
+                          email: adminUserData.email,
+                          user_metadata: {
+                            name: adminUserData.name,
+                            role: "Admin",
+                            phone: adminUserData.phone || "",
+                          },
+                        },
+                        access_token: "admin_maintained_during_creation",
+                      });
+                    }
+                  } catch (parseError) {
+                    console.warn(
+                      "Error parsing admin user during creation:",
+                      parseError,
+                    );
+                  }
+                }
+              }
+            } catch (error) {
+              console.warn(
+                "[AuthContext] Error checking session on visibility change:",
+                error,
+              );
+            }
+          }
+        }, 500);
+      }
+    };
 
-          console.log("[AuthProvider] ✅ Loaded from localStorage:", userData);
-        } else {
-          // No valid session or localStorage data
-          console.log("[AuthProvider] ❌ No valid authentication found");
-          setIsAuthenticated(false);
-          setUserRole(null);
-          setUserId(null);
-          setUserEmail(null);
-          setUserName(null);
-          setIsAdmin(false);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      try {
+        // Properly cleanup auth listener to prevent socket errors
+        if (listener?.subscription) {
+          listener.subscription.unsubscribe();
         }
       } catch (error) {
-        console.error("[AuthProvider] ❌ Critical error in checkAuth:", error);
-        console.error(
-          "[AuthProvider] Error stack:",
-          error instanceof Error ? error.stack : "No stack trace",
-        );
-        // Clear state on error
-        setIsAuthenticated(false);
-        setUserRole(null);
-        setUserId(null);
-        setUserEmail(null);
-        setUserName(null);
-        setIsAdmin(false);
-        clearAuthStorage();
-      } finally {
-        // Clear the timeout since we completed successfully
-        if (loadingTimeout) {
-          clearTimeout(loadingTimeout);
-          setLoadingTimeout(null);
-        }
-        isCheckingRef.current = false;
-        setIsLoading(false);
-        console.log(
-          "[AuthProvider] ✅ checkAuth completed, isLoading set to false",
-        );
+        console.warn("[AuthContext] Error unsubscribing auth listener:", error);
+      }
+
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+      if (sessionTimeoutRef.current) {
+        clearTimeout(sessionTimeoutRef.current);
       }
     };
+  }, [initializeSession, isHydrated, user?.id]);
 
-    checkAuth();
-
-    // Listen for auth changes - only set up once
-    let authListener: { subscription: { unsubscribe: () => void } | null } = {
-      subscription: null,
-    };
-
-    try {
-      const { data } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
-          console.log("[AuthProvider] Auth state changed:", event);
-
-          if (event === "SIGNED_IN" && session) {
-            // Refresh session to ensure we have the latest token
-            try {
-              await supabase.auth.refreshSession();
-              console.log("[AuthProvider] Session refreshed successfully");
-            } catch (refreshError) {
-              console.warn(
-                "[AuthProvider] Error refreshing session:",
-                refreshError,
-              );
-            }
-
-            // Call checkAuth instead of duplicating the logic
-            checkAuth();
-          } else if (event === "SIGNED_OUT") {
-            // SIGNED_OUT: clear everything
-            setIsAuthenticated(false);
-            setUserRole(null);
-            setUserId(null);
-            setUserEmail(null);
-            setIsAdmin(false);
-            setIsLoading(false);
-
-            localStorage.removeItem("auth_user");
-            localStorage.removeItem("userName");
-            localStorage.removeItem("userRole");
-            localStorage.removeItem("userEmail");
-            localStorage.removeItem("isAdmin");
-            localStorage.removeItem("userId");
-          }
-        },
+  // Handle force session restore events from other components
+  useEffect(() => {
+    const handleForceSessionRestore = async (event: CustomEvent) => {
+      console.log(
+        "[AuthContext] Force session restore event received:",
+        event.detail,
       );
+      const userData = event.detail;
 
-      authListener = data || { subscription: null };
-    } catch (error) {
-      console.error("[AuthProvider] Error setting up auth listener:", error);
-    }
-
-    // Cleanup on unmount
-    return () => {
-      isMountedRef.current = false;
-      if (authListener?.subscription) {
-        authListener.subscription.unsubscribe();
-      }
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
+      if (
+        userData &&
+        userData.id &&
+        userData.email &&
+        !initializationRef.current
+      ) {
+        console.log("[AuthContext] Processing force session restore...");
+        await initializeSession();
       }
     };
-  }, []); // Empty dependency array - runs only once
+
+    window.addEventListener(
+      "forceSessionRestore",
+      handleForceSessionRestore as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "forceSessionRestore",
+        handleForceSessionRestore as EventListener,
+      );
+    };
+  }, [initializeSession]);
 
   const value: AuthContextType = {
-    isAuthenticated,
-    userRole,
-    userId,
-    userEmail,
-    userName,
-    isAdmin,
+    isAuthenticated: !!session && !!user,
+    userRole: role,
+    userId: user?.id ?? null,
+    userEmail: user?.email ?? null,
+    userName: user?.user_metadata?.name ?? null,
+    userPhone: user?.user_metadata?.phone ?? null,
+    isAdmin:
+      role === "Admin" ||
+      user?.email?.includes("admin") ||
+      user?.email === "divatranssoetta@gmail.com",
     isLoading,
+    isHydrated,
+    isCheckingSession,
+    isSessionReady,
     signOut,
+    forceRefreshSession,
+    ensureSessionReady,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => {
-  console.log("[useAuth] Consuming from context");
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+  if (!context) {
+    // Provide a fallback context instead of throwing an error
+    console.warn(
+      "useAuth called outside of AuthProvider, providing fallback context",
+    );
+    return {
+      isAuthenticated: false,
+      userRole: null,
+      userId: null,
+      userEmail: null,
+      userName: null,
+      userPhone: null,
+      isAdmin: false,
+      isLoading: false,
+      isHydrated: true,
+      isCheckingSession: false,
+      isSessionReady: true,
+      signOut: async () => {
+        console.warn("signOut called from fallback context");
+      },
+      forceRefreshSession: async () => {
+        console.warn("forceRefreshSession called from fallback context");
+      },
+      ensureSessionReady: async () => {
+        console.warn("ensureSessionReady called from fallback context");
+      },
+    };
   }
   return context;
 };

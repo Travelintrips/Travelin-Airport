@@ -78,6 +78,7 @@ interface CarData {
   is_active: boolean;
   vehicle_type_id?: number | null;
   vehicle_type_name?: string;
+  type?: string;
 }
 
 const CarsManagement = () => {
@@ -126,7 +127,6 @@ const CarsManagement = () => {
     tax_expiry: "",
     is_active: true,
     vehicle_type_id: "",
-    type: "",
   });
 
   const [uploadLoading, setUploadLoading] = useState({
@@ -273,7 +273,6 @@ const CarsManagement = () => {
         stnk_expiry: formData.stnk_expiry,
         tax_expiry: formData.tax_expiry,
         available: formData.is_active,
-        type: formData.category,
         vehicle_type_id: formData.vehicle_type_id
           ? parseInt(formData.vehicle_type_id)
           : null,
@@ -416,7 +415,6 @@ const CarsManagement = () => {
       fuel_type: car.fuel_type || "",
       transmission: car.transmission || "",
       category: car.category || "",
-      type: matchedType?.name || car.type || "",
       seats: car.seats?.toString() || "",
       image_url: car.image_url || "",
       stnk_url: car.stnk_url || "",

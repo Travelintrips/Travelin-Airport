@@ -1,10 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import AuthRequiredModal from "@/components/auth/AuthRequiredModal";
+
+const AuthRequiredModal = React.lazy(
+  () => import("@/components/auth/AuthRequiredModal"),
+);
 
 const HomePage = () => {
-  const { isAuthenticated, userId } = useAuth();
+  const { isAuthenticated, userId, isLoading } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Check for forced logout
+  useEffect(() => {
+    const forceLogout = sessionStorage.getItem("forceLogout");
+    if (forceLogout) {
+      // Clear the flag to prevent loops
+      sessionStorage.removeItem("forceLogout");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated || !userId) {
@@ -21,10 +33,12 @@ const HomePage = () => {
             <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
           </div>
         </div>
-        <AuthRequiredModal
-          isOpen={showAuthModal}
-          onClose={() => setShowAuthModal(false)}
-        />
+        <Suspense fallback={<div>Loading...</div>}>
+          <AuthRequiredModal
+            isOpen={showAuthModal}
+            onClose={() => setShowAuthModal(false)}
+          />
+        </Suspense>
       </div>
     );
   }

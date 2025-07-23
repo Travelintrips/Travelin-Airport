@@ -8,7 +8,7 @@ import RegistrationForm, { RegisterFormValues } from "./RegistrationForm";
 import { uploadDocumentImages } from "@/lib/edgeFunctions";
 import { useNavigate, useLocation } from "react-router-dom";
 import AuthModal from "./AuthModal";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/contexts/AuthContext";
 
 import {
   Card,
@@ -97,29 +97,43 @@ const AuthForm: React.FC<AuthFormProps> = ({
       !!authData.session,
     );
 
-    const userMeta = authData.user?.user_metadata || {};
+    const user = authData.user;
+    const userMeta = user?.user_metadata || {};
     console.log("📋 User metadata:", userMeta);
 
-    // Try to get name from users table first
-    console.log("🔍 Fetching user name from users table...");
+    // Try to get user data including role from users table first
+    console.log("🔍 Fetching user data from users table...");
     const { data: userData, error: userError } = await supabase
       .from("users")
-      .select("full_name")
-      .eq("id", authData.user.id)
+      .select("full_name, role, role_name")
+      .eq("id", user.id)
       .single();
 
     let userFullName = "";
+    let userRole = userMeta.role || "Customer";
 
-    if (!userError && userData?.full_name) {
-      userFullName = userData.full_name.trim();
-      console.log("✅ Found name in users table during login:", userFullName);
+    if (!userError && userData) {
+      if (userData.full_name) {
+        userFullName = userData.full_name.trim();
+        console.log("✅ Found name in users table during login:", userFullName);
+      }
+      if (userData.role) {
+        userRole = userData.role;
+        console.log("✅ Found role in users table during login:", userRole);
+      } else if (userData.role_name) {
+        userRole = userData.role_name;
+        console.log(
+          "✅ Found role_name in users table during login:",
+          userRole,
+        );
+      }
     } else {
       console.log("🔍 Checking customers table for name...");
       // Check if user is a customer, try customers table
       const { data: customerData, error: customerError } = await supabase
         .from("customers")
         .select("full_name, name")
-        .eq("id", authData.user.id)
+        .eq("id", user.id)
         .single();
 
       if (!customerError && (customerData?.full_name || customerData?.name)) {
@@ -134,37 +148,75 @@ const AuthForm: React.FC<AuthFormProps> = ({
         userFullName =
           (userMeta.full_name && userMeta.full_name.trim()) ||
           (userMeta.name && userMeta.name.trim()) ||
-          authData.user.email?.split("@")[0] ||
+          user.email?.split("@")[0] ||
           "Guest";
         console.log("📝 Using fallback name during login:", userFullName);
       }
     }
 
+    // If still no role found, try staff table
+    if (!userRole || userRole === "Customer") {
+      console.log("🔍 Checking staff table for role...");
+      try {
+        const { data: staffData, error: staffError } = await supabase
+          .from("staff")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        if (!staffError && staffData?.role) {
+          userRole = staffData.role;
+          console.log("✅ Found role in staff table during login:", userRole);
+        }
+      } catch (staffError) {
+        console.warn("⚠️ Error checking staff table:", staffError);
+      }
+    }
+
     // Make sure we never use "Customer" as the name
     if (!userFullName || userFullName === "Customer") {
-      userFullName = authData.user.email?.split("@")[0] || "User";
+      userFullName = user.email?.split("@")[0] || "User";
       console.log(
         "🔄 Replaced empty/Customer name with email username:",
         userFullName,
       );
     }
 
+    // Force save metadata to localStorage after successful login
+    console.log("💾 Force saving fresh metadata to localStorage:");
+    localStorage.setItem("userName", userFullName);
+    localStorage.setItem("userRole", userRole);
+    localStorage.setItem("userId", user.id);
+    if (user.email) {
+      localStorage.setItem("userEmail", user.email);
+    }
+
     const userDataObj = {
-      id: authData.user.id,
-      role: userMeta.role || "", // Kalau ada userMeta.role
-      email: authData.user.email || "",
+      id: user.id,
+      role: userRole,
+      email: user.email || "",
       name: userFullName,
     };
 
-    console.log("💾 Saving user data to localStorage:", userDataObj);
-    localStorage.setItem("auth_user", JSON.stringify(userDataObj));
-    localStorage.setItem("userName", userFullName);
-    localStorage.setItem("userId", authData.user.id);
-    if (authData.user.email) {
-      localStorage.setItem("userEmail", authData.user.email);
+    console.log("📋 Final user data object:", userDataObj);
+
+    // Update user metadata to ensure consistency between UI and stored data
+    const { error: updateMetadataError } = await supabase.auth.updateUser({
+      data: {
+        ...user.user_metadata,
+        name: userFullName,
+        full_name: userFullName,
+      },
+    });
+
+    if (updateMetadataError) {
+      console.warn("⚠️ Failed to update user metadata:", updateMetadataError);
+    } else {
+      console.log("✅ Updated user metadata with name:", userFullName);
     }
 
-    console.log("✅ User logged in successfully:", userDataObj);
+    localStorage.setItem("auth_user", JSON.stringify(userDataObj));
+    console.log("✅ User logged in successfully with fresh data:", userDataObj);
 
     if (onAuthStateChange) {
       console.log("🔄 Calling onAuthStateChange(true)...");
@@ -197,6 +249,10 @@ const AuthForm: React.FC<AuthFormProps> = ({
       localStorage.removeItem("driverData");
       localStorage.removeItem("userName");
       localStorage.removeItem("isAdmin");
+
+      // Remove any session flags that might prevent login
+      sessionStorage.removeItem("loggedOut");
+      sessionStorage.removeItem("forceLogout");
 
       console.log("🔐 Attempting to sign in with email:", data.email);
       const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -327,6 +383,21 @@ const AuthForm: React.FC<AuthFormProps> = ({
         name: userFullName,
       };
 
+      // Update user metadata to ensure consistency between UI and stored data
+      const { error: updateMetadataError } = await supabase.auth.updateUser({
+        data: {
+          ...authData.user.user_metadata,
+          name: userFullName,
+          full_name: userFullName,
+        },
+      });
+
+      if (updateMetadataError) {
+        console.warn("⚠️ Failed to update user metadata:", updateMetadataError);
+      } else {
+        console.log("✅ Updated user metadata with name:", userFullName);
+      }
+
       localStorage.setItem("auth_user", JSON.stringify(userDataObj));
       localStorage.setItem("userName", userFullName);
       console.log("Saved userName to localStorage during login:", userFullName);
@@ -349,21 +420,6 @@ const AuthForm: React.FC<AuthFormProps> = ({
       if (userRole === "Admin" || isAdmin) {
         console.log("🔀 Redirecting Admin user to admin panel");
         navigate("/admin");
-      } else if (userRole === "Staff Trips") {
-        console.log("🔀 Redirecting Staff user to sub-account panel");
-        const token = authData.session?.access_token; // ambil access_token dari session
-        const refresh_token = authData.session?.refresh_token;
-
-        if (token && refresh_token) {
-          window.open(
-            `https://agitated-chaplygin5-37ywx.view-3.tempo-dev.app/sub-account?token=${token}&refresh=${refresh_token}`,
-            "_blank",
-          );
-        } else {
-          console.error(
-            "❌ No access token or refresh token found for Staff Trips user.",
-          );
-        }
       } else {
         console.log("ℹ️ No redirect needed for role:", userRole);
       }
@@ -554,7 +610,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
 
         const { data: roleData, error: roleError } = await supabase
           .from("roles")
-          .select("id")
+          .select("role_id")
           .ilike("role_name", data.role)
           .single();
 
@@ -562,7 +618,7 @@ const AuthForm: React.FC<AuthFormProps> = ({
           console.error("Error fetching role ID:", roleError);
         }
 
-        const roleId = roleData?.id || null;
+        const roleId = roleData?.role_id || null;
 
         if (roleId && authData.user) {
           try {

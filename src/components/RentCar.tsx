@@ -8,8 +8,6 @@ import {
   CreditCard,
   User,
   Globe,
-  Search,
-  Filter,
   Plane,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -29,20 +27,22 @@ import { supabase } from "@/lib/supabase";
 import { Badge } from "./ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVehicleData } from "@/hooks/useVehicleData";
+import { useForceLogoutRedirect } from "@/hooks/useForceLogoutRedirect";
+import AuthRequiredModal from "./auth/AuthRequiredModal";
 
 interface Vehicle {
-  id: string;
-  name: string;
-  type: "sedan" | "suv" | "truck" | "luxury";
+  id: string | number;
+  model: string;
+  name?: string;
+  type?: "sedan" | "suv" | "truck" | "luxury";
   price: number;
-  image: string;
-  seats: number;
-  transmission: "automatic" | "manual";
-  fuelType: "petrol" | "diesel" | "electric" | "hybrid";
-  available: boolean;
-  features: string[];
-  make?: string;
-  model?: string;
+  image?: string;
+  seats?: number;
+  transmission?: "automatic" | "manual";
+  fuelType?: "petrol" | "diesel" | "electric" | "hybrid";
+  available?: boolean;
+  features?: string[];
+  make: string;
   year?: number;
   license_plate?: string;
   color?: string;
@@ -54,8 +54,59 @@ const RentCar = () => {
   const navigate = useNavigate();
   const { modelName } = useParams<{ modelName: string }>();
   const { t, i18n } = useTranslation();
-  const { userRole, userEmail, userName, signOut, isAuthenticated, userId } =
-    useAuth();
+  // Safely get auth context with error handling
+  let authContext;
+  try {
+    authContext = useAuth();
+  } catch (error) {
+    console.warn("Failed to get auth context in RentCar:", error);
+    authContext = {
+      userRole: null,
+      userEmail: null,
+      userName: null,
+      signOut: async () => {
+        console.warn("signOut called from fallback auth context");
+        try {
+          await supabase.auth.signOut();
+        } catch (signOutError) {
+          console.warn("Error in fallback signOut:", signOutError);
+        }
+      },
+      isAuthenticated: false,
+      userId: null,
+      isSessionReady: true,
+      userPhone: null,
+      isAdmin: false,
+      isLoading: false,
+      isHydrated: true,
+      isCheckingSession: false,
+      forceRefreshSession: async () => {
+        console.warn("forceRefreshSession called from fallback auth context");
+        try {
+          await supabase.auth.refreshSession();
+        } catch (refreshError) {
+          console.warn("Error in fallback refresh:", refreshError);
+        }
+      },
+      ensureSessionReady: async () => {
+        console.warn("ensureSessionReady called from fallback auth context");
+        return Promise.resolve();
+      },
+    };
+  }
+
+  const {
+    userRole,
+    userEmail,
+    userName,
+    signOut,
+    isAuthenticated,
+    userId,
+    isSessionReady,
+  } = authContext;
+
+  // Add force logout redirect hook
+  const { isLoading } = useForceLogoutRedirect(false);
 
   // Use the custom hook for vehicle data
   const {
@@ -64,7 +115,111 @@ const RentCar = () => {
     selectedModel,
     setSelectedModel,
     error: vehicleError,
+    refetchVehicleData,
+    hasInitialLoad,
   } = useVehicleData(modelName);
+
+  // Monitor session ready state and trigger refetch only once when session becomes ready
+  const [hasTriggeredSessionRefetch, setHasTriggeredSessionRefetch] =
+    useState(false);
+  const [sessionStableTimeout, setSessionStableTimeout] =
+    useState<NodeJS.Timeout | null>(null);
+  const [lastRefetchTime, setLastRefetchTime] = useState(0);
+
+  useEffect(() => {
+    if (!isSessionReady) {
+      console.log("[RentCar] Waiting for session to be ready...");
+      return;
+    }
+
+    // Clear any existing timeout
+    if (sessionStableTimeout) {
+      clearTimeout(sessionStableTimeout);
+      setSessionStableTimeout(null);
+    }
+
+    const now = Date.now();
+    const REFETCH_COOLDOWN = 5000; // 5 second cooldown between refetches
+
+    // Only trigger refetch if session is ready and we haven't fetched recently
+    if (
+      isSessionReady &&
+      (!hasTriggeredSessionRefetch ||
+        now - lastRefetchTime > REFETCH_COOLDOWN) &&
+      (carModels.length === 0 || !hasInitialLoad) &&
+      !isLoadingModels
+    ) {
+      console.log("[RentCar] Session ready, scheduling vehicle data fetch");
+
+      // Add a small delay to ensure session state is stable
+      const timeout = setTimeout(() => {
+        if (isSessionReady && now - lastRefetchTime > REFETCH_COOLDOWN) {
+          console.log("[RentCar] Triggering vehicle data fetch");
+          setHasTriggeredSessionRefetch(true);
+          setLastRefetchTime(Date.now());
+          if (refetchVehicleData) {
+            refetchVehicleData();
+          }
+        }
+      }, 200); // Reduced delay for faster response
+
+      setSessionStableTimeout(timeout);
+    }
+
+    return () => {
+      if (sessionStableTimeout) {
+        clearTimeout(sessionStableTimeout);
+      }
+    };
+  }, [
+    isSessionReady,
+    hasTriggeredSessionRefetch,
+    carModels.length,
+    isLoadingModels,
+    hasInitialLoad,
+    refetchVehicleData,
+    lastRefetchTime,
+  ]);
+
+  // Listen for session restored events to trigger vehicle refetch
+  useEffect(() => {
+    const handleSessionRestored = (event: CustomEvent) => {
+      console.log("[RentCar] Session restored event received:", event.detail);
+      const userData = event.detail;
+
+      if (userData && userData.id && userData.email) {
+        console.log(
+          "[RentCar] Valid session restored, triggering vehicle refetch",
+        );
+
+        // Reset refetch state to allow new fetch
+        setHasTriggeredSessionRefetch(false);
+
+        // Trigger vehicle data refetch after a short delay
+        setTimeout(() => {
+          if (refetchVehicleData) {
+            console.log(
+              "[RentCar] Refetching vehicle data after session restore",
+            );
+            refetchVehicleData();
+            setLastRefetchTime(Date.now());
+          }
+        }, 500);
+      }
+    };
+
+    window.addEventListener(
+      "sessionRestored",
+      handleSessionRestored as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "sessionRestored",
+        handleSessionRestored as EventListener,
+      );
+    };
+  }, [refetchVehicleData]);
 
   // Set document title based on language
   useEffect(() => {
@@ -98,9 +253,8 @@ const RentCar = () => {
   const [authFormType, setAuthFormType] = useState<"login" | "register">(
     "login",
   );
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // New state for search
-  const [searchTerm, setSearchTerm] = useState("");
   const [showModelDetail, setShowModelDetail] = useState(false);
 
   const toggleTheme = () => {
@@ -113,6 +267,14 @@ const RentCar = () => {
   const handleSelectVehicle = (vehicle: Vehicle) => {
     setSelectedVehicle(vehicle);
     setActiveTab("booking");
+
+    // Check if user is authenticated when selecting a vehicle
+    if (!isAuthenticated) {
+      // We don't block selection, but we'll show auth modal when they try to book
+      console.log(
+        "User not authenticated, will prompt for login at booking step",
+      );
+    }
   };
 
   // Handle navigation to model detail page
@@ -129,6 +291,11 @@ const RentCar = () => {
 
   // Handle booking completion
   const handleBookingComplete = (data: any) => {
+    // Check if user is authenticated before proceeding
+    if (!isAuthenticated) {
+      setShowAuthModal(true);
+      return;
+    }
     setBookingData(data);
     setShowInspection(true);
     setActiveTab("inspection");
@@ -548,7 +715,24 @@ const RentCar = () => {
                       disabled={!vehicle.available}
                       onClick={() => {
                         if (vehicle.available) {
-                          handleSelectVehicle(vehicle);
+                          handleSelectVehicle({
+                            id: vehicle.id,
+                            model: vehicle.model,
+                            name: vehicle.name,
+                            price: vehicle.price,
+                            image: vehicle.image,
+                            seats: vehicle.seats,
+                            transmission: vehicle.transmission,
+                            fuelType: vehicle.fuelType,
+                            available: vehicle.available,
+                            features: vehicle.features,
+                            make: vehicle.make,
+                            year: vehicle.year,
+                            license_plate: vehicle.license_plate,
+                            color: vehicle.color,
+                            vehicle_type_id: vehicle.vehicle_type_id,
+                            vehicle_type_name: vehicle.vehicle_type_name,
+                          });
                         }
                       }}
                     >
@@ -574,41 +758,14 @@ const RentCar = () => {
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-4 mb-8">
-              <div className="relative flex-1 w-full sm:max-w-sm">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search car models..."
-                  className="pl-10 border-primary/20 focus:border-primary transition-all shadow-sm focus:shadow-md"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="flex items-center gap-2 border-primary/20 hover:bg-primary/5 transition-all w-full sm:w-auto"
-                  >
-                    <Filter className="h-4 w-4" />
-                    <span>Filter</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80 shadow-lg border border-border/60">
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-lg">Filter Options</h4>
-                    {/* Filter options would go here */}
-                    <p className="text-sm text-muted-foreground">
-                      Filter options coming soon
-                    </p>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {isLoadingModels ? (
+            {(isLoadingModels && !hasInitialLoad) || !isSessionReady ? (
               <div className="flex justify-center items-center h-64">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                <span className="ml-3 text-muted-foreground">
+                  {!isSessionReady
+                    ? "Loading session..."
+                    : "Loading vehicles..."}
+                </span>
               </div>
             ) : vehicleError ? (
               <div className="text-center py-12">
@@ -617,39 +774,41 @@ const RentCar = () => {
                   Error loading vehicles
                 </h3>
                 <p className="text-muted-foreground mt-2">{vehicleError}</p>
+                <Button
+                  onClick={() => {
+                    console.log("[RentCar] Retrying vehicle data fetch");
+                    if (refetchVehicleData) {
+                      refetchVehicleData();
+                    }
+                  }}
+                  className="mt-4"
+                >
+                  Try Again
+                </Button>
               </div>
             ) : carModels.length === 0 ? (
               <div className="text-center py-12">
                 <Car className="h-16 w-16 mx-auto text-muted-foreground opacity-30" />
                 <h3 className="text-xl font-medium mt-4">
-                  No car models found
+                  No vehicles available at the moment
                 </h3>
                 <p className="text-muted-foreground mt-2">
-                  Try adjusting your search criteria
+                  Please check back later or contact support
                 </p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8">
-                {carModels
-                  .filter(
-                    (model) =>
-                      searchTerm === "" ||
-                      model.modelName
-                        .toLowerCase()
-                        .includes(searchTerm.toLowerCase()),
-                  )
-                  .map((model) => (
-                    <CarModelCard
-                      key={model.modelName}
-                      modelName={model.modelName}
-                      availableCount={model.availableCount}
-                      imageUrl={model.imageUrl}
-                      vehicles={model.vehicles}
-                      onViewDetail={() => {
-                        handleViewModelDetail(model);
-                      }}
-                    />
-                  ))}
+                {carModels.map((model) => (
+                  <CarModelCard
+                    key={model.modelName}
+                    modelName={model.modelName}
+                    availableCount={model.availableCount}
+                    imageUrl={model.imageUrl}
+                    onViewDetail={() => {
+                      handleViewModelDetail(model);
+                    }}
+                  />
+                ))}
               </div>
             )}
 
@@ -779,6 +938,12 @@ const RentCar = () => {
           </div>
         </div>
       </section>
+
+      {/* Auth Required Modal */}
+      <AuthRequiredModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
 
       {/* Footer */}
       <footer className="bg-muted/30 border-t border-border py-12">

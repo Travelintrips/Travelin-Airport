@@ -176,44 +176,54 @@ export default function UserManagement(props: UserManagementProps = {}) {
       }
 
       if (isEditMode) {
-        // Update existing user
-        const { error: updateError } = await supabase
-          .from("users")
-          .update({
-            full_name: fullName,
-            role_id: roleId || roleData.role_id,
-          })
-          .eq("id", currentUser.id);
+        // Get the selected role name
+        const selectedRole = roles.find(
+          (role) => role.role_id === (roleId || roleData.role_id),
+        );
+        const roleName = selectedRole?.role_name || "Staff";
+
+        // Use the modified edge function to update both users and staff tables
+        const { data: updateData, error: updateError } =
+          await supabase.functions.invoke(
+            "supabase-functions-create-staff-user",
+            {
+              body: {
+                userId: currentUser.id,
+                email: email,
+                fullName: fullName,
+                roleId: roleId || roleData.role_id,
+                roleName: roleName,
+                isUpdate: true,
+                // Include other fields that might be needed
+                // phone: removed to preserve existing value
+                address: null,
+                ktpNumber: null,
+                department:
+                  roleName === "Staff"
+                    ? "General"
+                    : roleName.replace("Staff ", ""),
+                position: roleName,
+                employeeId: null, // Keep existing employee ID
+                idCardImage: null,
+                religion: null,
+                ethnicity: null,
+                firstName: fullName.split(" ")[0] || null,
+                lastName: fullName.split(" ").slice(1).join(" ") || null,
+              },
+            },
+          );
 
         if (updateError) {
+          console.error("Error updating staff:", updateError);
           toast({
             variant: "destructive",
             title: "Update failed",
-            description: updateError.message,
+            description: updateError.message || "Failed to update staff member",
           });
           return;
         }
 
-        // Update role using Edge Function
-        let roleError = null;
-        if (roleId !== currentUser.role_id) {
-          const { error } = await supabase.functions.invoke("assign-role", {
-            body: {
-              user_id: currentUser.id,
-              role_id: roleId || roleData.role_id,
-            },
-          });
-          roleError = error;
-        }
-
-        if (roleError) {
-          toast({
-            variant: "destructive",
-            title: "Role update failed",
-            description: roleError.message,
-          });
-          return;
-        }
+        console.log("Staff updated successfully:", updateData);
 
         // ✅ Show success & close modal
         toast({
@@ -365,7 +375,7 @@ export default function UserManagement(props: UserManagementProps = {}) {
 
       // Update role using edge function
       const { error: roleAssignError } = await supabase.functions.invoke(
-        "assignRole",
+        "supabase-functions-assignRole",
         {
           body: {
             userId: userData.id,
@@ -451,7 +461,7 @@ export default function UserManagement(props: UserManagementProps = {}) {
 
       // Update role using edge function
       const { error: roleAssignError } = await supabase.functions.invoke(
-        "assignRole",
+        "supabase-functions-assignRole",
         {
           body: {
             userId: userData.id,

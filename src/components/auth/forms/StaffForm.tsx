@@ -221,12 +221,12 @@ const StaffForm: React.FC<StaffFormProps> = ({
         />
       </div>
 
-      <FormField
+      {/* <FormField
         control={control}
         name="licenseExpiry"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Masa Berlaku SIM (Date)</FormLabel>
+            <FormLabel>Masa Berlaku SIM 2 (Date)</FormLabel>
             <FormControl>
               <Input
                 type="date"
@@ -241,7 +241,7 @@ const StaffForm: React.FC<StaffFormProps> = ({
             <FormMessage />
           </FormItem>
         )}
-      />
+      /> */}
 
       <FormField
         control={control}

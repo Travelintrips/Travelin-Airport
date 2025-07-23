@@ -1,7 +1,11 @@
 import { supabase } from "./supabase";
 import type { Database } from "@/types/supabase";
-import { sendNewBooking } from "@/api/sendNewBooking";
 
+type AirportTransfer = Database["public"]["Tables"]["airport_transfer"]["Row"];
+type AirportTransferInsert =
+  Database["public"]["Tables"]["airport_transfer"]["Insert"];
+type AirportTransferUpdate =
+  Database["public"]["Tables"]["airport_transfer"]["Update"];
 type Booking = Database["public"]["Tables"]["bookings"]["Row"];
 type BookingInsert = Database["public"]["Tables"]["bookings"]["Insert"];
 type BookingUpdate = Database["public"]["Tables"]["bookings"]["Update"];
@@ -58,16 +62,20 @@ export async function sendNewBooking(bookingData: any) {
 /**
  * Create a new booking
  */
-export async function createBooking(bookingData: BookingInsert) {
+export async function createBooking(bookingData: AirportTransferInsert) {
   // Step 1: Insert booking to Supabase
-  const { data, error } = await supabase.from("airport_transfer").select(); // fetch inserted row(s)
+  const { data, error } = await supabase
+    .from("airport_transfer")
+    .insert(bookingData)
+    .select()
+    .single();
 
   if (error) {
     console.error("❌ Error creating booking:", error.message);
     return { error };
   }
 
-  const inserted = data?.[0]; // Get the inserted booking row
+  const inserted = data;
   if (!inserted) {
     console.warn("⚠️ Booking inserted but no data returned");
     return { error: "Booking inserted, but no data returned" };
@@ -76,18 +84,18 @@ export async function createBooking(bookingData: BookingInsert) {
   // Step 2: Send to external API
   try {
     const externalData = {
-      pickup_datetime: `${bookingData.pickup_date} ${bookingData.pickup_time}`,
-      pickup_address: bookingData.pickup_location,
-      pickup_long: String(bookingData.fromLocation?.[1] || "106.6571842"),
-      pickup_lat: String(bookingData.fromLocation?.[0] || "-6.1286371"),
-      dropoff_address: bookingData.dropoff_location,
-      dropoff_long: String(bookingData.toLocation?.[1] || "106.6571842"),
-      dropoff_lat: String(bookingData.toLocation?.[0] || "-6.1286371"),
-      estimated_cost: String(bookingData.price || "100000"),
+      pickup_datetime: `${inserted.pickup_date || new Date().toISOString().split("T")[0]} ${inserted.pickup_time || "10:00"}`,
+      pickup_address: inserted.pickup_location || "",
+      pickup_long: String((inserted.fromLocation as any)?.[1] || "106.6571842"),
+      pickup_lat: String((inserted.fromLocation as any)?.[0] || "-6.1286371"),
+      dropoff_address: inserted.dropoff_location || "",
+      dropoff_long: String((inserted.toLocation as any)?.[1] || "106.6571842"),
+      dropoff_lat: String((inserted.toLocation as any)?.[0] || "-6.1286371"),
+      estimated_cost: String(inserted.price || "100000"),
       ride_id: 1,
-      customer_name: bookingData.customer_name,
-      customer_phone: bookingData.phone,
-      driver_id: String(bookingData.id_driver || inserted.id_driver || "0"),
+      customer_name: inserted.customer_name || "",
+      customer_phone: inserted.phone || "",
+      driver_id: String(inserted.driver_id || "0"),
     };
 
     const { data: apiResponse, error: apiError } =

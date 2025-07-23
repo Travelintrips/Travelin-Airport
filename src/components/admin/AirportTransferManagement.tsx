@@ -26,6 +26,7 @@ interface AirportTransfer {
   payment_method: string;
   payment_status: string;
   driver_id: string | null;
+  driver_name?: string;
 }
 
 interface Driver {

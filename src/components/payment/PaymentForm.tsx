@@ -152,7 +152,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
       const bookingTables = [
         {
           table: "bookings",
-          nameField: "customer_name" || "user_name",
+          nameField: "customer_name",
           amountField: "total_amount",
         },
         {
@@ -297,7 +297,7 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         // Convert bookingId to integer for airport_transfer_id
         const airportTransferId = parseInt(bookingId);
 
-        if (isNaN(airportTransferId)) {
+        if (isNaN(airportTransferId) || !bookingId) {
           throw new Error(`Invalid airport transfer ID: ${bookingId}`);
         }
 

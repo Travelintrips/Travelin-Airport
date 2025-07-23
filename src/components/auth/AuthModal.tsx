@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/form";
 import { Eye, EyeOff, Mail, Lock } from "lucide-react";
 import RegistrationForm from "./RegistrationForm";
+import { supabase } from "@/lib/supabase";
 
 interface ModalProps {
   onClose: () => void;
@@ -50,6 +51,27 @@ const AuthModal: React.FC<ModalProps> = ({
   handleRegisterSubmit,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
+
+  // Clear any session flags that might prevent login when modal opens
+  useEffect(() => {
+    // Remove any session flags that might prevent login
+    sessionStorage.removeItem("loggedOut");
+    sessionStorage.removeItem("forceLogout");
+
+    // Also ensure we're signed out from Supabase when opening the modal
+    const checkAndClearSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        // No active session, clear any stale data
+        localStorage.removeItem("supabase.auth.token");
+        localStorage.removeItem("sb-refresh-token");
+        localStorage.removeItem("sb-access-token");
+        localStorage.removeItem("sb-auth-token");
+      }
+    };
+
+    checkAndClearSession();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

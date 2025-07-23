@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera, RefreshCw, Upload } from "lucide-react";
+import { Camera, RefreshCw, Upload, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useEffect } from "react";
 

@@ -40,6 +40,7 @@ interface ReceiptModalProps {
     airport?: string;
     terminal?: string;
     itemName?: string;
+    onModalClose?: () => void;
   };
   onViewMap?: () => void;
 }
@@ -80,8 +81,34 @@ const ReceiptModal = ({
     }).format(price);
   };
 
+  const handleClose = () => {
+    console.log("[ReceiptModal] handleClose called");
+    // Call the form clearing callback if provided
+    if (bookingDetails?.onModalClose) {
+      console.log("[ReceiptModal] Calling onModalClose callback");
+      try {
+        bookingDetails.onModalClose();
+        console.log(
+          "[ReceiptModal] onModalClose callback executed successfully",
+        );
+      } catch (error) {
+        console.error("[ReceiptModal] Error in onModalClose callback:", error);
+      }
+    } else {
+      console.log("[ReceiptModal] No onModalClose callback provided");
+    }
+    onClose();
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleClose();
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-[600px] bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-center">
@@ -244,9 +271,16 @@ const ReceiptModal = ({
             Share
           </Button>
           <Button
+            variant="outline"
+            className="flex-1 gap-2"
+            onClick={handleClose}
+          >
+            Close
+          </Button>
+          <Button
             className="flex-1 gap-2 bg-green-600 hover:bg-green-700"
             onClick={() => {
-              onClose();
+              handleClose();
               navigate("/cart");
             }}
           >

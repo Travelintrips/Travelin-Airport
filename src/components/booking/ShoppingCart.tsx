@@ -27,6 +27,7 @@ import {
   Bus,
   MapPin,
   Compass,
+  HandHeart,
 } from "lucide-react";
 import { useShoppingCart } from "@/hooks/useShoppingCart";
 import { formatCurrency } from "@/lib/utils";
@@ -40,8 +41,19 @@ import { useNavigate } from "react-router-dom";
 interface ShoppingCartProps {}
 
 const ShoppingCart: React.FC<ShoppingCartProps> = () => {
+  // ALL HOOKS MUST BE DECLARED AT THE TOP LEVEL - NO CONDITIONAL HOOKS
   const navigate = useNavigate();
-  const { isAuthenticated, userId, userEmail, userName } = useAuth();
+  const {
+    isAuthenticated,
+    userId,
+    userEmail,
+    userName,
+    userRole,
+    isLoading: authLoading,
+    isHydrated,
+    isCheckingSession,
+  } = useAuth();
+
   const {
     cartItems,
     addToCart,
@@ -50,18 +62,256 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     totalAmount,
     checkout,
     isLoading,
+    refetchCartData,
   } = useShoppingCart();
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<string>("");
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [selectedBank, setSelectedBank] = useState<any | null>(null);
-  const [manualBanks, setManualBanks] = useState<any[]>([]);
-  const [customerData, setCustomerData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-  });
+
+  // State hooks declared at the top level
+  const [showReloadButton, setShowReloadButton] = React.useState(false);
+  const [forceShowContent, setForceShowContent] = React.useState(false);
+  const [isTabRecentlyActivated, setIsTabRecentlyActivated] =
+    React.useState(false);
+
+  // Function to load unpaid bookings - ALL useCallback hooks must be at top level
+  const loadUnpaidBookings = React.useCallback(async () => {
+    if (!isAuthenticated || !userId || !isHydrated || isLoading) {
+      console.log("[ShoppingCart] Not ready for loading unpaid bookings", {
+        isAuthenticated,
+        userId,
+        isHydrated,
+        isLoading,
+      });
+      return;
+    }
+
+    try {
+      console.log("[ShoppingCart] Loading unpaid bookings for user:", userId);
+      // Fetch unpaid bookings from the bookings table
+      const { data: unpaidBookings, error } = await supabase
+        .from("bookings")
+        .select(
+          `
+          id,
+          vehicle_id,
+          total_amount,
+          start_date,
+          end_date,
+          pickup_time,
+          driver_option,
+          vehicles!bookings_vehicle_id_fkey (
+            make,
+            model,
+            year
+          )
+        `,
+        )
+        .eq("user_id", userId)
+        .eq("payment_status", "unpaid")
+        .eq("status", "pending");
+
+      if (error) {
+        console.error("Error fetching unpaid bookings:", error);
+        return;
+      }
+
+      // Add unpaid bookings to cart if they're not already there
+      if (unpaidBookings && unpaidBookings.length > 0) {
+        console.log(
+          "[ShoppingCart] Found",
+          unpaidBookings.length,
+          "unpaid bookings",
+        );
+        for (const booking of unpaidBookings) {
+          // Check if booking is already in cart
+          const existingItem = cartItems.find(
+            (item) =>
+              item.item_id === booking.id.toString() &&
+              item.item_type === "car",
+          );
+
+          if (!existingItem) {
+            const vehicleInfo = booking.vehicles as any;
+            const serviceName = `${vehicleInfo?.make || "Unknown"} ${vehicleInfo?.model || "Vehicle"} ${vehicleInfo?.year ? `(${vehicleInfo.year})` : ""}`;
+
+            await addToCart({
+              item_type: "car",
+              item_id: booking.id.toString(),
+              service_name: serviceName,
+              price: booking.total_amount,
+              details: {
+                start_date: booking.start_date,
+                end_date: booking.end_date,
+                pickup_time: booking.pickup_time,
+                driver_option: booking.driver_option,
+                vehicle_id: booking.vehicle_id,
+              },
+            });
+          }
+        }
+      } else {
+        console.log("[ShoppingCart] No unpaid bookings found");
+      }
+    } catch (error) {
+      console.error("Error loading unpaid bookings:", error);
+    }
+  }, [isAuthenticated, userId, isHydrated, isLoading, addToCart, cartItems]);
+
+  // Load unpaid bookings into cart on component mount and when auth state changes
+  React.useEffect(() => {
+    if (!isHydrated) return; // 🎯 Wait for hydration
+
+    // Only load once when auth state is ready
+    if (
+      isAuthenticated &&
+      userId &&
+      !isCheckingSession &&
+      userRole &&
+      !isLoading
+    ) {
+      console.log("[ShoppingCart] Auth state ready, loading unpaid bookings", {
+        isAuthenticated,
+        userId,
+        userRole,
+      });
+      loadUnpaidBookings();
+    }
+  }, [
+    isAuthenticated,
+    userId,
+    userRole,
+    isHydrated,
+    isCheckingSession,
+    isLoading,
+    loadUnpaidBookings,
+  ]);
+
+  // Enhanced visibility change handler to prevent loading issues
+  React.useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let tabActivationTimeout: NodeJS.Timeout;
+    let lastVisibilityTime = 0;
+    const VISIBILITY_COOLDOWN = 1000; // Reduced to 1 second cooldown
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === "visible") {
+        const now = Date.now();
+        if (now - lastVisibilityTime < VISIBILITY_COOLDOWN) {
+          console.log(
+            "[ShoppingCart] Visibility change cooldown active, skipping",
+          );
+          return;
+        }
+        lastVisibilityTime = now;
+
+        console.log(
+          "[ShoppingCart] Tab became visible, refreshing cart immediately",
+        );
+
+        // Clear any existing timeouts
+        if (timeoutId) clearTimeout(timeoutId);
+        if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
+
+        // Immediately try to refresh cart data without waiting
+        try {
+          // Always try to refresh cart data when tab becomes visible
+          console.log("[ShoppingCart] Refreshing cart data on tab focus");
+          await refetchCartData();
+
+          // Reset any loading states that might be stuck
+          setForceShowContent(false);
+          setShowReloadButton(false);
+        } catch (error) {
+          console.error(
+            "[ShoppingCart] Error refreshing cart on tab focus:",
+            error,
+          );
+          // Force show content on error to prevent infinite loading
+          setForceShowContent(true);
+        }
+      }
+    };
+
+    // Listen for session restored events
+    const handleSessionRestored = async () => {
+      console.log("[ShoppingCart] Session restored, refreshing cart");
+      try {
+        await refetchCartData();
+        setForceShowContent(false);
+        setShowReloadButton(false);
+      } catch (error) {
+        console.error(
+          "[ShoppingCart] Error refreshing cart after session restore:",
+          error,
+        );
+        // Force show content on error
+        setForceShowContent(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("sessionRestored", handleSessionRestored);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("sessionRestored", handleSessionRestored);
+      if (timeoutId) clearTimeout(timeoutId);
+      if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
+    };
+  }, [isAuthenticated, userId, userRole, refetchCartData]);
+
+  // Effect for managing loading timeouts and force content display - MOVED TO TOP LEVEL
+  React.useEffect(() => {
+    let loadingTimeout: NodeJS.Timeout;
+    let forceTimeout: NodeJS.Timeout;
+
+    // Show reload button if loading persists for more than 2 seconds
+    const shouldShowLoading =
+      isLoading && cartItems.length === 0 && !isTabRecentlyActivated;
+
+    if (shouldShowLoading) {
+      loadingTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Loading timeout reached, showing reload button",
+        );
+        setShowReloadButton(true);
+      }, 2000); // Reduced to 2 seconds
+
+      // Force show content after 4 seconds to prevent infinite loading
+      forceTimeout = setTimeout(() => {
+        console.log(
+          "[ShoppingCart] Force timeout reached, showing content anyway",
+        );
+        setForceShowContent(true);
+        setShowReloadButton(false);
+      }, 4000); // Reduced to 4 seconds
+    } else {
+      setShowReloadButton(false);
+      if (!isLoading) {
+        setForceShowContent(false);
+      }
+    }
+
+    return () => {
+      if (loadingTimeout) clearTimeout(loadingTimeout);
+      if (forceTimeout) clearTimeout(forceTimeout);
+    };
+  }, [isLoading, cartItems.length, isTabRecentlyActivated]);
+
+  // 🎯 BLOCKING GUARD: Prevent rendering until session is hydrated
+  if (!isHydrated || authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto p-6">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto mb-6"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">
+            Loading session...
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Please wait while we restore your session
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleRemoveItem = async (id: string) => {
     try {
@@ -97,277 +347,20 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     }
   };
 
-  const handleCheckout = () => {
-    setShowCheckout(true);
-    // Auto-fill customer data if user is authenticated
-    if (isAuthenticated) {
-      setCustomerData({
-        name: userName || "",
-        email: userEmail || "",
-        phone: "", // Will be fetched from customer table
-      });
-      fetchCustomerPhone();
-    }
-  };
-
-  const fetchCustomerPhone = async () => {
-    if (isAuthenticated && userId) {
-      try {
-        const { data, error } = await supabase
-          .from("customers")
-          .select("phone")
-          .eq("id", userId)
-          .single();
-
-        if (!error && data?.phone) {
-          setCustomerData((prev) => ({ ...prev, phone: data.phone }));
-        }
-      } catch (error) {
-        console.error("Error fetching customer data:", error);
-      }
-    }
-  };
-
-  const fetchManualPaymentMethods = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("payment_methods")
-        .select("*")
-        .eq("type", "manual");
-
-      if (error) {
-        console.error("Error fetching manual payment methods:", error);
-        return;
-      }
-
-      setManualBanks(data || []);
-    } catch (error) {
-      console.error("Exception in fetchManualPaymentMethods:", error);
-    }
-  };
-
-  // Fetch manual payment methods when bank transfer is selected
-  React.useEffect(() => {
-    if (selectedPaymentMethod === "bank_transfer") {
-      fetchManualPaymentMethods();
-    }
-  }, [selectedPaymentMethod]);
-
-  const handlePayment = async () => {
-    // Validate customer data
-    if (!customerData.name || !customerData.email || !customerData.phone) {
-      toast({
-        title: "Complete customer data",
-        description: "Please complete name, email, and phone number.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!selectedPaymentMethod) {
-      toast({
-        title: "Select payment method",
-        description: "Please select a payment method first.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (selectedPaymentMethod === "bank_transfer" && !selectedBank) {
-      toast({
-        title: "Select bank",
-        description: "Please select a bank for transfer.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsProcessingPayment(true);
-    try {
-      // Process each cart item as a booking
-      for (const item of cartItems) {
-        if (item.item_type === "baggage" && item.details) {
-          const bookingId = `BG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-
-          const bookingData = {
-            booking_id: bookingId,
-            customer_name: customerData.name,
-            customer_phone: customerData.phone,
-            customer_email: customerData.email,
-            item_name: item.details.item_name,
-            flight_number: item.details.flight_number || "-",
-            baggage_size: item.details.baggage_size,
-            price: item.price,
-            duration: item.details.duration,
-            storage_location: item.details.storage_location,
-            start_date: item.details.start_date,
-            end_date: item.details.end_date,
-            start_time: item.details.start_time,
-            end_time: "",
-            airport: item.details.airport,
-            terminal: item.details.terminal,
-            duration_type: item.details.duration_type,
-            hours: item.details.hours,
-            status: "pending",
-            customer_id: userId || null,
-          };
-
-          const { error: baggageError } = await supabase
-            .from("baggage_booking")
-            .insert(bookingData);
-
-          if (baggageError) {
-            console.error("Error saving baggage booking:", baggageError);
-            throw new Error(
-              `Failed to save baggage booking: ${baggageError.message}`,
-            );
-          }
-        } else if (item.item_type === "car" && item.details) {
-          // Handle car rental bookings
-          const { error: carBookingError } = await supabase
-            .from("bookings")
-            .update({ payment_status: "paid" })
-            .eq("id", item.item_id);
-
-          if (carBookingError) {
-            console.error("Error updating car booking:", carBookingError);
-            throw new Error(
-              `Failed to update car booking: ${carBookingError.message}`,
-            );
-          }
-        }
-      }
-
-      // Create payment record
-      const { error: paymentError } = await supabase.from("payments").insert({
-        user_id: userId || null,
-        amount: totalAmount,
-        payment_method: selectedPaymentMethod,
-        status: "pending",
-        is_partial_payment: "false",
-        is_damage_payment: false,
-        created_at: new Date().toISOString(),
-      });
-
-      if (paymentError) {
-        console.error("Error creating payment:", paymentError);
-        throw new Error(`Failed to create payment: ${paymentError.message}`);
-      }
-
-      // Clear cart after successful checkout
-      await clearCart();
-
-      toast({
-        title: "Payment successful!",
-        description: "Thank you for your order.",
-      });
-      setShowCheckout(false);
-      setSelectedPaymentMethod("");
-      setSelectedBank(null);
-      setCustomerData({ name: "", email: "", phone: "" });
-    } catch (error) {
-      console.error("Error during checkout:", error);
-      toast({
-        title: "Failed to process payment",
-        description: "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsProcessingPayment(false);
-    }
-  };
-
   const getItemTypeLabel = (type: string) => {
     switch (type) {
       case "baggage":
         return "Baggage";
       case "airport_transfer":
         return "Airport Transfer";
+      case "handling":
+        return "Handling";
       case "car":
         return "Car Rental";
       default:
         return type;
     }
   };
-
-  // Load unpaid bookings into cart on component mount
-  React.useEffect(() => {
-    const loadUnpaidBookings = async () => {
-      if (!isAuthenticated || !userId) return;
-
-      try {
-        // Fetch unpaid bookings from the bookings table
-        const { data: unpaidBookings, error } = await supabase
-          .from("bookings")
-          .select(
-            `
-            id,
-            vehicle_id,
-            total_amount,
-            start_date,
-            end_date,
-            pickup_time,
-            driver_option,
-            vehicles!bookings_vehicle_id_fkey (
-              make,
-              model,
-              year
-            )
-          `,
-          )
-          .eq("user_id", userId)
-          .eq("payment_status", "unpaid")
-          .eq("status", "pending");
-
-        if (error) {
-          console.error("Error fetching unpaid bookings:", error);
-          return;
-        }
-
-        // Add unpaid bookings to cart if they're not already there
-        if (unpaidBookings && unpaidBookings.length > 0) {
-          for (const booking of unpaidBookings) {
-            // Check if booking is already in cart
-            const existingItem = cartItems.find(
-              (item) =>
-                item.item_id === booking.id.toString() &&
-                item.item_type === "car",
-            );
-
-            if (!existingItem) {
-              const vehicleInfo = booking.vehicles as any;
-              const serviceName = `${vehicleInfo?.make || "Unknown"} ${vehicleInfo?.model || "Vehicle"} ${vehicleInfo?.year ? `(${vehicleInfo.year})` : ""}`;
-
-              await addToCart({
-                item_type: "car",
-                item_id: booking.id.toString(),
-                service_name: serviceName,
-                price: booking.total_amount,
-                details: {
-                  start_date: booking.start_date,
-                  end_date: booking.end_date,
-                  pickup_time: booking.pickup_time,
-                  driver_option: booking.driver_option,
-                  vehicle_id: booking.vehicle_id,
-                },
-              });
-            }
-          }
-        }
-      } catch (error) {
-        console.error("Error loading unpaid bookings:", error);
-      }
-    };
-
-    loadUnpaidBookings();
-  }, [isAuthenticated, userId, addToCart]);
-
-  const paymentMethods = [
-    { id: "credit_card", name: "Credit Card", icon: CreditCard },
-    { id: "bank_transfer", name: "Bank Transfer", icon: Banknote },
-    { id: "cash", name: "Cash", icon: DollarSign },
-    { id: "paylabs", name: "Paylabs", icon: Smartphone },
-  ];
 
   // Product suggestions for empty cart
   const productSuggestions = [
@@ -388,6 +381,12 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
       icon: Car,
       route: "/rentcar",
       description: "Premium vehicle rentals",
+    },
+    {
+      name: "Handling",
+      icon: HandHeart,
+      route: "/handling",
+      description: "Airport handling assistance services",
     },
     {
       name: "Flights",
@@ -421,35 +420,747 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
     },
   ];
 
+  // Add debug logs
+  console.log("Cart Page: userRole", userRole);
+  console.log("Cart Page: isAuthenticated", isAuthenticated);
+  console.log("Cart Page: isHydrated", isHydrated);
+  console.log("Cart Page: isCheckingSession", isCheckingSession);
+  console.log("Cart Page: authLoading", authLoading);
+  console.log("Cart Page: userId", userId);
+  console.log("Cart Page: isLoading", isLoading);
+  console.log("Cart Page: cartItems.length", cartItems.length);
+
+  // Show sign in prompt only if we're completely sure user is not authenticated
+  const shouldShowSignInPrompt =
+    !isAuthenticated &&
+    !authLoading &&
+    !userId &&
+    !isCheckingSession &&
+    isHydrated &&
+    !localStorage.getItem("auth_user") &&
+    forceShowContent &&
+    !localStorage.getItem("userId");
+
+  if (shouldShowSignInPrompt) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-4">Please Sign In</h2>
+          <p className="text-gray-600 mb-6">
+            You need to be signed in to view your cart.
+          </p>
+          <Button onClick={() => navigate("/")}>Go to Home</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading only when cart is actually loading and we have no items
+  // But don't show loading if we have stored user data (fallback available) or tab was recently activated
+  const hasStoredUserData =
+    localStorage.getItem("auth_user") || localStorage.getItem("userId");
+  const shouldShowLoadingScreen =
+    !forceShowContent &&
+    isLoading &&
+    cartItems.length === 0 &&
+    !authLoading &&
+    !isCheckingSession &&
+    !isTabRecentlyActivated;
+  // Removed hasStoredUserData check to allow loading even with stored data
+
+  if (shouldShowLoadingScreen) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin mb-4" />
+          <span className="text-lg mb-4">Loading cart...</span>
+          {showReloadButton && (
+            <Button
+              onClick={async () => {
+                console.log("[ShoppingCart] Manual reload triggered");
+                setShowReloadButton(false);
+                try {
+                  await refetchCartData();
+                } catch (error) {
+                  console.error("[ShoppingCart] Manual reload failed:", error);
+                  window.location.reload();
+                }
+              }}
+              variant="outline"
+              className="mt-4"
+            >
+              Reload Cart
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // Page layout for shopping cart
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
         <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <div className="flex items-center gap-2 mb-6">
+          <div className="bg-white rounded-lg shadow-sm p-4 sm:p-6">
+            <div className="flex items-center gap-2 mb-4 sm:mb-6">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => navigate("/")}
                 className="mr-2"
+                title="Back to Baggage"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Button>
-              <CartIcon className="h-6 w-6" />
-              <h1 className="text-2xl font-bold">Shopping Cart</h1>
+              <CartIcon className="h-5 w-5 sm:h-6 sm:w-6" />
+              <h1 className="text-lg sm:text-2xl font-bold">Shopping Cart</h1>
               {cartItems.length > 0 && (
                 <Badge variant="secondary">{cartItems.length}</Badge>
               )}
             </div>
 
             <div className="space-y-6">
-              {isLoading ? (
+              {/* Always show cart items if they exist, regardless of loading state */}
+              {cartItems.length > 0 ? (
+                <>
+                  <div className="space-y-4">
+                    {cartItems.map((item) => {
+                      // Debug log to see the actual item_type
+                      console.log("Cart item:", {
+                        id: item.id,
+                        item_type: item.item_type,
+                        service_name: item.service_name,
+                      });
+
+                      return (
+                        <Card key={item.id} className="p-6">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-3">
+                                <Badge variant="outline">
+                                  {getItemTypeLabel(item.item_type)}
+                                </Badge>
+                                {item.status && (
+                                  <Badge
+                                    variant={
+                                      item.status === "paid"
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                    className="text-xs"
+                                  >
+                                    {item.status}
+                                  </Badge>
+                                )}
+                              </div>
+                              <h3 className="font-medium text-lg">
+                                {item.service_name}
+                              </h3>
+
+                              {/* Baggage Details Information - Enhanced display */}
+                              {item.item_type === "baggage" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing item details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Customer Information */}
+                                      {parsedDetails.booking_id && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking ID:
+                                          </span>{" "}
+                                          {parsedDetails.booking_id}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customer_name && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Customer:
+                                          </span>{" "}
+                                          {parsedDetails.customer_name}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customer_email && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Email:
+                                          </span>{" "}
+                                          {parsedDetails.customer_email}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customer_phone && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Phone:
+                                          </span>{" "}
+                                          {parsedDetails.customer_phone}
+                                        </p>
+                                      )}
+
+                                      {/* Baggage Information */}
+                                      {parsedDetails.baggage_size && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Baggage Size:
+                                          </span>{" "}
+                                          {parsedDetails.baggage_size
+                                            .charAt(0)
+                                            .toUpperCase() +
+                                            parsedDetails.baggage_size.slice(1)}
+                                        </p>
+                                      )}
+                                      {parsedDetails.item_name && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Item Name:
+                                          </span>{" "}
+                                          {parsedDetails.item_name}
+                                        </p>
+                                      )}
+                                      {parsedDetails.flight_number &&
+                                        parsedDetails.flight_number !== "-" && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              Flight Number1:
+                                            </span>{" "}
+                                            {parsedDetails.flight_number}
+                                          </p>
+                                        )}
+
+                                      {/* Location Information */}
+                                      {parsedDetails.airport && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Airport:
+                                          </span>{" "}
+                                          {parsedDetails.airport}
+                                        </p>
+                                      )}
+                                      {parsedDetails.terminal && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Terminal:
+                                          </span>{" "}
+                                          {parsedDetails.terminal}
+                                        </p>
+                                      )}
+                                      {parsedDetails.storage_location && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Storage Location:
+                                          </span>{" "}
+                                          {parsedDetails.storage_location}
+                                        </p>
+                                      )}
+
+                                      {/* Duration and Time Information */}
+                                      {parsedDetails.duration && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Duration:
+                                          </span>{" "}
+                                          {parsedDetails.duration}{" "}
+                                          {parsedDetails.duration_type ===
+                                          "days"
+                                            ? "day(s)"
+                                            : "hour(s)"}
+                                        </p>
+                                      )}
+                                      {parsedDetails.start_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Start Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.start_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.start_time && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Start Time:
+                                          </span>{" "}
+                                          {parsedDetails.start_time}
+                                        </p>
+                                      )}
+                                      {parsedDetails.duration_type === "days" &&
+                                        parsedDetails.end_date && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              End Date:
+                                            </span>{" "}
+                                            {new Date(
+                                              parsedDetails.end_date,
+                                            ).toLocaleDateString("en-US", {
+                                              weekday: "short",
+                                              year: "numeric",
+                                              month: "short",
+                                              day: "numeric",
+                                            })}
+                                          </p>
+                                        )}
+                                      {parsedDetails.hours && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Hours:
+                                          </span>{" "}
+                                          {parsedDetails.hours}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Airport Transfer Information */}
+                              {item.item_type === "airport_transfer" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing airport transfer details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  const isInstantBooking =
+                                    parsedDetails.bookingType === "instant";
+                                  const isScheduleBooking =
+                                    parsedDetails.bookingType === "scheduled";
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Booking Code */}
+                                      {parsedDetails.bookingCode && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking Code:
+                                          </span>{" "}
+                                          {parsedDetails.bookingCode}
+                                        </p>
+                                      )}
+
+                                      {/* Booking Type */}
+                                      {parsedDetails.bookingType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Booking Type:
+                                          </span>{" "}
+                                          {parsedDetails.bookingType ===
+                                          "instant"
+                                            ? "Instant Booking"
+                                            : "Schedule Booking"}
+                                        </p>
+                                      )}
+
+                                      {/* Vehicle Type - for both booking types */}
+                                      {parsedDetails.vehicleType && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Vehicle Type:
+                                          </span>{" "}
+                                          {parsedDetails.vehicleType}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup Date and Time - for both booking types */}
+                                      {parsedDetails.pickupDate && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.pickupDate,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.pickupTime && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickupTime}
+                                        </p>
+                                      )}
+
+                                      {/* Driver Information */}
+                                      {parsedDetails.driverName && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.driverName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Driver ID */}
+                                      {(parsedDetails.id_driver ||
+                                        parsedDetails.driverId) && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver ID:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.id_driver ||
+                                              parsedDetails.driverId}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Driver Phone */}
+                                      {parsedDetails.driverPhone && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Driver Phone:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.driverPhone}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Vehicle Information */}
+                                      {parsedDetails.vehicleName && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            Vehicle:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.vehicleName}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {parsedDetails.vehiclePlate && (
+                                        <div className="flex justify-between">
+                                          <span className="font-medium text-gray-600">
+                                            License Plate:
+                                          </span>
+                                          <span>
+                                            {parsedDetails.vehiclePlate}
+                                          </span>
+                                        </div>
+                                      )}
+
+                                      {/* Passengers */}
+                                      {parsedDetails.passenger && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Passengers:
+                                          </span>{" "}
+                                          {parsedDetails.passenger}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup and Dropoff Locations */}
+                                      {parsedDetails.fromAddress && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup:
+                                          </span>{" "}
+                                          {parsedDetails.fromAddress}
+                                        </p>
+                                      )}
+                                      {parsedDetails.toAddress && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Dropoff:
+                                          </span>{" "}
+                                          {parsedDetails.toAddress}
+                                        </p>
+                                      )}
+
+                                      {/* Distance */}
+                                      {parsedDetails.distance && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Distance:
+                                          </span>{" "}
+                                          {parsedDetails.distance} km
+                                        </p>
+                                      )}
+
+                                      {/* Duration */}
+                                      {parsedDetails.duration && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Duration:
+                                          </span>{" "}
+                                          {parsedDetails.duration} minutes
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Handling Service Information */}
+                              {item.item_type === "handling" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing handling details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {/* Customer Information - Priority display */}
+                                      {parsedDetails.customerName && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Customer:
+                                          </span>{" "}
+                                          {parsedDetails.customerName}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customerEmail && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Email:
+                                          </span>{" "}
+                                          {parsedDetails.customerEmail}
+                                        </p>
+                                      )}
+                                      {parsedDetails.customerPhone && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Phone:
+                                          </span>{" "}
+                                          {parsedDetails.customerPhone}
+                                        </p>
+                                      )}
+
+                                      {/* Category */}
+                                      {parsedDetails.category && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Category:
+                                          </span>{" "}
+                                          {parsedDetails.category}
+                                        </p>
+                                      )}
+
+                                      {/* Passengers - Only show for Group categories */}
+                                      {parsedDetails.passengers &&
+                                        parsedDetails.category &&
+                                        parsedDetails.category.includes(
+                                          "Group",
+                                        ) && (
+                                          <p className="text-sm text-gray-600">
+                                            <span className="font-medium">
+                                              Passengers:
+                                            </span>{" "}
+                                            {parsedDetails.passengers} orang
+                                          </p>
+                                        )}
+
+                                      {/* Pickup Date */}
+                                      {parsedDetails.pickupDate && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.pickupDate,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+
+                                      {/* Pickup Time */}
+                                      {parsedDetails.pickupTime && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickupTime}
+                                        </p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+
+                              {/* Car Rental Information */}
+                              {item.item_type === "car" &&
+                                item.details &&
+                                (() => {
+                                  // Parse details if it's a JSON string, otherwise use as object
+                                  let parsedDetails = item.details;
+                                  if (typeof item.details === "string") {
+                                    try {
+                                      parsedDetails = JSON.parse(item.details);
+                                    } catch (error) {
+                                      console.error(
+                                        "Error parsing car details JSON:",
+                                        error,
+                                      );
+                                      parsedDetails = item.details;
+                                    }
+                                  }
+
+                                  return (
+                                    <div className="mt-3 space-y-1">
+                                      {parsedDetails.start_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.start_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.end_date && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Return Date:
+                                          </span>{" "}
+                                          {new Date(
+                                            parsedDetails.end_date,
+                                          ).toLocaleDateString("en-US", {
+                                            weekday: "short",
+                                            year: "numeric",
+                                            month: "short",
+                                            day: "numeric",
+                                          })}
+                                        </p>
+                                      )}
+                                      {parsedDetails.pickup_time && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Pickup Time:
+                                          </span>{" "}
+                                          {parsedDetails.pickup_time}
+                                        </p>
+                                      )}
+                                      {parsedDetails.driver_option && (
+                                        <p className="text-sm text-gray-600">
+                                          <span className="font-medium">
+                                            Driver Option:
+                                          </span>{" "}
+                                          {parsedDetails.driver_option ===
+                                          "self"
+                                            ? "Self-drive"
+                                            : "With Driver"}
+                                        </p>
+                                      )}
+                                      <Badge
+                                        variant="outline"
+                                        className="text-xs"
+                                      >
+                                        Booking ID: {item.item_id}
+                                      </Badge>
+                                    </div>
+                                  );
+                                })()}
+
+                              <p className="text-2xl font-semibold text-primary mt-2">
+                                {formatCurrency(item.price)}
+                              </p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleRemoveItem(item.id)}
+                              disabled={!isAuthenticated || !userId}
+                            >
+                              <Trash2 className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex justify-between items-center text-xl font-semibold bg-gray-50 p-4 rounded-lg">
+                    <span>Total:</span>
+                    <span className="text-primary">
+                      {formatCurrency(totalAmount)}
+                    </span>
+                  </div>
+                </>
+              ) : isLoading && !forceShowContent ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin" />
                   <span className="ml-3 text-lg">Loading cart...</span>
+                  {showReloadButton && (
+                    <Button
+                      onClick={async () => {
+                        console.log("[ShoppingCart] Inline reload triggered");
+                        setShowReloadButton(false);
+                        try {
+                          await refetchCartData();
+                        } catch (error) {
+                          console.error(
+                            "[ShoppingCart] Inline reload failed:",
+                            error,
+                          );
+                          setForceShowContent(true);
+                        }
+                      }}
+                      variant="outline"
+                      className="ml-4"
+                    >
+                      Reload
+                    </Button>
+                  )}
                 </div>
-              ) : cartItems.length === 0 ? (
+              ) : (
                 <div className="text-center py-12">
                   <CartIcon className="h-16 w-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
                   <p className="text-xl font-medium text-muted-foreground mb-2">
@@ -490,152 +1201,6 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
                     </div>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <div className="space-y-4">
-                    {cartItems.map((item) => (
-                      <Card key={item.id} className="p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-3">
-                              <Badge variant="outline">
-                                {getItemTypeLabel(item.item_type)}
-                              </Badge>
-                            </div>
-                            <h3 className="font-medium text-lg">
-                              {item.service_name}
-                            </h3>
-
-                            {/* Duration and Date Information */}
-                            {item.item_type === "baggage" && item.details && (
-                              <div className="mt-3 space-y-1">
-                                {item.service_name ===
-                                  "Baggage Storage - Electronic" &&
-                                  item.details.item_name && (
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-medium">
-                                        Item Name:
-                                      </span>{" "}
-                                      {item.details.item_name}
-                                    </p>
-                                  )}
-                                {item.details.duration && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Duration:
-                                    </span>{" "}
-                                    {item.details.duration}{" "}
-                                    {item.details.duration_type === "days"
-                                      ? "day(s)"
-                                      : "hour(s)"}
-                                  </p>
-                                )}
-                                {item.details.start_date && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Start Date:
-                                    </span>{" "}
-                                    {new Date(
-                                      item.details.start_date,
-                                    ).toLocaleString("en-US")}
-                                  </p>
-                                )}
-                                {item.details.duration_type === "days" &&
-                                  item.details.end_date && (
-                                    <p className="text-sm text-gray-600">
-                                      <span className="font-medium">
-                                        End Date:
-                                      </span>{" "}
-                                      {new Date(
-                                        item.details.end_date,
-                                      ).toLocaleString("en-US")}
-                                    </p>
-                                  )}
-                              </div>
-                            )}
-
-                            {/* Car Rental Information */}
-                            {item.item_type === "car" && item.details && (
-                              <div className="mt-3 space-y-1">
-                                {item.details.start_date && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Pickup Date:
-                                    </span>{" "}
-                                    {new Date(
-                                      item.details.start_date,
-                                    ).toLocaleDateString("en-US")}
-                                  </p>
-                                )}
-                                {item.details.end_date && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Return Date:
-                                    </span>{" "}
-                                    {new Date(
-                                      item.details.end_date,
-                                    ).toLocaleDateString("en-US")}
-                                  </p>
-                                )}
-                                {item.details.pickup_time && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Pickup Time:
-                                    </span>{" "}
-                                    {item.details.pickup_time}
-                                  </p>
-                                )}
-                                {item.details.driver_option && (
-                                  <p className="text-sm text-gray-600">
-                                    <span className="font-medium">
-                                      Driver Option:
-                                    </span>{" "}
-                                    {item.details.driver_option === "self"
-                                      ? "Self-drive"
-                                      : "With Driver"}
-                                  </p>
-                                )}
-                                <Badge variant="outline" className="text-xs">
-                                  Booking ID: {item.item_id}
-                                </Badge>
-                              </div>
-                            )}
-
-                            <p className="text-2xl font-semibold text-primary mt-2">
-                              {formatCurrency(item.price)}
-                            </p>
-                            {item.created_at && (
-                              <p className="text-sm text-muted-foreground mt-2">
-                                Added:{" "}
-                                {new Date(item.created_at).toLocaleString(
-                                  "en-US",
-                                )}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => handleRemoveItem(item.id)}
-                            disabled={isLoading}
-                          >
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex justify-between items-center text-xl font-semibold bg-gray-50 p-4 rounded-lg">
-                    <span>Total:</span>
-                    <span className="text-primary">
-                      {formatCurrency(totalAmount)}
-                    </span>
-                  </div>
-                </>
               )}
             </div>
 
@@ -643,256 +1208,31 @@ const ShoppingCart: React.FC<ShoppingCartProps> = () => {
               <Button
                 variant="outline"
                 onClick={handleClearCart}
-                disabled={cartItems.length === 0 || isLoading}
+                disabled={cartItems.length === 0 || !isAuthenticated || !userId}
                 className="w-full sm:w-auto"
               >
                 Clear Cart
               </Button>
-              <Button
-                onClick={handleCheckout}
-                disabled={cartItems.length === 0 || isLoading}
-                className="w-full sm:w-auto"
-              >
-                Checkout ({formatCurrency(totalAmount)})
-              </Button>
+              {isAuthenticated && userId ? (
+                <Button
+                  onClick={() => navigate("/checkout")}
+                  disabled={cartItems.length === 0}
+                  className="w-full sm:w-auto"
+                >
+                  Checkout ({formatCurrency(totalAmount)})
+                </Button>
+              ) : (
+                <Button
+                  disabled
+                  className="w-full sm:w-auto bg-gray-300 text-gray-600 cursor-not-allowed"
+                >
+                  Please Sign in to Checkout
+                </Button>
+              )}
             </div>
           </div>
         </div>
       </div>
-
-      {/* Checkout Section */}
-      {showCheckout && (
-        <div className="mt-8">
-          <div className="bg-white rounded-lg shadow-sm border p-6">
-            <div className="text-center mb-6">
-              <h2 className="text-xl font-semibold">Checkout</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Complete customer information and select payment method
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {/* Customer Information */}
-              <div className="text-center">
-                <h3 className="font-medium mb-4">Customer Information</h3>
-                <div className="max-w-md mx-auto space-y-4">
-                  <div className="text-left">
-                    <Label htmlFor="customer-name" className="block mb-2">
-                      Full Name
-                    </Label>
-                    <Input
-                      id="customer-name"
-                      value={customerData.name}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          name: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter full name"
-                      disabled={isAuthenticated && !!userName}
-                      className={
-                        isAuthenticated && !!userName
-                          ? "bg-gray-100 cursor-not-allowed"
-                          : ""
-                      }
-                    />
-                  </div>
-                  <div className="text-left">
-                    <Label htmlFor="customer-email" className="block mb-2">
-                      Email
-                    </Label>
-                    <Input
-                      id="customer-email"
-                      type="email"
-                      value={customerData.email}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          email: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter email"
-                      disabled={isAuthenticated && !!userEmail}
-                      className={
-                        isAuthenticated && !!userEmail
-                          ? "bg-gray-100 cursor-not-allowed"
-                          : ""
-                      }
-                    />
-                  </div>
-                  <div className="text-left">
-                    <Label htmlFor="customer-phone" className="block mb-2">
-                      Phone Number
-                    </Label>
-                    <Input
-                      id="customer-phone"
-                      value={customerData.phone}
-                      onChange={(e) =>
-                        setCustomerData((prev) => ({
-                          ...prev,
-                          phone: e.target.value,
-                        }))
-                      }
-                      placeholder="Enter phone number"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Order Summary */}
-              <div className="max-w-md mx-auto">
-                <div className="bg-muted p-4 rounded-lg text-center">
-                  <h3 className="font-medium mb-3">Order Summary</h3>
-                  <div className="space-y-2 text-sm">
-                    {cartItems.map((item) => (
-                      <div key={item.id} className="flex justify-between">
-                        <span>{item.service_name}</span>
-                        <span>{formatCurrency(item.price)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <Separator className="my-3" />
-                  <div className="flex justify-between font-semibold text-base">
-                    <span>Total:</span>
-                    <span>{formatCurrency(totalAmount)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Methods */}
-              <div className="text-center">
-                <h3 className="font-medium mb-4">Payment Method</h3>
-                <div className="max-w-md mx-auto">
-                  <div className="grid grid-cols-2 gap-3">
-                    {paymentMethods.map((method) => {
-                      const Icon = method.icon;
-                      return (
-                        <Button
-                          key={method.id}
-                          variant={
-                            selectedPaymentMethod === method.id
-                              ? "default"
-                              : "outline"
-                          }
-                          className="h-auto p-3 flex flex-col items-center gap-2"
-                          onClick={() => {
-                            setSelectedPaymentMethod(method.id);
-                            setSelectedBank(null); // Reset selected bank
-                          }}
-                        >
-                          <Icon className="h-5 w-5" />
-                          <span className="text-xs">{method.name}</span>
-                        </Button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Bank Selection for Bank Transfer */}
-                  {selectedPaymentMethod === "bank_transfer" && (
-                    <div className="border rounded-lg p-4 mt-4 text-left">
-                      <h4 className="font-medium mb-3 text-center">
-                        Select Bank
-                      </h4>
-                      {manualBanks.length > 0 ? (
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                          {manualBanks.map((bank) => (
-                            <div
-                              key={bank.id}
-                              className={`p-3 border rounded-md cursor-pointer transition-colors ${
-                                selectedBank?.id === bank.id
-                                  ? "border-blue-500 bg-blue-50"
-                                  : "hover:bg-gray-50"
-                              }`}
-                              onClick={() => setSelectedBank(bank)}
-                            >
-                              <div className="font-medium">{bank.name}</div>
-                              {selectedBank?.id === bank.id && (
-                                <div className="mt-2 text-sm space-y-1">
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Holder:
-                                    </span>{" "}
-                                    {bank.account_holder}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">
-                                      Account Number:
-                                    </span>{" "}
-                                    {bank.account_number}
-                                  </div>
-                                  {bank.swift_code && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Swift Code:
-                                      </span>{" "}
-                                      {bank.swift_code}
-                                    </div>
-                                  )}
-                                  {bank.branch && (
-                                    <div>
-                                      <span className="font-medium">
-                                        Branch:
-                                      </span>{" "}
-                                      {bank.branch}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          No bank accounts found. Please contact support.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-center gap-4 mt-8 pt-6 border-t">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCheckout(false);
-                  setSelectedPaymentMethod("");
-                  setSelectedBank(null);
-                  setCustomerData({ name: "", email: "", phone: "" });
-                }}
-                disabled={isProcessingPayment}
-                className="px-8"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handlePayment}
-                disabled={
-                  !customerData.name ||
-                  !customerData.email ||
-                  !customerData.phone ||
-                  !selectedPaymentMethod ||
-                  (selectedPaymentMethod === "bank_transfer" &&
-                    !selectedBank) ||
-                  isProcessingPayment
-                }
-                className="px-8"
-              >
-                {isProcessingPayment ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Processing...
-                  </>
-                ) : (
-                  `Pay ${formatCurrency(totalAmount)}`
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instanciate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "12.2.3 (519615d)"
+  }
   public: {
     Tables: {
       accounts: {
@@ -57,10 +62,104 @@ export type Database = {
         }
         Relationships: []
       }
+      airport_handling: {
+        Row: {
+          base_price: number
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          location: string
+          sales_fee: number
+          selling_price: number
+          service_name: string
+          service_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          base_price?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          location: string
+          sales_fee?: number
+          selling_price?: number
+          service_name: string
+          service_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          base_price?: number
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          location?: string
+          sales_fee?: number
+          selling_price?: number
+          service_name?: string
+          service_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      airport_handling_services: {
+        Row: {
+          additional: number
+          additional_basic_price: number
+          airport: string | null
+          basic_price: number
+          category: string
+          created_at: string | null
+          id: number
+          sell_price: number
+          service_type: string
+          services_arrival: string
+          services_departure: string
+          terminal: string
+          trip_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          additional: number
+          additional_basic_price?: number
+          airport?: string | null
+          basic_price: number
+          category: string
+          created_at?: string | null
+          id?: number
+          sell_price: number
+          service_type: string
+          services_arrival: string
+          services_departure: string
+          terminal: string
+          trip_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          additional?: number
+          additional_basic_price?: number
+          airport?: string | null
+          basic_price?: number
+          category?: string
+          created_at?: string | null
+          id?: number
+          sell_price?: number
+          service_type?: string
+          services_arrival?: string
+          services_departure?: string
+          terminal?: string
+          trip_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       airport_transfer: {
         Row: {
           airport_location: string | null
           booking_code: string | null
+          booking_uuid: string | null
           created_at: string
           customer_id: string | null
           customer_name: string | null
@@ -69,8 +168,8 @@ export type Database = {
           driver_name: string | null
           dropoff_location: string | null
           duration: string | null
-          fromLocation: Json | null
-          id: number
+          from_location: Json | null
+          id: string
           id_driver: number | null
           license_plate: string | null
           make: string | null
@@ -83,13 +182,14 @@ export type Database = {
           pickup_time: string | null
           price: number | null
           status: Database["public"]["Enums"]["transfer_status"] | null
-          toLocation: Json | null
+          to_location: Json | null
           type: string | null
           vehicle_name: string | null
         }
         Insert: {
           airport_location?: string | null
           booking_code?: string | null
+          booking_uuid?: string | null
           created_at?: string
           customer_id?: string | null
           customer_name?: string | null
@@ -98,8 +198,8 @@ export type Database = {
           driver_name?: string | null
           dropoff_location?: string | null
           duration?: string | null
-          fromLocation?: Json | null
-          id?: number
+          from_location?: Json | null
+          id: string
           id_driver?: number | null
           license_plate?: string | null
           make?: string | null
@@ -112,13 +212,14 @@ export type Database = {
           pickup_time?: string | null
           price?: number | null
           status?: Database["public"]["Enums"]["transfer_status"] | null
-          toLocation?: Json | null
+          to_location?: Json | null
           type?: string | null
           vehicle_name?: string | null
         }
         Update: {
           airport_location?: string | null
           booking_code?: string | null
+          booking_uuid?: string | null
           created_at?: string
           customer_id?: string | null
           customer_name?: string | null
@@ -127,8 +228,8 @@ export type Database = {
           driver_name?: string | null
           dropoff_location?: string | null
           duration?: string | null
-          fromLocation?: Json | null
-          id?: number
+          from_location?: Json | null
+          id?: string
           id_driver?: number | null
           license_plate?: string | null
           make?: string | null
@@ -141,7 +242,7 @@ export type Database = {
           pickup_time?: string | null
           price?: number | null
           status?: Database["public"]["Enums"]["transfer_status"] | null
-          toLocation?: Json | null
+          to_location?: Json | null
           type?: string | null
           vehicle_name?: string | null
         }
@@ -180,68 +281,7 @@ export type Database = {
           status?: string | null
           transfer_id?: number
         }
-        Relationships: [
-          {
-            foreignKeyName: "fk_transfer_id"
-            columns: ["transfer_id"]
-            isOneToOne: false
-            referencedRelation: "airport_transfer"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      airport_transfer_payments: {
-        Row: {
-          airport_transfer_id: number
-          amount: number
-          bank_name: string | null
-          created_at: string | null
-          id: string
-          is_partial_payment: boolean | null
-          payment_method: string
-          status: string | null
-          status_payment: string
-          transaction_id: string | null
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          airport_transfer_id: number
-          amount: number
-          bank_name?: string | null
-          created_at?: string | null
-          id?: string
-          is_partial_payment?: boolean | null
-          payment_method: string
-          status?: string | null
-          status_payment?: string
-          transaction_id?: string | null
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          airport_transfer_id?: number
-          amount?: number
-          bank_name?: string | null
-          created_at?: string | null
-          id?: string
-          is_partial_payment?: boolean | null
-          payment_method?: string
-          status?: string | null
-          status_payment?: string
-          transaction_id?: string | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "fk_airport_transfer"
-            columns: ["airport_transfer_id"]
-            isOneToOne: false
-            referencedRelation: "airport_transfer"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       api_settings: {
         Row: {
@@ -341,6 +381,8 @@ export type Database = {
           hours: number | null
           id: string
           item_name: string | null
+          payment_id: string | null
+          payment_method: string | null
           price: number
           start_date: string
           start_time: string | null
@@ -366,6 +408,8 @@ export type Database = {
           hours?: number | null
           id?: string
           item_name?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
           price: number
           start_date: string
           start_time?: string | null
@@ -391,6 +435,8 @@ export type Database = {
           hours?: number | null
           id?: string
           item_name?: string | null
+          payment_id?: string | null
+          payment_method?: string | null
           price?: number
           start_date?: string
           start_time?: string | null
@@ -403,40 +449,43 @@ export type Database = {
       }
       baggage_price: {
         Row: {
-          created_at: string
-          electronic_price: number | null
-          extra_large_price: number | null
-          id: number
-          large_price: number | null
-          medium_price: number | null
-          small_price: number | null
-          stickgolf_price: number | null
-          surfingboard_price: number | null
-          wheelchair_price: number | null
+          created_at: string | null
+          electronic_price: number
+          extra_large_price: number
+          id: string
+          large_price: number
+          medium_price: number
+          small_price: number
+          stickgolf_price: number
+          surfingboard_price: number
+          updated_at: string | null
+          wheelchair_price: number
         }
         Insert: {
-          created_at?: string
-          electronic_price?: number | null
-          extra_large_price?: number | null
-          id: number
-          large_price?: number | null
-          medium_price?: number | null
-          small_price?: number | null
-          stickgolf_price?: number | null
-          surfingboard_price?: number | null
-          wheelchair_price?: number | null
+          created_at?: string | null
+          electronic_price?: number
+          extra_large_price?: number
+          id?: string
+          large_price?: number
+          medium_price?: number
+          small_price?: number
+          stickgolf_price?: number
+          surfingboard_price?: number
+          updated_at?: string | null
+          wheelchair_price?: number
         }
         Update: {
-          created_at?: string
-          electronic_price?: number | null
-          extra_large_price?: number | null
-          id?: number
-          large_price?: number | null
-          medium_price?: number | null
-          small_price?: number | null
-          stickgolf_price?: number | null
-          surfingboard_price?: number | null
-          wheelchair_price?: number | null
+          created_at?: string | null
+          electronic_price?: number
+          extra_large_price?: number
+          id?: string
+          large_price?: number
+          medium_price?: number
+          small_price?: number
+          stickgolf_price?: number
+          surfingboard_price?: number
+          updated_at?: string | null
+          wheelchair_price?: number
         }
         Relationships: []
       }
@@ -556,6 +605,7 @@ export type Database = {
           overdue: number | null
           paid_amount: number | null
           partner_id: string | null
+          payment_id: string | null
           payment_method: string | null
           payment_status: string | null
           pickup_time: string | null
@@ -599,6 +649,7 @@ export type Database = {
           overdue?: number | null
           paid_amount?: number | null
           partner_id?: string | null
+          payment_id?: string | null
           payment_method?: string | null
           payment_status?: string | null
           pickup_time?: string | null
@@ -642,6 +693,7 @@ export type Database = {
           overdue?: number | null
           paid_amount?: number | null
           partner_id?: string | null
+          payment_id?: string | null
           payment_method?: string | null
           payment_status?: string | null
           pickup_time?: string | null
@@ -680,258 +732,126 @@ export type Database = {
           },
         ]
       }
-      bookings_backup_step2: {
-        Row: {
-          amount: number | null
-          bank_account: string | null
-          booking_date: string | null
-          created_at: string | null
-          customer_id: string | null
-          DATE_PART: number | null
-          discount_percent: number | null
-          driver_id: string | null
-          driver_name: string | null
-          driver_option: string | null
-          duration: number | null
-          end_date: string | null
-          id: string | null
-          kode_booking: string | null
-          license_plate: string | null
-          make: string | null
-          model: string | null
-          notes: string | null
-          overdue: number | null
-          paid_amount: number | null
-          payment_method: string | null
-          payment_status: string | null
-          pickup_time: string | null
-          plate_number: string | null
-          remaining_payments: number | null
-          return_time: string | null
-          role_id: number | null
-          role_name: string | null
-          start_date: string | null
-          start_time: string | null
-          status: string | null
-          total_amount: number | null
-          transaction_id: string | null
-          user_id: string | null
-          vehicle_id: string | null
-          vehicle_name: string | null
-          vehicle_type: string | null
-          with_driver: boolean | null
-        }
-        Insert: {
-          amount?: number | null
-          bank_account?: string | null
-          booking_date?: string | null
-          created_at?: string | null
-          customer_id?: string | null
-          DATE_PART?: number | null
-          discount_percent?: number | null
-          driver_id?: string | null
-          driver_name?: string | null
-          driver_option?: string | null
-          duration?: number | null
-          end_date?: string | null
-          id?: string | null
-          kode_booking?: string | null
-          license_plate?: string | null
-          make?: string | null
-          model?: string | null
-          notes?: string | null
-          overdue?: number | null
-          paid_amount?: number | null
-          payment_method?: string | null
-          payment_status?: string | null
-          pickup_time?: string | null
-          plate_number?: string | null
-          remaining_payments?: number | null
-          return_time?: string | null
-          role_id?: number | null
-          role_name?: string | null
-          start_date?: string | null
-          start_time?: string | null
-          status?: string | null
-          total_amount?: number | null
-          transaction_id?: string | null
-          user_id?: string | null
-          vehicle_id?: string | null
-          vehicle_name?: string | null
-          vehicle_type?: string | null
-          with_driver?: boolean | null
-        }
-        Update: {
-          amount?: number | null
-          bank_account?: string | null
-          booking_date?: string | null
-          created_at?: string | null
-          customer_id?: string | null
-          DATE_PART?: number | null
-          discount_percent?: number | null
-          driver_id?: string | null
-          driver_name?: string | null
-          driver_option?: string | null
-          duration?: number | null
-          end_date?: string | null
-          id?: string | null
-          kode_booking?: string | null
-          license_plate?: string | null
-          make?: string | null
-          model?: string | null
-          notes?: string | null
-          overdue?: number | null
-          paid_amount?: number | null
-          payment_method?: string | null
-          payment_status?: string | null
-          pickup_time?: string | null
-          plate_number?: string | null
-          remaining_payments?: number | null
-          return_time?: string | null
-          role_id?: number | null
-          role_name?: string | null
-          start_date?: string | null
-          start_time?: string | null
-          status?: string | null
-          total_amount?: number | null
-          transaction_id?: string | null
-          user_id?: string | null
-          vehicle_id?: string | null
-          vehicle_name?: string | null
-          vehicle_type?: string | null
-          with_driver?: boolean | null
-        }
-        Relationships: []
-      }
       bookings_trips: {
         Row: {
+          additional_data: string | null
           bank_account: string | null
           created_at: string
-          detail_layanan: string | null
           driver_name: string | null
-          durasi: number | null
           fee_sales: number | null
           harga_basic: number | null
           harga_jual: number | null
           id: string
+          jam_checkin: string | null
+          jam_checkout: string | null
           jenis_kendaraan: string | null
-          jenis_layanan: string | null
-          jumlah: number | null
           jumlah_hari: number | null
           jumlah_kamar: number | null
           jumlah_malam: number | null
-          jumlah_penumpang: string | null
+          kelebihan_bagasi: number | null
           keterangan: string | null
           kode_booking: string | null
+          kode_transaksi: string | null
           license_plate: string | null
           lokasi: string | null
           lokasi_hotel: string | null
-          maskapai: string | null
-          nama_hotel: string | null
-          nama_layanan: string | null
+          nama_penumpang: string | null
+          no_telepon: number | null
           nomor_plat: string | null
-          passenger_name: string | null
           payment_method: string | null
+          price: number | null
           profit: number | null
           quantity: number | null
-          rute_penerbangan: string | null
+          service_details: string | null
+          service_name: string | null
           service_type: string | null
           status: string | null
           tanggal: string | null
           tanggal_checkin: string | null
           tanggal_checkout: string | null
-          tanggal_mulai: string | null
-          tanggal_selesai: string | null
-          terminal: string | null
-          total_harga: number | null
+          total_amount: number | null
           tujuan: string | null
           type_unit: string | null
           user_id: string | null
         }
         Insert: {
+          additional_data?: string | null
           bank_account?: string | null
           created_at?: string
-          detail_layanan?: string | null
           driver_name?: string | null
-          durasi?: number | null
           fee_sales?: number | null
           harga_basic?: number | null
           harga_jual?: number | null
           id?: string
+          jam_checkin?: string | null
+          jam_checkout?: string | null
           jenis_kendaraan?: string | null
-          jenis_layanan?: string | null
-          jumlah?: number | null
           jumlah_hari?: number | null
           jumlah_kamar?: number | null
           jumlah_malam?: number | null
-          jumlah_penumpang?: string | null
+          kelebihan_bagasi?: number | null
           keterangan?: string | null
           kode_booking?: string | null
+          kode_transaksi?: string | null
           license_plate?: string | null
           lokasi?: string | null
           lokasi_hotel?: string | null
-          maskapai?: string | null
-          nama_hotel?: string | null
-          nama_layanan?: string | null
+          nama_penumpang?: string | null
+          no_telepon?: number | null
           nomor_plat?: string | null
-          passenger_name?: string | null
           payment_method?: string | null
+          price?: number | null
           profit?: number | null
           quantity?: number | null
-          rute_penerbangan?: string | null
+          service_details?: string | null
+          service_name?: string | null
           service_type?: string | null
           status?: string | null
           tanggal?: string | null
           tanggal_checkin?: string | null
           tanggal_checkout?: string | null
-          tanggal_mulai?: string | null
-          tanggal_selesai?: string | null
-          terminal?: string | null
-          total_harga?: number | null
+          total_amount?: number | null
           tujuan?: string | null
           type_unit?: string | null
           user_id?: string | null
         }
         Update: {
+          additional_data?: string | null
           bank_account?: string | null
           created_at?: string
-          detail_layanan?: string | null
           driver_name?: string | null
-          durasi?: number | null
           fee_sales?: number | null
           harga_basic?: number | null
           harga_jual?: number | null
           id?: string
+          jam_checkin?: string | null
+          jam_checkout?: string | null
           jenis_kendaraan?: string | null
-          jenis_layanan?: string | null
-          jumlah?: number | null
           jumlah_hari?: number | null
           jumlah_kamar?: number | null
           jumlah_malam?: number | null
-          jumlah_penumpang?: string | null
+          kelebihan_bagasi?: number | null
           keterangan?: string | null
           kode_booking?: string | null
+          kode_transaksi?: string | null
           license_plate?: string | null
           lokasi?: string | null
           lokasi_hotel?: string | null
-          maskapai?: string | null
-          nama_hotel?: string | null
-          nama_layanan?: string | null
+          nama_penumpang?: string | null
+          no_telepon?: number | null
           nomor_plat?: string | null
-          passenger_name?: string | null
           payment_method?: string | null
+          price?: number | null
           profit?: number | null
           quantity?: number | null
-          rute_penerbangan?: string | null
+          service_details?: string | null
+          service_name?: string | null
           service_type?: string | null
           status?: string | null
           tanggal?: string | null
           tanggal_checkin?: string | null
           tanggal_checkout?: string | null
-          tanggal_mulai?: string | null
-          tanggal_selesai?: string | null
-          terminal?: string | null
-          total_harga?: number | null
+          total_amount?: number | null
           tujuan?: string | null
           type_unit?: string | null
           user_id?: string | null
@@ -1109,57 +1029,6 @@ export type Database = {
         }
         Relationships: []
       }
-      coa: {
-        Row: {
-          code: string
-          company_id: string | null
-          created_at: string | null
-          id: string
-          is_group: boolean | null
-          is_service: boolean | null
-          name: string
-          parent_id: string | null
-          type: string
-        }
-        Insert: {
-          code: string
-          company_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_group?: boolean | null
-          is_service?: boolean | null
-          name: string
-          parent_id?: string | null
-          type: string
-        }
-        Update: {
-          code?: string
-          company_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_group?: boolean | null
-          is_service?: boolean | null
-          name?: string
-          parent_id?: string | null
-          type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "coa_company_id_fkey"
-            columns: ["company_id"]
-            isOneToOne: false
-            referencedRelation: "companies"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "coa_parent_id_fkey"
-            columns: ["parent_id"]
-            isOneToOne: false
-            referencedRelation: "coa"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       companies: {
         Row: {
           address: string | null
@@ -1287,34 +1156,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "damages_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "damages_payment_id_fkey"
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "damages_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
+          },
         ]
-      }
-      debug_log: {
-        Row: {
-          data: Json | null
-          id: number
-          message: string | null
-          timestamp: string | null
-        }
-        Insert: {
-          data?: Json | null
-          id?: number
-          message?: string | null
-          timestamp?: string | null
-        }
-        Update: {
-          data?: Json | null
-          id?: number
-          message?: string | null
-          timestamp?: string | null
-        }
-        Relationships: []
       }
       divisions: {
         Row: {
@@ -1345,6 +1207,7 @@ export type Database = {
       }
       drivers: {
         Row: {
+          account_status: string | null
           address: string | null
           agama: string | null
           alamat: string | null
@@ -1358,6 +1221,7 @@ export type Database = {
           discount_percent: number | null
           driver_status: string | null
           driver_type: string | null
+          drivers_seats: string | null
           education: string | null
           email: string | null
           emergency_contact: string | null
@@ -1418,6 +1282,7 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          account_status?: string | null
           address?: string | null
           agama?: string | null
           alamat?: string | null
@@ -1431,6 +1296,7 @@ export type Database = {
           discount_percent?: number | null
           driver_status?: string | null
           driver_type?: string | null
+          drivers_seats?: string | null
           education?: string | null
           email?: string | null
           emergency_contact?: string | null
@@ -1491,6 +1357,7 @@ export type Database = {
           year?: number | null
         }
         Update: {
+          account_status?: string | null
           address?: string | null
           agama?: string | null
           alamat?: string | null
@@ -1504,6 +1371,7 @@ export type Database = {
           discount_percent?: number | null
           driver_status?: string | null
           driver_type?: string | null
+          drivers_seats?: string | null
           education?: string | null
           email?: string | null
           emergency_contact?: string | null
@@ -2131,7 +1999,9 @@ export type Database = {
           id: string
           is_manual_entry: string | null
           journal_entry_id: string | null
+          journal_entry_item_id: string | null
           manual_entry: boolean | null
+          normal_balance: string | null
           payment_id: string | null
           period_month: string | null
           reference_number: string | null
@@ -2156,7 +2026,9 @@ export type Database = {
           id?: string
           is_manual_entry?: string | null
           journal_entry_id?: string | null
+          journal_entry_item_id?: string | null
           manual_entry?: boolean | null
+          normal_balance?: string | null
           payment_id?: string | null
           period_month?: string | null
           reference_number?: string | null
@@ -2181,7 +2053,9 @@ export type Database = {
           id?: string
           is_manual_entry?: string | null
           journal_entry_id?: string | null
+          journal_entry_item_id?: string | null
           manual_entry?: boolean | null
+          normal_balance?: string | null
           payment_id?: string | null
           period_month?: string | null
           reference_number?: string | null
@@ -2192,6 +2066,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items_with_ledger"
+            referencedColumns: ["journal_entry_item_id"]
+          },
           {
             foreignKeyName: "general_ledger_account_id_fkey"
             columns: ["account_id"]
@@ -2206,7 +2094,35 @@ export type Database = {
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
         ]
+      }
+      general_ledger_changes: {
+        Row: {
+          affected_period_end: string
+          affected_period_start: string
+          created_at: string | null
+          id: string
+        }
+        Insert: {
+          affected_period_end: string
+          affected_period_start: string
+          created_at?: string | null
+          id?: string
+        }
+        Update: {
+          affected_period_end?: string
+          affected_period_start?: string
+          created_at?: string | null
+          id?: string
+        }
+        Relationships: []
       }
       geofence_locations: {
         Row: {
@@ -2254,6 +2170,90 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      handling_bookings: {
+        Row: {
+          additional_notes: string | null
+          booking_id: string | null
+          category: string
+          category_price: number | null
+          created_at: string | null
+          customer_email: string
+          customer_id: string | null
+          customer_name: string
+          customer_phone: string
+          flight_number: string
+          id: string
+          passenger_area: string
+          passengers: number | null
+          payment_id: string | null
+          payment_method: string | null
+          pickup_area: string
+          pickup_date: string
+          pickup_time: string
+          price: string | null
+          service_price: number | null
+          status: string | null
+          total_price: number
+          travel_type: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          additional_notes?: string | null
+          booking_id?: string | null
+          category: string
+          category_price?: number | null
+          created_at?: string | null
+          customer_email: string
+          customer_id?: string | null
+          customer_name: string
+          customer_phone: string
+          flight_number: string
+          id?: string
+          passenger_area: string
+          passengers?: number | null
+          payment_id?: string | null
+          payment_method?: string | null
+          pickup_area: string
+          pickup_date: string
+          pickup_time?: string
+          price?: string | null
+          service_price?: number | null
+          status?: string | null
+          total_price: number
+          travel_type?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          additional_notes?: string | null
+          booking_id?: string | null
+          category?: string
+          category_price?: number | null
+          created_at?: string | null
+          customer_email?: string
+          customer_id?: string | null
+          customer_name?: string
+          customer_phone?: string
+          flight_number?: string
+          id?: string
+          passenger_area?: string
+          passengers?: number | null
+          payment_id?: string | null
+          payment_method?: string | null
+          pickup_area?: string
+          pickup_date?: string
+          pickup_time?: string
+          price?: string | null
+          service_price?: number | null
+          status?: string | null
+          total_price?: number
+          travel_type?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       hrd: {
         Row: {
@@ -2642,6 +2642,7 @@ export type Database = {
         Row: {
           account_code: string | null
           account_id: string | null
+          account_name: string | null
           amount: number | null
           balance_total: number | null
           booking_id: string | null
@@ -2654,12 +2655,15 @@ export type Database = {
           entry_date: string | null
           entry_type: string
           id: string
+          journal_entry_id: string | null
           jurnal_id: string | null
           payment_id: string | null
           reference_id: string | null
           reference_number: string | null
           source_table: string | null
+          status: string | null
           total_amount: number | null
+          total_credit: number | null
           total_debit: number | null
           transaction_date: string | null
           updated_at: string
@@ -2667,6 +2671,7 @@ export type Database = {
         Insert: {
           account_code?: string | null
           account_id?: string | null
+          account_name?: string | null
           amount?: number | null
           balance_total?: number | null
           booking_id?: string | null
@@ -2679,12 +2684,15 @@ export type Database = {
           entry_date?: string | null
           entry_type: string
           id?: string
+          journal_entry_id?: string | null
           jurnal_id?: string | null
           payment_id?: string | null
           reference_id?: string | null
           reference_number?: string | null
           source_table?: string | null
+          status?: string | null
           total_amount?: number | null
+          total_credit?: number | null
           total_debit?: number | null
           transaction_date?: string | null
           updated_at?: string
@@ -2692,6 +2700,7 @@ export type Database = {
         Update: {
           account_code?: string | null
           account_id?: string | null
+          account_name?: string | null
           amount?: number | null
           balance_total?: number | null
           booking_id?: string | null
@@ -2704,52 +2713,56 @@ export type Database = {
           entry_date?: string | null
           entry_type?: string
           id?: string
+          journal_entry_id?: string | null
           jurnal_id?: string | null
           payment_id?: string | null
           reference_id?: string | null
           reference_number?: string | null
           source_table?: string | null
+          status?: string | null
           total_amount?: number | null
+          total_credit?: number | null
           total_debit?: number | null
           transaction_date?: string | null
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "journal_entries_jurnal_id_fkey"
-            columns: ["jurnal_id"]
-            isOneToOne: false
-            referencedRelation: "jurnal"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       journal_entry_items: {
         Row: {
+          account_code: string | null
           account_id: string
           created_at: string
           credit: number | null
           debit: number | null
           id: string
+          item_created_at: string | null
           journal_entry_id: string
+          normal_balance: string | null
           updated_at: string
         }
         Insert: {
+          account_code?: string | null
           account_id: string
           created_at?: string
           credit?: number | null
           debit?: number | null
           id?: string
+          item_created_at?: string | null
           journal_entry_id: string
+          normal_balance?: string | null
           updated_at?: string
         }
         Update: {
+          account_code?: string | null
           account_id?: string
           created_at?: string
           credit?: number | null
           debit?: number | null
           id?: string
+          item_created_at?: string | null
           journal_entry_id?: string
+          normal_balance?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2767,81 +2780,53 @@ export type Database = {
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
         ]
       }
-      journal_entry_lines: {
+      journal_entry_status_changes: {
         Row: {
-          account_id: string
-          akun: string | null
-          amount: number | null
-          created_at: string | null
-          credit: number | null
-          debit: number | null
-          description: string | null
+          changed_at: string | null
           id: string
-          journal_entry_id: string
-          type: string | null
-          updated_at: string | null
+          journal_entry_id: string | null
+          new_status: string | null
+          old_status: string | null
         }
         Insert: {
-          account_id: string
-          akun?: string | null
-          amount?: number | null
-          created_at?: string | null
-          credit?: number | null
-          debit?: number | null
-          description?: string | null
+          changed_at?: string | null
           id?: string
-          journal_entry_id: string
-          type?: string | null
-          updated_at?: string | null
+          journal_entry_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
         }
         Update: {
-          account_id?: string
-          akun?: string | null
-          amount?: number | null
-          created_at?: string | null
-          credit?: number | null
-          debit?: number | null
-          description?: string | null
+          changed_at?: string | null
           id?: string
-          journal_entry_id?: string
-          type?: string | null
-          updated_at?: string | null
+          journal_entry_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "journal_entry_lines_journal_entry_id_fkey"
+            foreignKeyName: "journal_entry_status_changes_journal_entry_id_fkey"
             columns: ["journal_entry_id"]
             isOneToOne: false
             referencedRelation: "journal_entries"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "journal_entry_status_changes_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
         ]
-      }
-      jurnal: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          id: string
-          name: string
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          updated_at?: string | null
-        }
-        Relationships: []
       }
       leave_requests: {
         Row: {
@@ -2886,6 +2871,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ledger_summaries: {
+        Row: {
+          account_code: string
+          account_name: string
+          closing_balance: number | null
+          id: string
+          item_created_at: string | null
+          normal_balance: string | null
+          opening_balance: number | null
+          period: string
+          total_credit: number | null
+          total_debit: number | null
+        }
+        Insert: {
+          account_code: string
+          account_name: string
+          closing_balance?: number | null
+          id?: string
+          item_created_at?: string | null
+          normal_balance?: string | null
+          opening_balance?: number | null
+          period: string
+          total_credit?: number | null
+          total_debit?: number | null
+        }
+        Update: {
+          account_code?: string
+          account_name?: string
+          closing_balance?: number | null
+          id?: string
+          item_created_at?: string | null
+          normal_balance?: string | null
+          opening_balance?: number | null
+          period?: string
+          total_credit?: number | null
+          total_debit?: number | null
+        }
+        Relationships: []
       }
       modules: {
         Row: {
@@ -3005,6 +3029,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "notifications_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "notifications_driver_id_fkey"
             columns: ["driver_id"]
             isOneToOne: false
@@ -3017,6 +3048,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
           },
         ]
       }
@@ -3040,6 +3078,45 @@ export type Database = {
           npwp?: string | null
         }
         Relationships: []
+      }
+      payment_bookings: {
+        Row: {
+          booking_id: string
+          booking_type: string | null
+          created_at: string | null
+          id: string
+          payment_id: string | null
+        }
+        Insert: {
+          booking_id: string
+          booking_type?: string | null
+          created_at?: string | null
+          id?: string
+          payment_id?: string | null
+        }
+        Update: {
+          booking_id?: string
+          booking_type?: string | null
+          created_at?: string | null
+          id?: string
+          payment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_bookings_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_bookings_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
+          },
+        ]
       }
       payment_methods: {
         Row: {
@@ -3101,76 +3178,94 @@ export type Database = {
       payments: {
         Row: {
           amount: number | null
-          bank: string | null
+          bank_account_id: string | null
           bank_name: string | null
           booking_id: string | null
+          booking_ids: string | null
           created_at: string | null
           due_date: string | null
           id: string
           is_damage_payment: boolean | null
-          is_partial_payment: string | null
+          is_partial_payment: boolean | null
+          journal_entry_id: string | null
           kode_booking: string | null
           license_plate: string | null
           make: string | null
           model: string | null
+          no_telepon: number | null
+          notes: string | null
           paid_amount: number | null
-          payment_id: string | null
           payment_method: string | null
           payment_method_id: string | null
+          payment_status: string | null
           plate_number: string | null
           remaining_payments: number | null
           status: string | null
+          total_amount: number | null
           transaction_id: string | null
+          transaction_reference: string | null
           transfer_reference: number | null
           user_id: string | null
         }
         Insert: {
           amount?: number | null
-          bank?: string | null
+          bank_account_id?: string | null
           bank_name?: string | null
           booking_id?: string | null
+          booking_ids?: string | null
           created_at?: string | null
           due_date?: string | null
           id?: string
           is_damage_payment?: boolean | null
-          is_partial_payment?: string | null
+          is_partial_payment?: boolean | null
+          journal_entry_id?: string | null
           kode_booking?: string | null
           license_plate?: string | null
           make?: string | null
           model?: string | null
+          no_telepon?: number | null
+          notes?: string | null
           paid_amount?: number | null
-          payment_id?: string | null
           payment_method?: string | null
           payment_method_id?: string | null
+          payment_status?: string | null
           plate_number?: string | null
           remaining_payments?: number | null
           status?: string | null
+          total_amount?: number | null
           transaction_id?: string | null
+          transaction_reference?: string | null
           transfer_reference?: number | null
           user_id?: string | null
         }
         Update: {
           amount?: number | null
-          bank?: string | null
+          bank_account_id?: string | null
           bank_name?: string | null
           booking_id?: string | null
+          booking_ids?: string | null
           created_at?: string | null
           due_date?: string | null
           id?: string
           is_damage_payment?: boolean | null
-          is_partial_payment?: string | null
+          is_partial_payment?: boolean | null
+          journal_entry_id?: string | null
           kode_booking?: string | null
           license_plate?: string | null
           make?: string | null
           model?: string | null
+          no_telepon?: number | null
+          notes?: string | null
           paid_amount?: number | null
-          payment_id?: string | null
           payment_method?: string | null
           payment_method_id?: string | null
+          payment_status?: string | null
           plate_number?: string | null
           remaining_payments?: number | null
           status?: string | null
+          total_amount?: number | null
           transaction_id?: string | null
+          transaction_reference?: string | null
           transfer_reference?: number | null
           user_id?: string | null
         }
@@ -3181,6 +3276,27 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "bookings"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_booking"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
           },
         ]
       }
@@ -3289,6 +3405,13 @@ export type Database = {
             referencedRelation: "bookings"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "post_rental_inspections_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
         ]
       }
       price_km: {
@@ -3364,11 +3487,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_booking"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["booking_id"]
+          },
+          {
             foreignKeyName: "fk_remaining_to_payments"
             columns: ["payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_remaining_to_payments"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_with_journal_items"
+            referencedColumns: ["payment_id"]
           },
         ]
       }
@@ -3525,29 +3662,38 @@ export type Database = {
       shopping_cart: {
         Row: {
           created_at: string | null
+          details: string | null
           id: string
           item_id: string | null
           item_type: string | null
+          payment_status: string | null
           price: number | null
           service_name: string | null
+          status_cart: string | null
           user_id: string | null
         }
         Insert: {
           created_at?: string | null
+          details?: string | null
           id?: string
           item_id?: string | null
           item_type?: string | null
+          payment_status?: string | null
           price?: number | null
           service_name?: string | null
+          status_cart?: string | null
           user_id?: string | null
         }
         Update: {
           created_at?: string | null
+          details?: string | null
           id?: string
           item_id?: string | null
           item_type?: string | null
+          payment_status?: string | null
           price?: number | null
           service_name?: string | null
+          status_cart?: string | null
           user_id?: string | null
         }
         Relationships: []
@@ -3707,6 +3853,45 @@ export type Database = {
         }
         Relationships: []
       }
+      trial_balance: {
+        Row: {
+          account_code: string
+          account_id: string | null
+          amount: number
+          created_at: string | null
+          id: string
+          period: string
+          period_end: string | null
+          period_start: string | null
+          total_amount: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          account_code: string
+          account_id?: string | null
+          amount?: number
+          created_at?: string | null
+          id?: string
+          period: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          account_code?: string
+          account_id?: string | null
+          amount?: number
+          created_at?: string | null
+          id?: string
+          period?: string
+          period_end?: string | null
+          period_start?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -3728,33 +3913,6 @@ export type Database = {
           role?: string
           updated_at?: string | null
           user_id?: string | null
-        }
-        Relationships: []
-      }
-      user_roles_backup: {
-        Row: {
-          created_at: string | null
-          description: string | null
-          id: string | null
-          name: string | null
-          permissions: Json | null
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          description?: string | null
-          id?: string | null
-          name?: string | null
-          permissions?: Json | null
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          description?: string | null
-          id?: string | null
-          name?: string | null
-          permissions?: Json | null
-          updated_at?: string | null
         }
         Relationships: []
       }
@@ -4234,26 +4392,226 @@ export type Database = {
       }
     }
     Views: {
-      debug_log_view: {
+      bookings_trips_with_user: {
         Row: {
-          data: Json | null
-          id: number | null
-          message: string | null
-          timestamp: string | null
-        }
-        Insert: {
-          data?: Json | null
-          id?: number | null
-          message?: string | null
-          timestamp?: string | null
-        }
-        Update: {
-          data?: Json | null
-          id?: number | null
-          message?: string | null
-          timestamp?: string | null
+          additional_data: string | null
+          bank_account: string | null
+          created_at: string | null
+          driver_name: string | null
+          fee_sales: number | null
+          harga_basic: number | null
+          harga_jual: number | null
+          id: string | null
+          jam_checkin: string | null
+          jam_checkout: string | null
+          jenis_kendaraan: string | null
+          jumlah_hari: number | null
+          jumlah_kamar: number | null
+          jumlah_malam: number | null
+          keterangan: string | null
+          kode_booking: string | null
+          license_plate: string | null
+          lokasi: string | null
+          lokasi_hotel: string | null
+          nama_penumpang: string | null
+          no_telepon: number | null
+          nomor_plat: string | null
+          payment_method: string | null
+          price: number | null
+          profit: number | null
+          quantity: number | null
+          service_details: string | null
+          service_name: string | null
+          service_type: string | null
+          status: string | null
+          tanggal: string | null
+          tanggal_checkin: string | null
+          tanggal_checkout: string | null
+          total_amount: number | null
+          tujuan: string | null
+          type_unit: string | null
+          user_email: string | null
+          user_full_name: string | null
+          user_id: string | null
+          user_role: string | null
         }
         Relationships: []
+      }
+      general_ledger_with_type: {
+        Row: {
+          account_code: string | null
+          account_id: string | null
+          account_name: string | null
+          account_type: string | null
+          balance: number | null
+          booking_id: string | null
+          created_at: string | null
+          credit: number | null
+          date: string | null
+          debit: number | null
+          description: string | null
+          entry_type: string | null
+          id: string | null
+          is_manual_entry: string | null
+          journal_entry_id: string | null
+          journal_entry_item_id: string | null
+          manual_entry: boolean | null
+          normal_balance: string | null
+          payment_id: string | null
+          period_month: string | null
+          reference_number: string | null
+          running_balance: number | null
+          total_credit: number | null
+          total_debit: number | null
+          transaction_date: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_general_ledger_journal_entry_item"
+            columns: ["journal_entry_item_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entry_items_with_ledger"
+            referencedColumns: ["journal_entry_item_id"]
+          },
+          {
+            foreignKeyName: "general_ledger_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "general_ledger_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
+      }
+      journal_entries_with_bookings: {
+        Row: {
+          booking_amount: number | null
+          booking_created_at: string | null
+          booking_id: string | null
+          description: string | null
+          entry_date: string | null
+          entry_type: string | null
+          journal_entry_id: string | null
+          payment_status: string | null
+          reference_number: string | null
+          total_amount: number | null
+          vehicle_name: string | null
+        }
+        Relationships: []
+      }
+      journal_entry_items_with_ledger: {
+        Row: {
+          account_code: string | null
+          account_description: string | null
+          account_id: string | null
+          account_name: string | null
+          account_type: string | null
+          current_balance: number | null
+          general_ledger_id: string | null
+          is_header: boolean | null
+          item_created_at: string | null
+          item_credit: number | null
+          item_debit: number | null
+          item_updated_at: string | null
+          journal_entry_id: string | null
+          journal_entry_item_id: string | null
+          ledger_created_at: string | null
+          ledger_credit: number | null
+          ledger_date: string | null
+          ledger_debit: number | null
+          ledger_description: string | null
+          ledger_updated_at: string | null
+          manual_entry: boolean | null
+          normal_balance: string | null
+          parent_id: string | null
+          running_balance: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chart_of_accounts_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_entry_items_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
+      }
+      payments_with_journal_items: {
+        Row: {
+          account_id: string | null
+          credit: number | null
+          debit: number | null
+          journal_entry_id: string | null
+          payment_id: string | null
+          payment_status: string | null
+          total_amount: number | null
+          user_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_entry_items_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "chart_of_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_journal_entry_id_fkey"
+            columns: ["journal_entry_id"]
+            isOneToOne: false
+            referencedRelation: "journal_entries_with_bookings"
+            referencedColumns: ["journal_entry_id"]
+          },
+        ]
       }
       profit_loss_view: {
         Row: {
@@ -4267,11 +4625,86 @@ export type Database = {
         }
         Relationships: []
       }
+      trial_balance_view: {
+        Row: {
+          account_code: string | null
+          account_name: string | null
+          closing_balance: number | null
+          credit: number | null
+          debit: number | null
+          period: string | null
+        }
+        Insert: {
+          account_code?: string | null
+          account_name?: string | null
+          closing_balance?: number | null
+          credit?: number | null
+          debit?: number | null
+          period?: string | null
+        }
+        Update: {
+          account_code?: string | null
+          account_name?: string | null
+          closing_balance?: number | null
+          credit?: number | null
+          debit?: number | null
+          period?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      auto_create_journal_entries_if_missing: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       auto_post_jurnal_from_mutasi: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      check_booking_journal_entries: {
+        Args: { p_booking_id: string }
+        Returns: {
+          has_entries: boolean
+          entry_count: number
+          journal_ids: string[]
+        }[]
+      }
+      close_period: {
+        Args: { p_period: string }
+        Returns: undefined
+      }
+      create_journal_entry_for_booking: {
+        Args: { p_booking_id: string }
+        Returns: string
+      }
+      fix_missing_journal_entries: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          booking_id: string
+          status: string
+        }[]
+      }
+      generate_balance_sheet: {
+        Args: { p_period: string }
+        Returns: {
+          total_assets: number
+          total_liabilities: number
+          total_equity: number
+          is_balanced: boolean
+        }[]
+      }
+      generate_ledger_summary: {
+        Args: { p_period: string }
+        Returns: undefined
+      }
+      generate_profit_loss: {
+        Args: { p_period: string }
+        Returns: {
+          total_income: number
+          total_expense: number
+          net_profit: number
+        }[]
       }
       get_table_info: {
         Args: { table_name: string }
@@ -4287,6 +4720,14 @@ export type Database = {
           table_name: string
         }[]
       }
+      my_function: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      populate_trial_balance: {
+        Args: { p_period_start: string; p_period_end: string }
+        Returns: undefined
+      }
       process_all_existing_bookings: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -4296,7 +4737,11 @@ export type Database = {
       }
       process_journal_entry: {
         Args: { p_journal_entry_id: string }
-        Returns: boolean
+        Returns: undefined
+      }
+      recalculate_all_balances: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       test_user_insert: {
         Args: Record<PropertyKey, never>
@@ -4306,12 +4751,27 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      update_baggage_booking_payment_methods: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       update_coa_balance: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
-      update_general_ledger: {
-        Args: Record<PropertyKey, never>
+      update_journal_entry_after_payment: {
+        Args: { p_booking_id: string }
+        Returns: undefined
+      }
+      upsert_ledger_summaries: {
+        Args: { payload: Json } | { payload: string }
+        Returns: undefined
+      }
+      upsert_trial_balances: {
+        Args:
+          | { p_account_code: string; p_period: string; p_amount: number }
+          | { payload: Json }
+          | { payload: string }
         Returns: undefined
       }
     }
@@ -4324,21 +4784,25 @@ export type Database = {
   }
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
@@ -4356,14 +4820,16 @@ export type Tables<
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
@@ -4379,14 +4845,16 @@ export type TablesInsert<
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
@@ -4402,14 +4870,16 @@ export type TablesUpdate<
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
@@ -4417,14 +4887,16 @@ export type Enums<
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
+    | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
+    schema: keyof DatabaseWithoutInternals
   }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
     ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never

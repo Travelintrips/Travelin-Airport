@@ -223,14 +223,16 @@ const PriceKMManagement = () => {
     return vehicleTypes.filter(
       (vehicleType) =>
         vehicleType.type &&
-        vehicleType.type.toLowerCase &&
+        typeof vehicleType.type === "string" &&
         vehicleType.type.toLowerCase().includes(category.toLowerCase()),
     );
   };
 
   const mpvVehicleTypes = getVehicleTypesByCategory("mpv").filter(
     (v) =>
-      v.type && v.type.toLowerCase && !v.type.toLowerCase().includes("premium"),
+      v.type &&
+      typeof v.type === "string" &&
+      !v.type.toLowerCase().includes("premium"),
   );
   const mpvPremiumVehicleTypes = getVehicleTypesByCategory("premium");
   const electricVehicleTypes = getVehicleTypesByCategory("electric");

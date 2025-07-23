@@ -66,10 +66,10 @@ const registerSchema = z
     license_plate: z.string().optional(),
     make: z.string().optional(),
     model: z.string().optional(),
-    year: z.number().optional().or(z.string().optional()),
+    year: z.string().optional(),
     type: z.string().optional(),
     category: z.string().optional(),
-    seats: z.number().optional().or(z.string().optional()),
+    seats: z.string().optional(),
     transmission: z.string().optional(),
     fuel_type: z.string().optional(),
     stnkImage: z.string().optional(),
@@ -379,77 +379,215 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
     setRegisterError(null);
     setIsSubmitting(true);
 
-    // Check if selfie is required and not provided
-    if (selfieRequired && !selfieImage && !existingImages.selfie) {
-      setRegisterError("Silakan ambil foto selfie terlebih dahulu");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Add selfie image to form data
-    data.selfieImage = selfieImage || existingImages.selfie;
-
-    // Validate document uploads based on role
-    if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
-      if (!data.ktpImage && !existingImages.ktp) {
-        setRegisterError("Please upload your KTP (ID card)");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!data.simImage && !existingImages.sim) {
-        setRegisterError("Please upload your SIM (Driver's License)");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!data.kkImage && !existingImages.kk) {
-        setRegisterError("Please upload your KK (Family Card)");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!data.stnkImage && !existingImages.stnk) {
-        setRegisterError("Please upload your STNK (Vehicle Registration)");
-        setIsSubmitting(false);
-        return;
-      }
-      // Additional validation for Driver Mitra
-      if (data.role === "Driver Mitra") {
-        if (!data.make || !data.model || !data.license_plate) {
-          setRegisterError("Please complete all vehicle information");
-          setIsSubmitting(false);
-          return;
-        }
-      }
-      // Additional validation for Driver Perusahaan
-      if (data.role === "Driver Perusahaan") {
-        if (!data.skckImage && !existingImages.skck) {
-          setRegisterError(
-            "Please upload your SKCK (Police Clearance Certificate)",
-          );
-          setIsSubmitting(false);
-          return;
-        }
-      }
-    } else if (
-      data.role === "Staff" ||
-      data.role === "Staff Traffic" ||
-      data.role === "Staff Admin" ||
-      data.role === "Staff Trips" ||
-      data.role === "Dispatcher"
-    ) {
-      if (!data.idCardImage && !existingImages.idCard) {
-        setRegisterError("Please upload your ID Card");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!data.department || !data.position || !data.employeeId) {
-        setRegisterError("Please complete all staff information");
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
     try {
-      // Call the onRegister callback with the form data
+      // Set default role to "Customer" if no role is specified
+      if (!data.role || data.role === "") {
+        data.role = "Customer";
+      }
+
+      // For Customer role, use a simple fallback approach
+      let roleId = null;
+
+      if (data.role === "Customer") {
+        // Use default role_id for Customer or handle without role_id
+        roleId = 1; // Default Customer role_id
+        console.log("Using default Customer role_id:", roleId);
+      } else {
+        // For other roles, try to get role_id from roles table
+        try {
+          const { data: roleData, error: roleError } = await supabase
+            .from("roles")
+            .select("role_id")
+            .eq("role_name", data.role)
+            .maybeSingle();
+
+          if (roleError) {
+            console.warn("Error fetching role:", roleError);
+            // Continue without role_id for non-Customer roles
+          } else if (roleData) {
+            roleId = roleData.role_id;
+            console.log("Role ID found:", roleId, "for role:", data.role);
+          }
+        } catch (error) {
+          console.warn("Exception while fetching role:", error);
+          // Continue without role_id
+        }
+      }
+
+      // Check if selfie is required and not provided
+      if (selfieRequired && !selfieImage && !existingImages.selfie) {
+        setRegisterError("Silakan ambil foto selfie terlebih dahulu");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Add selfie image to form data
+      data.selfieImage = selfieImage || existingImages.selfie;
+
+      // Validate document uploads based on role
+      if (data.role === "Driver Mitra" || data.role === "Driver Perusahaan") {
+        if (!data.ktpImage && !existingImages.ktp) {
+          setRegisterError("Please upload your KTP (ID card)");
+          setIsSubmitting(false);
+          return;
+        }
+        if (!data.simImage && !existingImages.sim) {
+          setRegisterError("Please upload your SIM (Driver's License)");
+          setIsSubmitting(false);
+          return;
+        }
+        if (!data.kkImage && !existingImages.kk) {
+          setRegisterError("Please upload your KK (Family Card)");
+          setIsSubmitting(false);
+          return;
+        }
+        if (!data.stnkImage && !existingImages.stnk) {
+          setRegisterError("Please upload your STNK (Vehicle Registration)");
+          setIsSubmitting(false);
+          return;
+        }
+        // Additional validation for Driver Mitra
+        if (data.role === "Driver Mitra") {
+          if (!data.make || !data.model || !data.license_plate) {
+            setRegisterError("Please complete all vehicle information");
+            setIsSubmitting(false);
+            return;
+          }
+        }
+        // Additional validation for Driver Perusahaan
+        if (data.role === "Driver Perusahaan") {
+          if (!data.skckImage && !existingImages.skck) {
+            setRegisterError(
+              "Please upload your SKCK (Police Clearance Certificate)",
+            );
+            setIsSubmitting(false);
+            return;
+          }
+        }
+      } else if (
+        data.role === "Staff" ||
+        data.role === "Staff Traffic" ||
+        data.role === "Staff Admin" ||
+        data.role === "Staff Trips" ||
+        data.role === "Dispatcher"
+      ) {
+        if (!data.idCardImage && !existingImages.idCard) {
+          setRegisterError("Please upload your ID Card");
+          setIsSubmitting(false);
+          return;
+        }
+        if (!data.department || !data.position || !data.employeeId) {
+          setRegisterError("Please complete all staff information");
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // For Customer role, handle registration directly
+      if (data.role === "Customer") {
+        console.log("Registering customer with role_id:", roleId);
+
+        // Sign up the user
+        const { data: authData, error: authError } = await supabase.auth.signUp(
+          {
+            email: data.email,
+            password: data.password,
+            options: {
+              data: {
+                full_name: data.name,
+                role: data.role,
+                role_id: roleId.toString(),
+                phone: data.phone,
+              },
+            },
+          },
+        );
+
+        if (authError) {
+          console.error("Auth signup error:", authError);
+          setRegisterError(authError.message);
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (!authData.user) {
+          setRegisterError("Failed to create user account");
+          setIsSubmitting(false);
+          return;
+        }
+
+        console.log("User created:", authData.user.id);
+
+        // Insert user into users table with role_id
+        const userInsertData = {
+          id: authData.user.id,
+          email: authData.user.email,
+          full_name: data.name,
+          phone_number: data.phone,
+          selfie_url: data.selfieImage || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // Add role_id if we have a valid one
+        if (roleId !== null && roleId !== undefined) {
+          userInsertData.role_id = roleId;
+        }
+
+        const { error: userError } = await supabase
+          .from("users")
+          .upsert(userInsertData, {
+            onConflict: "id",
+          });
+
+        if (userError) {
+          console.error("Error inserting user:", userError);
+          setRegisterError("Failed to create user profile");
+          setIsSubmitting(false);
+          return;
+        }
+
+        console.log("User inserted into users table with role_id:", roleId);
+
+        // Insert customer record with user_id and role_id
+        const customerInsertData = {
+          id: authData.user.id,
+          user_id: authData.user.id,
+          full_name: data.name,
+          email: authData.user.email,
+          phone_number: data.phone,
+          created_at: new Date().toISOString(),
+        };
+
+        // Add role_id if we have a valid one
+        if (roleId !== null && roleId !== undefined) {
+          customerInsertData.role_id = roleId;
+        }
+
+        const { error: customerError } = await supabase
+          .from("customers")
+          .insert(customerInsertData);
+
+        if (customerError) {
+          console.error("Error inserting customer:", customerError);
+          setRegisterError("Failed to create customer profile");
+          setIsSubmitting(false);
+          return;
+        }
+
+        console.log(
+          "Customer inserted with user_id and role_id:",
+          authData.user.id,
+          roleId,
+        );
+
+        // Registration successful
+        console.log("Customer registration completed successfully");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // For non-customer roles, call the onRegister callback with the form data
       onRegister(data);
     } catch (error) {
       setRegisterError("An unexpected error occurred");
