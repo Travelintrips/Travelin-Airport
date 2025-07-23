@@ -91,18 +91,19 @@ function AppContent() {
   } = useAuth();
   const [isAuthReady, setIsAuthReady] = useState(false);
   const navigate = useNavigate();
+  const [routes, setRoutes] = useState<any[]>([]);
 
-  // Load tempo routes dynamically
+  // Load tempo routes dynamically - moved to top level
   useEffect(() => {
     const loadTempoRoutes = async () => {
       try {
         if (import.meta.env.VITE_TEMPO) {
           const tempoModule = await import("tempo-routes");
-          routes = tempoModule.default || [];
+          setRoutes(tempoModule.default || []);
         }
       } catch (error) {
         console.warn("Tempo routes not available:", error);
-        routes = [];
+        setRoutes([]);
       }
     };
     loadTempoRoutes();
@@ -123,7 +124,7 @@ function AppContent() {
   }, [isHydrated]);
 
   // Enhanced session recovery with global trigger and immediate Supabase rehydration
-  React.useEffect(() => {
+  useEffect(() => {
     let recoveryTimeout: NodeJS.Timeout;
     let lastRecoveryTime = 0;
     const RECOVERY_COOLDOWN = 1000; // Reduced cooldown for faster recovery
@@ -337,7 +338,7 @@ function AppContent() {
   }, [isAuthenticated, isLoading, userRole, userId]);
 
   // Role-based redirects
-  React.useEffect(() => {
+  useEffect(() => {
     if (isAuthenticated && !isLoading) {
       const currentPath = window.location.pathname;
 
@@ -394,7 +395,7 @@ function AppContent() {
   }, [isAuthenticated, isLoading, userRole, isAdmin, userEmail, navigate]);
 
   // Add timeout to prevent infinite loading
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isSessionReady) {
       const timeout = setTimeout(() => {
         console.warn(
@@ -457,6 +458,10 @@ function AppContent() {
 
     return children;
   };
+
+  // Move useRoutes call outside of JSX to prevent hooks order violation
+  const tempoRoutes =
+    import.meta.env.VITE_TEMPO && routes.length > 0 ? useRoutes(routes) : null;
 
   return (
     <div className="min-h-screen w-full">
@@ -615,7 +620,7 @@ function AppContent() {
         </Routes>
 
         {/* Tempo routes for storyboards - rendered separately */}
-        {import.meta.env.VITE_TEMPO && routes.length > 0 && useRoutes(routes)}
+        {tempoRoutes}
       </Suspense>
       <Toaster />
     </div>

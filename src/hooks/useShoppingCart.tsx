@@ -9,7 +9,6 @@ import { v4 as uuidv4 } from "uuid";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { useSessionReady } from "@/hooks/useSessionReady";
 
 // Types for shopping cart items
 export type CartItem = {
@@ -63,12 +62,22 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     isLoading: authLoading,
     isHydrated,
     isSessionReady,
+    ensureSessionReady,
   } = useAuth();
-  const {
-    isSessionReady: sessionReady,
-    waitForSessionReady,
-    canPerformBooking,
-  } = useSessionReady();
+
+  // Calculate session readiness directly to avoid hooks order violations
+  const sessionReady = React.useMemo(() => {
+    return (
+      isHydrated &&
+      isSessionReady &&
+      !authLoading &&
+      (!isAuthenticated || (isAuthenticated && userId))
+    );
+  }, [isHydrated, isSessionReady, authLoading, isAuthenticated, userId]);
+
+  const canPerformBooking = React.useMemo(() => {
+    return sessionReady && isAuthenticated && userId;
+  }, [sessionReady, isAuthenticated, userId]);
 
   // Helper function to validate UUID
   const isValidUUID = (str: string) => {
@@ -77,7 +86,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     return uuidRegex.test(str);
   };
 
-  // Load cart items on mount
+  // Load cart items on mount - ensure consistent hook ordering
   useEffect(() => {
     let isMounted = true;
 
@@ -151,10 +160,14 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 
     initializeCart();
 
-    // Listen for auth changes through AuthContext
-    const handleAuthChange = async () => {
-      if (!isMounted) return;
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
+  // Separate effect for auth changes to maintain hook order
+  useEffect(() => {
+    const handleAuthChange = async () => {
       if (isAuthenticated && userId) {
         // Check if user data has actually changed before updating state
         if (userId !== currentUserId) {
@@ -169,13 +182,8 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // Call auth change handler when auth state changes
     handleAuthChange();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  }, [isAuthenticated, userId, currentUserId]);
 
   // Listen for force logout events
   useEffect(() => {
@@ -606,7 +614,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
 
   // This function is replaced by waitUntilSessionReady above
 
-  // Use the useSessionReady hook instead of custom implementation
+  // Custom session ready implementation without using useSessionReady hook
   const waitUntilSessionReady = async () => {
     console.log("[useShoppingCart] Starting waitUntilSessionReady...");
 
@@ -629,8 +637,21 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     });
 
     try {
-      // Use the waitForSessionReady from useSessionReady hook
-      const isReady = await waitForSessionReady(10000); // 10 second timeout
+      // Ensure session is initialized
+      await ensureSessionReady();
+
+      // Wait for session to be ready with timeout
+      const startTime = Date.now();
+      const timeoutMs = 10000; // 10 second timeout
+
+      while (!sessionReady && Date.now() - startTime < timeoutMs) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Check if session became ready
+        if (isHydrated && isSessionReady && !authLoading) {
+          break;
+        }
+      }
 
       // Dismiss connecting toast
       try {
@@ -641,7 +662,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
         console.warn("[useShoppingCart] Error dismissing toast:", dismissError);
       }
 
-      if (isReady && isAuthenticated && userId) {
+      if (sessionReady && isAuthenticated && userId) {
         return {
           isReady: true,
           userId,
