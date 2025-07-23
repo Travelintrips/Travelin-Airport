@@ -8,6 +8,7 @@ export default defineConfig({
   base: "/",
   optimizeDeps: {
     entries: ["src/main.tsx", "src/tempobook/**/*"],
+    include: ["@react-google-maps/api", "mapbox-gl"],
     force: true,
   },
   plugins: [react(), tempo()],
@@ -16,6 +17,9 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  ssr: {
+    noExternal: ["@react-google-maps/api", "mapbox-gl"],
   },
   define: {
     "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(
