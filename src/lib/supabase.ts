@@ -13,12 +13,16 @@ const getEnvVar = (key: string, fallback: string = ""): string => {
   }
 
   // Node / SSR
-  if (typeof process !== "undefined" && process.env?.[key]) {
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
     return process.env[key];
   }
 
   // Browser runtime injected
-  if (typeof window !== "undefined" && (window as any).__ENV__?.[key]) {
+  if (
+    typeof window !== "undefined" &&
+    (window as any).__ENV__ &&
+    (window as any).__ENV__[key]
+  ) {
     return (window as any).__ENV__[key];
   }
 
@@ -112,7 +116,7 @@ if (hasValidCredentials) {
         const mockUser = {
           id: "mock-user-id-" + Date.now(),
           email: params.email,
-          user_metadata: params.options?.data || {},
+          user_metadata: (params.options && params.options.data) || {},
         };
         return Promise.resolve({
           data: { user: mockUser, session: { user: mockUser } },
