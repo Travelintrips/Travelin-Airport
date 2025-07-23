@@ -52,7 +52,7 @@ interface DamageItem {
   repair_cost: number;
   severity: string;
   status: string;
-  booking_id: number;
+  booking_id: string | number;
   vehicle_id: number;
   payment_status?: string;
   payment_id?: string | null;
@@ -157,7 +157,7 @@ const DamagePaymentForm = () => {
 
         const normalizedData = (data || []).map((item) => ({
           id: item.id,
-          booking_id: parseInt(bookingId),
+          booking_id: bookingId,
           item_name: item.item_name || item.description,
           description: item.description,
           damage_description: item.damage_description || item.description,

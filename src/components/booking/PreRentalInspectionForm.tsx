@@ -53,7 +53,7 @@ type ChecklistItem = {
 
 // Dynamic form schema that will be built based on checklist items
 const createFormSchema = (checklistItems: ChecklistItem[]) => {
-  const schemaObj: Record<string, any> = {
+  const baseSchema = {
     fuelLevel: z.enum(["empty", "quarter", "half", "threequarters", "full"], {
       required_error: "Please select fuel level",
     }),
@@ -62,11 +62,15 @@ const createFormSchema = (checklistItems: ChecklistItem[]) => {
   };
 
   // Add each checklist item to the schema
+  const dynamicFields: Record<string, any> = {};
   checklistItems.forEach((item) => {
-    schemaObj[`item_${item.id}`] = z.boolean().nullable().default(undefined);
+    dynamicFields[`item_${item.id}`] = z
+      .boolean()
+      .nullable()
+      .default(undefined);
   });
 
-  return z.object(schemaObj);
+  return z.object({ ...baseSchema, ...dynamicFields });
 };
 
 // Default form schema with just the basic fields
@@ -83,7 +87,7 @@ type FormValues = z.infer<typeof defaultFormSchema> & Record<string, boolean>;
 interface PreRentalInspectionFormProps {
   vehicleId: string;
   bookingId?: string;
-  onComplete?: (data: FormValues & { photos: string[] }) => void;
+  onComplete?: (data: any) => void;
   onCancel?: () => void;
 }
 
@@ -99,7 +103,7 @@ const PreRentalInspectionForm: React.FC<PreRentalInspectionFormProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [formSchema, setFormSchema] = useState(defaultFormSchema);
+  const [formSchema, setFormSchema] = useState<any>(defaultFormSchema);
   const [inspectionDate] = useState<Date>(new Date());
   const [inspectorName, setInspectorName] = useState<string>("");
   const [itemPhotos, setItemPhotos] = useState<Record<string, File[]>>({});
