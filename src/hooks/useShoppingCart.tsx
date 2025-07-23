@@ -163,7 +163,16 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [
+    isAuthenticated,
+    userId,
+    userEmail,
+    sessionReady,
+    ensureSessionReady,
+    isHydrated,
+    isSessionReady,
+    authLoading,
+  ]); // Add dependencies to prevent infinite loops
 
   // Separate effect for auth changes to maintain hook order
   useEffect(() => {
@@ -183,7 +192,17 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
     };
 
     handleAuthChange();
-  }, [isAuthenticated, userId, currentUserId]);
+  }, [
+    isAuthenticated,
+    userId,
+    currentUserId,
+    userEmail,
+    sessionReady,
+    ensureSessionReady,
+    isHydrated,
+    isSessionReady,
+    authLoading,
+  ]);
 
   // Listen for force logout events
   useEffect(() => {
@@ -226,7 +245,7 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
   const refetchCartData = React.useCallback(async () => {
     console.log("[useShoppingCart] Refetching cart data...");
     await loadCartItems(true); // Force reload
-  }, []);
+  }, [isAuthenticated, userId]);
 
   // Add throttled visibility change listener for refetching when tab becomes active
   useEffect(() => {
@@ -433,7 +452,17 @@ export const ShoppingCartProvider = ({ children }: { children: ReactNode }) => {
       if (syncTimeout) clearTimeout(syncTimeout);
       if (tabActivationTimeout) clearTimeout(tabActivationTimeout);
     };
-  }, [currentUserId, isAuthenticated, userId, userEmail]);
+  }, [
+    currentUserId,
+    isAuthenticated,
+    userId,
+    userEmail,
+    sessionReady,
+    ensureSessionReady,
+    isHydrated,
+    isSessionReady,
+    authLoading,
+  ]);
 
   const loadCartItems = async (forceReload = false) => {
     // Prevent multiple simultaneous loads unless forced

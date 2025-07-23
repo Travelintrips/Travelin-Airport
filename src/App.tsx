@@ -89,9 +89,10 @@ function AppContent() {
     isHydrated,
     isSessionReady,
   } = useAuth();
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const navigate = useNavigate();
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [routes, setRoutes] = useState<any[]>([]);
+  const [tempoRoutesLoaded, setTempoRoutesLoaded] = useState(false);
 
   // Load tempo routes dynamically - moved to top level
   useEffect(() => {
@@ -100,10 +101,14 @@ function AppContent() {
         if (import.meta.env.VITE_TEMPO) {
           const tempoModule = await import("tempo-routes");
           setRoutes(tempoModule.default || []);
+          setTempoRoutesLoaded(true);
+        } else {
+          setTempoRoutesLoaded(true);
         }
       } catch (error) {
         console.warn("Tempo routes not available:", error);
         setRoutes([]);
+        setTempoRoutesLoaded(true);
       }
     };
     loadTempoRoutes();
@@ -460,8 +465,20 @@ function AppContent() {
   };
 
   // Move useRoutes call outside of JSX to prevent hooks order violation
-  const tempoRoutes =
-    import.meta.env.VITE_TEMPO && routes.length > 0 ? useRoutes(routes) : null;
+  // Only call useRoutes when tempo routes are loaded and available
+  const tempoRoutes = React.useMemo(() => {
+    if (
+      !tempoRoutesLoaded ||
+      !import.meta.env.VITE_TEMPO ||
+      routes.length === 0
+    ) {
+      return null;
+    }
+    return routes;
+  }, [tempoRoutesLoaded, routes]);
+
+  // Use useRoutes conditionally but consistently
+  const renderedTempoRoutes = useRoutes(tempoRoutes || []);
 
   return (
     <div className="min-h-screen w-full">
@@ -620,7 +637,7 @@ function AppContent() {
         </Routes>
 
         {/* Tempo routes for storyboards - rendered separately */}
-        {tempoRoutes}
+        {tempoRoutes && renderedTempoRoutes}
       </Suspense>
       <Toaster />
     </div>

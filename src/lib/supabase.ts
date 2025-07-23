@@ -1,12 +1,43 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
-// Get environment variables with fallbacks
-const supabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL ||
-  "https://placeholder-project.supabase.co";
-const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_ANON_KEY || "placeholder-key";
+// Get environment variables with fallbacks and validation
+const getEnvVar = (key: string, fallback: string = ""): string => {
+  // Try import.meta.env first (Vite runtime)
+  if (
+    typeof window !== "undefined" &&
+    (window as any).import?.meta?.env?.[key]
+  ) {
+    return (window as any).import.meta.env[key];
+  }
+
+  // Try import.meta.env directly
+  try {
+    if (import.meta?.env?.[key]) {
+      return import.meta.env[key];
+    }
+  } catch (e) {
+    // import.meta might not be available in all contexts
+  }
+
+  // Try process.env (build time)
+  if (typeof process !== "undefined" && process.env?.[key]) {
+    return process.env[key];
+  }
+
+  // Try window environment variables (runtime injection)
+  if (typeof window !== "undefined" && (window as any).__ENV__?.[key]) {
+    return (window as any).__ENV__[key];
+  }
+
+  return fallback;
+};
+
+const supabaseUrl = getEnvVar(
+  "VITE_SUPABASE_URL",
+  "https://placeholder-project.supabase.co",
+);
+const supabaseAnonKey = getEnvVar("VITE_SUPABASE_ANON_KEY", "placeholder-key");
 
 // Validate URL format before using it
 function isValidUrl(string: string): boolean {
@@ -17,6 +48,30 @@ function isValidUrl(string: string): boolean {
     return false;
   }
 }
+
+// Debug logging for environment variables
+console.log("Supabase configuration:", {
+  url: supabaseUrl ? `${supabaseUrl.substring(0, 20)}...` : "undefined",
+  key: supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : "undefined",
+  isValidUrl: isValidUrl(supabaseUrl),
+  env: {
+    importMeta: (() => {
+      try {
+        return import.meta?.env ? "available" : "unavailable";
+      } catch (e) {
+        return "unavailable";
+      }
+    })(),
+    processEnv:
+      typeof process !== "undefined" && process.env
+        ? "available"
+        : "unavailable",
+    windowEnv:
+      typeof window !== "undefined" && (window as any).__ENV__
+        ? "available"
+        : "unavailable",
+  },
+});
 
 const hasValidCredentials =
   supabaseUrl &&

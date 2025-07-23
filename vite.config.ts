@@ -24,6 +24,18 @@ export default defineConfig({
     "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(
       process.env.VITE_SUPABASE_ANON_KEY || "",
     ),
+    "import.meta.env.VITE_GOOGLE_MAPS_API_KEY": JSON.stringify(
+      process.env.VITE_GOOGLE_MAPS_API_KEY || "",
+    ),
+    "import.meta.env.VITE_TEMPO": JSON.stringify(
+      process.env.VITE_TEMPO || process.env.TEMPO || "false",
+    ),
+    "process.env.VITE_SUPABASE_URL": JSON.stringify(
+      process.env.VITE_SUPABASE_URL || "",
+    ),
+    "process.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(
+      process.env.VITE_SUPABASE_ANON_KEY || "",
+    ),
   },
   server: {
     allowedHosts: true,
