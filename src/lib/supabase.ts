@@ -3,26 +3,22 @@ import type { Database } from "@/types/supabase";
 
 // Get environment variables with fallbacks and validation
 const getEnvVar = (key: string, fallback: string = ""): string => {
-  // Try import.meta.env directly (Vite runtime)
-  try {
-    if (import.meta && import.meta.env && import.meta.env[key]) {
-      return import.meta.env[key];
-    }
-  } catch (e) {
-    // import.meta might not be available in all contexts
+  // Vite Runtime
+  if (
+    typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env[key]
+  ) {
+    return import.meta.env[key];
   }
 
-  // Try process.env (build time)
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
+  // Node / SSR
+  if (typeof process !== "undefined" && process.env?.[key]) {
     return process.env[key];
   }
 
-  // Try window environment variables (runtime injection)
-  if (
-    typeof window !== "undefined" &&
-    (window as any).__ENV__ &&
-    (window as any).__ENV__[key]
-  ) {
+  // Browser runtime injected
+  if (typeof window !== "undefined" && (window as any).__ENV__?.[key]) {
     return (window as any).__ENV__[key];
   }
 
