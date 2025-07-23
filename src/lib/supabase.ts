@@ -3,17 +3,9 @@ import type { Database } from "@/types/supabase";
 
 // Get environment variables with fallbacks and validation
 const getEnvVar = (key: string, fallback: string = ""): string => {
-  // Try import.meta.env first (Vite runtime)
-  if (
-    typeof window !== "undefined" &&
-    (window as any).import?.meta?.env?.[key]
-  ) {
-    return (window as any).import.meta.env[key];
-  }
-
-  // Try import.meta.env directly
+  // Try import.meta.env directly (Vite runtime)
   try {
-    if (import.meta?.env?.[key]) {
+    if (import.meta && import.meta.env && import.meta.env[key]) {
       return import.meta.env[key];
     }
   } catch (e) {
@@ -21,12 +13,16 @@ const getEnvVar = (key: string, fallback: string = ""): string => {
   }
 
   // Try process.env (build time)
-  if (typeof process !== "undefined" && process.env?.[key]) {
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
     return process.env[key];
   }
 
   // Try window environment variables (runtime injection)
-  if (typeof window !== "undefined" && (window as any).__ENV__?.[key]) {
+  if (
+    typeof window !== "undefined" &&
+    (window as any).__ENV__ &&
+    (window as any).__ENV__[key]
+  ) {
     return (window as any).__ENV__[key];
   }
 
@@ -57,7 +53,7 @@ console.log("Supabase configuration:", {
   env: {
     importMeta: (() => {
       try {
-        return import.meta?.env ? "available" : "unavailable";
+        return import.meta && import.meta.env ? "available" : "unavailable";
       } catch (e) {
         return "unavailable";
       }
