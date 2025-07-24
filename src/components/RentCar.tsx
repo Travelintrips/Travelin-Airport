@@ -32,8 +32,7 @@ import AuthRequiredModal from "./auth/AuthRequiredModal";
 
 interface Vehicle {
   id: string | number;
-  model: string;
-  name?: string;
+  name: string;
   type?: "sedan" | "suv" | "truck" | "luxury";
   price: number;
   image?: string;
@@ -42,7 +41,8 @@ interface Vehicle {
   fuelType?: "petrol" | "diesel" | "electric" | "hybrid";
   available?: boolean;
   features?: string[];
-  make: string;
+  model?: string;
+  make?: string;
   year?: number;
   license_plate?: string;
   color?: string;
