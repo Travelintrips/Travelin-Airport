@@ -39,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isSessionReady, setIsSessionReady] = useState(false);
   const initializationRef = useRef(false);
   const sessionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasTriggeredRef = useRef(false);
 
   const initializeSession = useCallback(async () => {
     if (initializationRef.current) {
@@ -1272,7 +1273,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         handleForceSessionRestore as EventListener,
       );
     };
-  }, [initializeSession]);
+  }, []);
+
+  // Trigger force session restore only once when needed
+  useEffect(() => {
+    if (!hasTriggeredRef.current && session && user && !isHydrated) {
+      hasTriggeredRef.current = true;
+      console.log("[AuthContext] Dispatching forceSessionRestore event once");
+      window.dispatchEvent(
+        new CustomEvent("forceSessionRestore", {
+          detail: {
+            id: user.id,
+            email: user.email,
+            role: role,
+            name:
+              user.user_metadata?.name || user.email?.split("@")[0] || "User",
+          },
+        }),
+      );
+    }
+  }, [session, user, isHydrated, role]);
 
   const value: AuthContextType = {
     isAuthenticated: !!session && !!user,
