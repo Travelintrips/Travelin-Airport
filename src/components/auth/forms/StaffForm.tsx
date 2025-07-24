@@ -60,7 +60,7 @@ const StaffForm: React.FC<StaffFormProps> = ({
                   9: "Pengawas",
                 }[parseInt(val)];
                 field.onChange(roleName || "Staff");
-                setValue("roleId", parseInt(val)); // Set roleId separately
+                // roleId is handled by the role field mapping
               }}
               value={field.value || ""}
             >

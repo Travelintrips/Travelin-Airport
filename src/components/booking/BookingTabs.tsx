@@ -102,6 +102,13 @@ const BookingTabs: React.FC<BookingTabsProps> = ({ selectedVehicleId }) => {
                         make: "Toyota",
                         model: "Avanza",
                         price: 350000,
+                        year: 2022,
+                        category: "MPV",
+                        image:
+                          "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&q=80",
+                        license_plate: "B 1234 ABC",
+                        isWithDriver: false,
+                        assignedDriver: undefined,
                       }
                     : undefined
                 }
@@ -118,7 +125,7 @@ const BookingTabs: React.FC<BookingTabsProps> = ({ selectedVehicleId }) => {
                 <PreRentalInspectionForm
                   vehicleId={bookingData.vehicleId}
                   bookingId={bookingData.bookingId}
-                  onComplete={() => handleInspectionComplete({})}
+                  onComplete={(data) => handleInspectionComplete(data)}
                 />
               ) : (
                 <div className="text-center py-8">

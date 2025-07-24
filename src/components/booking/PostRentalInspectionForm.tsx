@@ -117,7 +117,7 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
   >({});
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [formSchema, setFormSchema] = useState(defaultFormSchema);
+  const [formSchema, setFormSchema] = useState<any>(defaultFormSchema);
   const [damagedItemsCount, setDamagedItemsCount] = useState(0);
   const [checkAll, setCheckAll] = useState(true);
   const { toast } = useToast();
@@ -1054,7 +1054,6 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
                                         onChange={notesField.onChange}
                                         onBlur={notesField.onBlur}
                                         name={notesField.name}
-                                        ref={notesField.ref}
                                       />
                                     </FormControl>
                                   </FormItem>
