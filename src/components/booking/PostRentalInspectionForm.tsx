@@ -42,7 +42,7 @@ type ChecklistItem = {
 
 // Dynamic form schema that will be built based on checklist items
 const createFormSchema = (checklistItems: ChecklistItem[]) => {
-  const schemaObj: Record<string, any> = {
+  const baseSchema = {
     fuelLevel: z.enum(["empty", "quarter", "half", "threequarters", "full"], {
       required_error: "Please select fuel level",
     }),
@@ -54,12 +54,13 @@ const createFormSchema = (checklistItems: ChecklistItem[]) => {
   };
 
   // Add each checklist item to the schema
+  const dynamicFields: Record<string, any> = {};
   checklistItems.forEach((item) => {
-    schemaObj[`item_${item.id}`] = z.boolean().default(false);
-    schemaObj[`notes_${item.id}`] = z.string().optional();
+    dynamicFields[`item_${item.id}`] = z.boolean().default(false);
+    dynamicFields[`notes_${item.id}`] = z.string().optional();
   });
 
-  return z.object(schemaObj);
+  return z.object({ ...baseSchema, ...dynamicFields });
 };
 
 // Default form schema with just the basic fields
@@ -150,9 +151,8 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
         setChecklistItems(transformedData);
 
         // Create dynamic form schema based on checklist items
-        if (transformedData.length > 0) {
-          setFormSchema(createFormSchema(transformedData));
-        }
+        const newSchema = createFormSchema(transformedData);
+        setFormSchema(newSchema);
 
         // Initialize item photos state
         const initialItemPhotos: Record<string, File[]> = {};
@@ -698,8 +698,7 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
           ...data,
           photos: uploadedPhotoUrls,
           calculatedFees: fees,
-          inspectionId: insertedInspection.id,
-        });
+        } as FormValues & { photos: string[]; calculatedFees: number });
       }
     } catch (error) {
       console.error("Error submitting inspection:", error);
@@ -1051,7 +1050,11 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
                                         placeholder="Tambahkan keterangan tentang kondisi item"
                                         className="resize-none text-sm"
                                         rows={2}
-                                        {...notesField}
+                                        value={notesField.value || ""}
+                                        onChange={notesField.onChange}
+                                        onBlur={notesField.onBlur}
+                                        name={notesField.name}
+                                        ref={notesField.ref}
                                       />
                                     </FormControl>
                                   </FormItem>

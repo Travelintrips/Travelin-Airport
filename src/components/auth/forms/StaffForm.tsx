@@ -45,13 +45,12 @@ const StaffForm: React.FC<StaffFormProps> = ({
 
       <FormField
         control={control}
-        name="roleId"
+        name="role"
         render={({ field }) => (
           <FormItem>
             <FormLabel>Pilih Role</FormLabel>
             <Select
               onValueChange={(val) => {
-                field.onChange(parseInt(val));
                 const roleName = {
                   4: "Staff",
                   5: "Staff Traffic",
@@ -60,9 +59,10 @@ const StaffForm: React.FC<StaffFormProps> = ({
                   8: "Dispatcher",
                   9: "Pengawas",
                 }[parseInt(val)];
-                setValue("role", roleName || "Staff"); // ✅ Set sekaligus role name
+                field.onChange(roleName || "Staff");
+                setValue("roleId", parseInt(val)); // Set roleId separately
               }}
-              value={String(field.value || "")}
+              value={field.value || ""}
             >
               <FormControl>
                 <SelectTrigger>

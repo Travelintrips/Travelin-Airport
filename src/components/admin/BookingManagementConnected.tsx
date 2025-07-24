@@ -48,6 +48,7 @@ interface Booking {
   total_amount: number;
   payment_status: string;
   status: string;
+  booking_status?: string;
   created_at: string;
   pickup_time?: string;
   driver_option?: string;

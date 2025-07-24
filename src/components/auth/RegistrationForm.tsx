@@ -531,7 +531,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
         // Add role_id if we have a valid one
         if (roleId !== null && roleId !== undefined) {
-          userInsertData.role_id = roleId;
+          (userInsertData as any).role_id = roleId;
         }
 
         const { error: userError } = await supabase
@@ -561,7 +561,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
         // Add role_id if we have a valid one
         if (roleId !== null && roleId !== undefined) {
-          customerInsertData.role_id = roleId;
+          (customerInsertData as any).role_id = roleId;
         }
 
         const { error: customerError } = await supabase

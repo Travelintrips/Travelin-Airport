@@ -96,7 +96,14 @@ const BookingTabs: React.FC<BookingTabsProps> = ({ selectedVehicleId }) => {
             <CardContent className="pt-6">
               <BookingForm
                 selectedVehicle={
-                  selectedVehicleId ? { id: selectedVehicleId } : undefined
+                  selectedVehicleId
+                    ? {
+                        id: selectedVehicleId,
+                        make: "Toyota",
+                        model: "Avanza",
+                        price: 350000,
+                      }
+                    : undefined
                 }
                 onBookingComplete={handleBookingComplete}
               />
@@ -111,7 +118,7 @@ const BookingTabs: React.FC<BookingTabsProps> = ({ selectedVehicleId }) => {
                 <PreRentalInspectionForm
                   vehicleId={bookingData.vehicleId}
                   bookingId={bookingData.bookingId}
-                  onComplete={handleInspectionComplete}
+                  onComplete={() => handleInspectionComplete({})}
                 />
               ) : (
                 <div className="text-center py-8">

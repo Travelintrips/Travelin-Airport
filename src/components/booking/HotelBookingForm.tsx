@@ -68,22 +68,23 @@ const HotelBookingForm = () => {
 
     // Add to cart
     addToCart({
-      type: "hotel",
-      transactionCode: `HTL-${uuidv4().substring(0, 8)}`,
-      date: data.date,
-      sellingPrice: data.sellingPrice,
-      basicPrice: data.basicPrice,
-      feeSales: data.feeSales || 0,
-      profit: profit,
+      item_type: "airport_transfer",
+      service_name: `${data.hotelName} - ${data.location}`,
+      price: data.sellingPrice,
       details: {
+        transactionCode: `HTL-${uuidv4().substring(0, 8)}`,
+        date: data.date,
         hotelName: data.hotelName,
         location: data.location,
         checkInDate: data.checkInDate,
         checkOutDate: data.checkOutDate,
         roomCount: data.roomCount,
         nightCount: data.nightCount,
+        basicPrice: data.basicPrice,
+        feeSales: data.feeSales || 0,
+        profit: profit,
+        notes: data.notes,
       },
-      notes: data.notes,
     });
 
     // Reset form

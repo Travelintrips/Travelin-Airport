@@ -59,21 +59,22 @@ const CarRentalForm = () => {
 
     // Add to cart
     addToCart({
-      type: "car",
-      transactionCode: data.transactionCode,
-      date: data.date,
-      sellingPrice: data.sellingPrice,
-      basicPrice: data.basicPrice,
-      feeSales: data.feeSales,
-      profit: profit,
+      item_type: "car",
+      service_name: `${data.carType} - ${data.licensePlate}`,
+      price: data.sellingPrice,
       details: {
+        transactionCode: data.transactionCode,
+        date: data.date,
         carType: data.carType,
         licensePlate: data.licensePlate,
         startDate: data.startDate,
         endDate: data.endDate,
         dayCount: data.dayCount,
+        basicPrice: data.basicPrice,
+        feeSales: data.feeSales,
+        profit: profit,
+        notes: data.notes,
       },
-      notes: data.notes,
     });
 
     // Reset form with a new transaction code

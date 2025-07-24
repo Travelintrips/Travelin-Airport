@@ -576,8 +576,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
                 ktpUrl: uploadResult.ktpUrl || documentUrls.ktpUrl,
                 licenseUrl: uploadResult.licenseUrl || documentUrls.licenseUrl,
                 idCardUrl: uploadResult.idCardUrl || documentUrls.idCardUrl,
-                kkUrl: uploadResult.kkUrl || "",
-                stnkUrl: uploadResult.stnkUrl || "",
+                kkUrl: (uploadResult as any).kkUrl || "",
+                stnkUrl: (uploadResult as any).stnkUrl || "",
               };
 
               console.log("All documents uploaded successfully:", {
@@ -595,8 +595,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
                   console.log("Document URLs after upload:", {
                     ktpUrl: documentUrls.ktpUrl,
                     licenseUrl: documentUrls.licenseUrl,
-                    kkUrl: documentUrls.kkUrl,
-                    stnkUrl: documentUrls.stnkUrl,
+                    kkUrl: (documentUrls as any).kkUrl,
+                    stnkUrl: (documentUrls as any).stnkUrl,
                   });
                 }
               }
@@ -739,8 +739,8 @@ const AuthForm: React.FC<AuthFormProps> = ({
             status: "active",
             ktp_url: documentUrls.ktpUrl,
             sim_url: documentUrls.licenseUrl,
-            kk_url: documentUrls.kkUrl,
-            stnk_url: documentUrls.stnkUrl,
+            kk_url: (documentUrls as any).kkUrl,
+            stnk_url: (documentUrls as any).stnkUrl,
             first_name: data.firstName,
             last_name: data.lastName,
             address: data.address,
