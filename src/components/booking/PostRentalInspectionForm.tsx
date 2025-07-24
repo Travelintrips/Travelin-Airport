@@ -1054,6 +1054,7 @@ const PostRentalInspectionForm: React.FC<PostRentalInspectionFormProps> = ({
                                         onChange={notesField.onChange}
                                         onBlur={notesField.onBlur}
                                         name={notesField.name}
+                                        ref={notesField.ref}
                                       />
                                     </FormControl>
                                   </FormItem>

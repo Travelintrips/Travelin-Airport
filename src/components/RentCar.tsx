@@ -31,23 +31,19 @@ import { useForceLogoutRedirect } from "@/hooks/useForceLogoutRedirect";
 import AuthRequiredModal from "./auth/AuthRequiredModal";
 
 interface Vehicle {
-  id: string | number;
+  id: string;
   name: string;
-  type?: "sedan" | "suv" | "truck" | "luxury";
+  type: "sedan" | "suv" | "truck" | "luxury";
   price: number;
-  image?: string;
-  seats?: number;
-  transmission?: "automatic" | "manual";
-  fuelType?: "petrol" | "diesel" | "electric" | "hybrid";
-  available?: boolean;
-  features?: string[];
-  model?: string;
-  make?: string;
-  year?: number;
-  license_plate?: string;
-  color?: string;
+  image: string;
+  seats: number;
+  transmission: "automatic" | "manual";
+  fuelType: "petrol" | "diesel" | "electric" | "hybrid";
+  available: boolean;
+  features: string[];
   vehicle_type_id?: number;
   vehicle_type_name?: string;
+  license_plate?: string;
 }
 
 const RentCar = () => {
@@ -716,20 +712,19 @@ const RentCar = () => {
                       onClick={() => {
                         if (vehicle.available) {
                           handleSelectVehicle({
-                            id: vehicle.id,
-                            model: vehicle.model,
+                            id: vehicle.id.toString(),
                             name: vehicle.name,
+                            type: vehicle.type || "sedan",
                             price: vehicle.price,
-                            image: vehicle.image,
-                            seats: vehicle.seats,
-                            transmission: vehicle.transmission,
-                            fuelType: vehicle.fuelType,
+                            image:
+                              vehicle.image ||
+                              "https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&q=80",
+                            seats: vehicle.seats || 4,
+                            transmission: vehicle.transmission || "automatic",
+                            fuelType: vehicle.fuelType || "petrol",
                             available: vehicle.available,
-                            features: vehicle.features,
-                            make: vehicle.make,
-                            year: vehicle.year,
+                            features: vehicle.features || [],
                             license_plate: vehicle.license_plate,
-                            color: vehicle.color,
                             vehicle_type_id: vehicle.vehicle_type_id,
                             vehicle_type_name: vehicle.vehicle_type_name,
                           });

@@ -125,7 +125,7 @@ const BookingTabs: React.FC<BookingTabsProps> = ({ selectedVehicleId }) => {
                 <PreRentalInspectionForm
                   vehicleId={bookingData.vehicleId}
                   bookingId={bookingData.bookingId}
-                  onComplete={(data) => handleInspectionComplete(data)}
+                  onComplete={handleInspectionComplete}
                 />
               ) : (
                 <div className="text-center py-8">
